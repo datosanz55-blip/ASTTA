@@ -73,6 +73,16 @@
   ];
   const byId = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
 
+  // Парящий товар без фона: только для вещей с чёткой формой, на одежде выглядит плохо
+  const FLOATING = {
+    "headphones": ["#757575", "#2b2b2b"],
+    "headphones-anc": ["#757575", "#2b2b2b"],
+    "watch": ["#757575", "#2b2b2b"],
+    "sunglasses": ["#6c7d75", "#282e2b"],
+    "bag": ["#b14639", "#3f1b17"],
+    "backpack": ["#5a6c8f", "#222834"],
+  };
+
   const POSTS = [
     { id: 1, sup: 'gz', pid: 'leather-jacket', time: '2 ч назад', auto: false, kind: 'new', likes: 128, comments: 14,
       text: 'Новая партия косух из натуральной кожи. Перед отправкой каждую проверяем на складе и фотографируем. Опт от 3 штук.' },
@@ -713,8 +723,10 @@
         <div class="review__head"><b>${esc(r.who)}</b><span class="stars" aria-label="${r.stars} из 5">${[1, 2, 3, 4, 5].map((n) => icon('star', 'ic--fill' + (n > r.stars ? ' is-off' : ''))).join('')}</span></div>
         <p>${esc(r.text)}</p></div>`).join('');
 
-    return `<div class="pd">
-      <div class="pd__media"><img src="${img(p.id)}" alt="${esc(p.t)}" width="720" height="720"></div>
+    return `<div class="pd" data-id="${p.id}">
+      <div class="pd__media">${FLOATING[p.id]
+        ? `<div class="pd__float" style="--t1:${FLOATING[p.id][0]};--t2:${FLOATING[p.id][1]}"><img src="assets/img/cut/${p.id}.webp" alt="${esc(p.t)}" width="900" height="900"></div>`
+        : `<img src="${img(p.id)}" alt="${esc(p.t)}" width="720" height="720">`}</div>
       <div class="pd__info">
         <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)}</button>
         <h2>${esc(p.t)}</h2>
@@ -741,7 +753,12 @@
     if (!pdState) return;
     const body = $('#sheetBody');
     const top = body.scrollTop;
-    body.innerHTML = productHTML();
+    const old = $('.pd', body);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = productHTML();
+    // фото не трогаем, чтобы парящий товар не дёргался при смене доставки или количества
+    if (old && old.dataset.id === pdState.id) $('.pd__info', old).replaceWith($('.pd__info', tmp));
+    else body.innerHTML = tmp.innerHTML;
     body.scrollTop = top;
   }
 
