@@ -57,6 +57,12 @@
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.8 10l6.2 2-6.2 2L12 20.5 10.2 14 4 12l6.2-2L12 3.5Z"/></symbol>
     <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 8 4v10l-8 4-8-4V7l8-4Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M10 8.5v7l6-3.5-6-3.5Z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M14 5 21 12l-7 7v-4c-5 0-8 1.5-11 5 1-5.5 4-10 11-11V5Z"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4.5L6 21V4Z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4V9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4V9Z"/><path d="m17 9 5 6M22 9l-5 6"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 4 3 11l7 2.5L12.5 21 21 4Z"/><path d="m10 13.5 4.5-4.5"/></symbol>
   </defs>
 </svg>
@@ -71,6 +77,7 @@
     <nav class="topnav" aria-label="Разделы">
       <a href="#catalog" data-nav="catalog">Каталог</a>
       <a href="#catalog" data-filter="sale">Акции</a>
+      <a href="#trends" data-nav="trends">Тренды</a>
       <a href="#feed" data-nav="feed">Лента</a>
       <a href="#profile" data-nav="profile" data-mode-text="Заказы|Кабинет"></a>
     </nav>
@@ -178,6 +185,11 @@
     </section>
 
     <section class="block">
+      <div class="block__head"><h2>ASTTA Trends</h2><a href="#trends" class="more">Смотреть <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="reels" id="reelRail"></div>
+    </section>
+
+    <section class="block">
       <div class="block__head"><h2>Акции дня</h2><a href="#catalog" class="more" data-filter="sale">Все <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
       <div class="rail" id="saleRail"></div>
     </section>
@@ -249,6 +261,16 @@
   </section>
 
   <!-- ЛЕНТА -->
+  <section class="view" data-view="trends" aria-label="ASTTA Trends" hidden>
+    <div class="trends" id="trends">
+      <div class="trends__top">
+        <nav class="trends__tabs" aria-label="Разделы роликов"><span aria-current="page">Тренды</span><a href="#feed">Лента</a></nav>
+        <button class="trends__add" type="button" data-trend-upload aria-label="Опубликовать ролик"><svg class="ic"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="trends__scroll" id="trendsScroll"></div>
+    </div>
+  </section>
+
   <section class="view" data-view="feed" aria-label="Лента" hidden>
     <div class="pagehead"><h1>Лента</h1><p class="pagehead__sub">Новинки и поступления от поставщиков</p></div>
     <div class="stories" id="stories"></div>
@@ -286,7 +308,7 @@
 <nav class="tabbar" aria-label="Навигация">
   <a href="#home" data-nav="home"><svg class="ic"><use href="#i-home"/></svg><span>Главная</span></a>
   <a href="#catalog" data-nav="catalog"><svg class="ic"><use href="#i-grid"/></svg><span>Каталог</span></a>
-  <a href="#feed" data-nav="feed"><svg class="ic"><use href="#i-feed"/></svg><span>Лента</span></a>
+  <a href="#trends" data-nav="trends"><svg class="ic"><use href="#i-play"/></svg><span>Тренды</span></a>
   <a href="#cart" data-nav="cart"><svg class="ic"><use href="#i-bag"/></svg><span>Корзина</span><b class="count" data-cart-count hidden>0</b></a>
   <a href="#profile" data-nav="profile"><svg class="ic"><use href="#i-user"/></svg><span data-mode-text="Заказы|Кабинет"></span></a>
 </nav>

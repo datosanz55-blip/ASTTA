@@ -356,6 +356,7 @@
   }
 
   function renderHome() {
+    $('#reelRail').innerHTML = TRENDS.map(reelThumbHTML).join('');
     $('#tiles').innerHTML = TILES.map(tileHTML).join('');
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${img(c.img)}" alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
@@ -1061,6 +1062,176 @@ ${aiCatalogJSON()}
     }
   }
 
+  /* ---------- ASTTA Trends: короткие ролики с покупкой прямо из ролика ----------
+     В демо ролики собраны из фото с плавным наездом камеры. Видео, загруженное
+     через «+», проигрывается по-настоящему. */
+  const TRENDS = [
+    { id: 't1', author: 'tt.guangzhou', name: 'TT · Гуанчжоу', seller: true, photos: ['cat-clothes', 'leather-jacket', 'hero-leopard'],
+      text: 'Косуха из натуральной кожи за 6 900 ₽ с доставкой. В торговом центре такая от 25 тысяч.', tags: ['#косуха', '#осень2026'], likes: 12400, comments: 318, views: '184K', products: ['leather-jacket', 'tee-black'] },
+    { id: 't2', author: 'masha.style', name: 'Маша', buyer: true, photos: ['tile-new', 'sweatshirt', 'runner'],
+      text: 'Собрала образ на осень за 13 тысяч. Пришло за 19 дней, размеры подобрал агент.', tags: ['#образ', '#распаковка'], likes: 8930, comments: 204, views: '96K', products: ['bomber', 'sweatshirt', 'runner'] },
+    { id: 't3', author: 'tt.shenzhen', name: 'TT · Шэньчжэнь', seller: true, photos: ['headphones-anc', 'cat-tech', 'headphones'],
+      text: 'Тест шумоподавления в метро. Видео проверки приходит с каждым заказом.', tags: ['#наушники', '#тест'], likes: 15200, comments: 431, views: '230K', products: ['headphones-anc', 'headphones'] },
+    { id: 't4', author: 'tt.foshan', name: 'TT · Фошань', seller: true, photos: ['cat-furniture', 'sofa', 'stage-box'],
+      text: 'Распаковка дивана из Фошаня: обрешётка, плёнка, ни одной царапины.', tags: ['#интерьер', '#распаковка'], likes: 6100, comments: 97, views: '71K', products: ['sofa', 'lamp'] },
+    { id: 't5', author: 'kirill.runs', name: 'Кирилл', buyer: true, photos: ['cat-shoes', 'runner', 'loafers'],
+      text: 'Кроссовки за 3 670 ₽ после первых 100 км. Подошва живая, сетка целая.', tags: ['#бег', '#обзор'], likes: 4300, comments: 88, views: '52K', products: ['runner'] },
+    { id: 't6', author: 'tt.yiwu', name: 'TT · Иу', seller: true, photos: ['bag', 'tile-discount', 'backpack'],
+      text: 'Сумка, про которую спрашивают все. Экокожа, пыльник и коробка в комплекте.', tags: ['#сумка', '#подарок'], likes: 9800, comments: 156, views: '120K', products: ['bag', 'backpack'] },
+  ];
+  const TREND_COMMENTS = [
+    ['lena_krd', 'Заказала такую же, пришла за 20 дней, всё как на видео'],
+    ['artem.msk', 'Агент реально прислал фото со склада до отправки'],
+    ['vika_style', 'А размеры маломерят? Беру на один больше?'],
+  ];
+  const tr = { liked: new Set(), saved: new Set(), followed: new Set(), active: -1, photo: 0, timer: null, start: 0, rendered: false, obs: null, muted: true };
+  const PHOTO_MS = 3200;
+  const trSrc = (src) => (src.startsWith('blob:') ? src : img(src));
+  const compact = (n) => (n >= 1000 ? `${nf1.format(Math.round(n / 100) / 10)}K` : String(n));
+
+  function reelThumbHTML(t, i) {
+    const cover = t.video ? '' : `<img src="${esc(trSrc(t.photos[0]))}" alt="" loading="lazy" width="270" height="480">`;
+    return `<button class="reelthumb" type="button" data-trend="${i}" aria-label="Ролик ${esc(t.name)}">
+      ${cover}${t.video ? '<span class="reelthumb__vid">Видео</span>' : ''}
+      <span class="reelthumb__views">${icon('play')}${esc(t.views || 'новое')}</span>
+      <span class="reelthumb__who">@${esc(t.author)}</span>
+    </button>`;
+  }
+
+  function reelHTML(t, i) {
+    const liked = tr.liked.has(t.id), saved = tr.saved.has(t.id), followed = tr.followed.has(t.author);
+    const media = t.video
+      ? `<video class="reel__video" src="${esc(t.video)}" muted loop playsinline preload="metadata"></video>`
+      : t.photos.map((ph, j) => `<img class="reel__ph kb${j % 3}${j === 0 ? ' is-on' : ''}" src="${esc(trSrc(ph))}" alt="" width="1000" height="1250"${i > 1 || j ? ' loading="lazy"' : ''}>`).join('');
+    const bars = t.video ? '' : `<div class="reel__bars">${t.photos.map((_, j) => `<i data-bar="${j}"><b></b></i>`).join('')}</div>`;
+    const chips = t.products.map((id) => {
+      const p = byId[id];
+      const price = isSupplier() ? `${cny(p.tiers[0][1])} от ${p.tiers[0][0]} шт` : rub(retail(p).total);
+      return `<div class="reelchip">
+        <button class="reelchip__open" type="button" data-open="${id}"><img src="${img(id)}" alt="" width="44" height="44" loading="lazy"><span><b>${esc(p.t)}</b><em>${price}</em></span></button>
+        <button class="reelchip__buy" type="button" data-add="${id}">Купить</button>
+      </div>`;
+    }).join('');
+    return `<section class="reel" data-reel="${i}" aria-label="Ролик ${i + 1}">
+      <div class="reel__media">${media}</div>
+      ${bars}
+      <div class="reel__shade" aria-hidden="true"></div>
+      ${t.video ? '' : `<button class="reel__tap reel__tap--prev" type="button" data-reel-step="-1" aria-label="Предыдущее фото"></button><button class="reel__tap reel__tap--next" type="button" data-reel-step="1" aria-label="Следующее фото"></button>`}
+      <div class="reel__side">
+        <button class="reel__ava${followed ? ' is-followed' : ''}" type="button" data-follow="${esc(t.author)}" aria-label="${followed ? 'Вы подписаны' : 'Подписаться'}"><span>${esc(t.author.slice(0, 2).toUpperCase())}</span><i>${followed ? icon('check') : icon('plus')}</i></button>
+        <button class="reel__act${liked ? ' is-on' : ''}" type="button" data-reel-heart="${i}" aria-pressed="${liked}" aria-label="Нравится">${icon('heart')}<span>${compact(t.likes + (liked ? 1 : 0))}</span></button>
+        <button class="reel__act" type="button" data-reel-comments="${i}" aria-label="Комментарии">${icon('chat')}<span>${compact(t.comments)}</span></button>
+        <button class="reel__act${saved ? ' is-on' : ''}" type="button" data-reel-save="${i}" aria-pressed="${saved}" aria-label="Сохранить">${icon('bookmark')}<span>${saved ? 'Есть' : 'В избр.'}</span></button>
+        <button class="reel__act" type="button" data-reel-share="${i}" aria-label="Поделиться">${icon('share')}<span>Ещё</span></button>
+        ${t.video ? `<button class="reel__act" type="button" data-reel-sound aria-label="Звук">${icon(tr.muted ? 'mute' : 'sound')}<span>${tr.muted ? 'Звук' : 'Тише'}</span></button>` : ''}
+      </div>
+      <div class="reel__info">
+        <div class="reel__who"><b>@${esc(t.author)}</b>${t.seller ? '<span class="reel__badge">Продавец</span>' : '<span class="reel__badge reel__badge--buyer">Купил на ASTTA</span>'}</div>
+        <p class="reel__text">${esc(t.text)} <span class="reel__tags">${t.tags.map(esc).join(' ')}</span></p>
+        <p class="reel__music">${icon('music')}<span>Оригинальный звук · ${esc(t.name)}</span></p>
+        <div class="reel__chips">${chips}</div>
+      </div>
+    </section>`;
+  }
+
+  function renderTrends(keepPosition) {
+    const box = $('#trendsScroll');
+    const top = box.scrollTop;
+    box.innerHTML = TRENDS.map(reelHTML).join('');
+    tr.rendered = true;
+    if (tr.obs) tr.obs.disconnect();
+    tr.obs = new IntersectionObserver((entries) => {
+      entries.forEach((en) => { if (en.isIntersecting) activateReel(Number(en.target.dataset.reel)); });
+    }, { root: box, threshold: 0.6 });
+    $$('.reel', box).forEach((el) => tr.obs.observe(el));
+    if (keepPosition) box.scrollTop = top;
+    tr.active = -1;
+  }
+
+  function enterTrends() {
+    if (!tr.rendered) renderTrends();
+    const box = $('#trendsScroll');
+    requestAnimationFrame(() => {
+      const el = $(`.reel[data-reel="${tr.start}"]`, box);
+      if (el) box.scrollTop = el.offsetTop;
+      activateReel(tr.start);
+    });
+  }
+
+  function leaveTrends() {
+    clearTimeout(tr.timer);
+    $$('.reel__video').forEach((v) => v.pause());
+    $$('.reel.is-active').forEach((el) => el.classList.remove('is-active'));
+    tr.active = -1;
+  }
+
+  function activateReel(i) {
+    if (currentView !== 'trends' || i === tr.active) return;
+    tr.active = i; tr.start = i;
+    $$('.reel', $('#trendsScroll')).forEach((el) => el.classList.toggle('is-active', Number(el.dataset.reel) === i));
+    $$('.reel__video').forEach((v) => { if (Number(v.closest('.reel').dataset.reel) === i) { v.muted = tr.muted; v.play().catch(() => {}); } else v.pause(); });
+    showPhoto(0);
+  }
+
+  function showPhoto(j) {
+    clearTimeout(tr.timer);
+    const t = TRENDS[tr.active];
+    const reel = $(`.reel[data-reel="${tr.active}"]`);
+    if (!t || !reel || t.video) return;
+    const n = t.photos.length;
+    tr.photo = (j + n) % n;
+    $$('.reel__ph', reel).forEach((el, k) => el.classList.toggle('is-on', k === tr.photo));
+    $$('.reel__bars i', reel).forEach((el, k) => {
+      el.classList.remove('is-now');
+      el.classList.toggle('is-done', k < tr.photo);
+    });
+    const bar = $(`.reel__bars i[data-bar="${tr.photo}"]`, reel);
+    if (bar) { void bar.offsetWidth; bar.classList.add('is-now'); }
+    tr.timer = setTimeout(() => showPhoto(tr.photo + 1), PHOTO_MS);
+  }
+
+  function likeReel(i, burst) {
+    const t = TRENDS[i];
+    if (burst && tr.liked.has(t.id)) return;
+    if (tr.liked.has(t.id)) tr.liked.delete(t.id); else tr.liked.add(t.id);
+    const btn = $(`[data-reel-heart="${i}"]`);
+    if (btn) {
+      const on = tr.liked.has(t.id);
+      btn.classList.toggle('is-on', on); btn.setAttribute('aria-pressed', String(on));
+      $('span', btn).textContent = compact(t.likes + (on ? 1 : 0));
+    }
+    if (burst) {
+      const media = $(`.reel[data-reel="${i}"] .reel__media`);
+      const h = document.createElement('span');
+      h.className = 'reel__burst'; h.innerHTML = icon('heart');
+      media.append(h);
+      setTimeout(() => h.remove(), 900);
+    }
+  }
+
+  function trendComments(i) {
+    const t = TRENDS[i];
+    const list = [...(t.myComments || []).map((c) => ['вы', c]), ...TREND_COMMENTS];
+    openSheet(`<div class="stack">
+      <h2 class="sheet__title">${compact(t.comments + (t.myComments || []).length)} комментариев</h2>
+      <div class="tcomments">${list.map(([who, text]) => `<div class="tcomment"><span class="ava" aria-hidden="true">${esc(who.slice(0, 2).toUpperCase())}</span><div><b>${esc(who)}</b><p>${esc(text)}</p></div></div>`).join('')}</div>
+      <form class="chat__form" id="tCommentForm" data-reel="${i}"><input id="tCommentInput" autocomplete="off" placeholder="Комментарий" aria-label="Комментарий"><button class="roundbtn" type="submit" aria-label="Отправить">${icon('arrow')}</button></form>
+    </div>`, { narrow: true });
+  }
+
+  function trendUpload() {
+    openSheet(`<div class="stack">
+      <h2 class="sheet__title">Новый ролик</h2>
+      <p class="note">Видео или фото с товаром. Отметьте товары, и их можно будет купить прямо из ролика.</p>
+      <form class="form" id="trendForm" novalidate>
+        <label class="field field--full"><span>Видео или фото</span><input id="tfFile" type="file" accept="video/*,image/*" required></label>
+        <label class="field field--full"><span>Подпись</span><textarea id="tfText" placeholder="Например: распаковка и примерка">Распаковка и первые впечатления</textarea></label>
+        <label class="field field--full"><span>Товар в ролике</span><select id="tfProduct">${PRODUCTS.map((p) => `<option value="${p.id}">${esc(p.t)}</option>`).join('')}</select></label>
+        <button class="btn btn--lime btn--wide field--full" type="submit">Опубликовать</button>
+      </form>
+    </div>`, { narrow: true });
+  }
+
   /* ---------- Действия кабинета ---------- */
   function cabAction(kind) {
     if (kind === 'add') {
@@ -1172,7 +1343,7 @@ ${aiCatalogJSON()}
   }
 
   /* ---------- Навигация ---------- */
-  const VIEWS = ['home', 'catalog', 'feed', 'cart', 'profile'];
+  const VIEWS = ['home', 'catalog', 'trends', 'feed', 'cart', 'profile'];
   let currentView = 'home';
   function route() {
     const hash = decodeURIComponent(location.hash.slice(1));
@@ -1185,6 +1356,8 @@ ${aiCatalogJSON()}
       else a.removeAttribute('aria-current');
     });
     if (view === 'catalog') renderCatalog();
+    document.documentElement.classList.toggle('is-trends', view === 'trends');
+    if (view === 'trends') enterTrends(); else leaveTrends();
     if (view === 'feed') renderFeed();
     if (view === 'cart') renderCart();
     if (view === 'profile') renderProfile();
@@ -1208,6 +1381,7 @@ ${aiCatalogJSON()}
     if (currentView === 'feed') renderFeed();
     if (currentView === 'cart') renderCart();
     if (currentView === 'profile') renderProfile();
+    if (currentView === 'trends') renderTrends(true);
     updateCartCount();
   }
 
@@ -1346,6 +1520,40 @@ ${aiCatalogJSON()}
     }
     if (d.cab) { cabAction(d.cab); return; }
     if (d.quick) { sendChat(d.quick); return; }
+    if (d.trend !== undefined) { tr.start = Number(d.trend); go('trends'); return; }
+    if (d.reelStep) { showPhoto(tr.photo + Number(d.reelStep)); return; }
+    if (d.reelHeart !== undefined) { likeReel(Number(d.reelHeart)); return; }
+    if (d.reelSave !== undefined) {
+      const t = TRENDS[Number(d.reelSave)];
+      const on = !tr.saved.has(t.id);
+      if (on) tr.saved.add(t.id); else tr.saved.delete(t.id);
+      $$(`[data-reel-save="${d.reelSave}"]`).forEach((b) => { b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); $('span', b).textContent = on ? 'Есть' : 'В избр.'; });
+      toast(on ? 'Ролик в избранном' : 'Убрали из избранного');
+      return;
+    }
+    if (d.reelComments !== undefined) { trendComments(Number(d.reelComments)); return; }
+    if (d.reelShare !== undefined) {
+      const t = TRENDS[Number(d.reelShare)];
+      const text = `Смотри на ASTTA: @${t.author} — ${t.text}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast('Ссылка на ролик скопирована')).catch(() => toast('Не удалось скопировать'));
+      else toast('Не удалось скопировать');
+      return;
+    }
+    if (d.reelSound !== undefined) {
+      tr.muted = !tr.muted;
+      $$('.reel__video').forEach((v) => { v.muted = tr.muted; });
+      $$('[data-reel-sound]').forEach((b) => { b.innerHTML = `${icon(tr.muted ? 'mute' : 'sound')}<span>${tr.muted ? 'Звук' : 'Тише'}</span>`; });
+      return;
+    }
+    if (d.follow) {
+      const a = d.follow;
+      if (tr.followed.has(a)) tr.followed.delete(a); else tr.followed.add(a);
+      const on = tr.followed.has(a);
+      $$(`[data-follow="${a}"]`).forEach((b) => { b.classList.toggle('is-followed', on); $('i', b).innerHTML = icon(on ? 'check' : 'plus'); });
+      toast(on ? `Вы подписаны на @${a}` : `Вы отписались от @${a}`);
+      return;
+    }
+    if (d.trendUpload !== undefined) { trendUpload(); return; }
     if (d.aiOpen !== undefined) { openAI(); return; }
     if (d.aiAsk) { aiAsk(d.aiAsk); return; }
     if (d.aiStop !== undefined) { if (ai.ctl) ai.ctl.abort(); return; }
@@ -1418,6 +1626,29 @@ ${aiCatalogJSON()}
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
+    if (f.id === 'tCommentForm') {
+      const input = $('#tCommentInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const t = TRENDS[Number(f.dataset.reel)];
+      (t.myComments = t.myComments || []).unshift(text);
+      trendComments(Number(f.dataset.reel));
+      return;
+    }
+    if (f.id === 'trendForm') {
+      const file = $('#tfFile').files[0];
+      if (!file) { $('#tfFile').closest('.field').classList.add('is-error'); toast('Выберите видео или фото'); return; }
+      const url = URL.createObjectURL(file);
+      const isVideo = file.type.startsWith('video/');
+      TRENDS.unshift({ id: 'u' + Date.now(), author: 'вы', name: 'Вы', buyer: true, video: isVideo ? url : null, photos: isVideo ? [] : [url],
+        text: $('#tfText').value.trim() || 'Новый ролик', tags: ['#astta'], likes: 0, comments: 0, views: 'новое', products: [$('#tfProduct').value] });
+      closeSheet();
+      tr.rendered = false; tr.start = 0; tr.active = -1;
+      renderHome();
+      if (currentView === 'trends') enterTrends(); else go('trends');
+      toast('Ролик опубликован');
+      return;
+    }
     if (f.id === 'aiForm' || f.id === 'aiChatForm') {
       const input = $(f.id === 'aiForm' ? '#aiInput' : '#aiChatInput');
       const q = input.value;
@@ -1513,6 +1744,10 @@ ${aiCatalogJSON()}
       requestAnimationFrame(() => $('#q').focus());
     });
     window.addEventListener('hashchange', route);
+    $('#trendsScroll').addEventListener('dblclick', (e) => {
+      const reel = e.target.closest('.reel');
+      if (reel && !e.target.closest('.reel__side, .reel__info')) likeReel(Number(reel.dataset.reel), true);
+    });
     setMode(state.mode, true);
     route();
     initHero();
