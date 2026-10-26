@@ -706,8 +706,16 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
 .ai {
   position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 18px;
   padding: 26px 20px; border-radius: var(--r-lg);
-  background: radial-gradient(80% 90% at 100% 0%, rgba(29, 154, 108, .45), transparent 70%), radial-gradient(60% 70% at 0% 100%, rgba(220, 239, 58, .1), transparent 70%), var(--surface);
+  background: radial-gradient(70% 80% at 0% 0%, rgba(20, 120, 78, .32), transparent 70%), linear-gradient(180deg, #03170f, #020b08);
   box-shadow: inset 0 0 0 1px var(--line);
+}
+.ai > :not(.ai__art) { position: relative; z-index: 1; }
+/* иллюстрация: на телефоне баннером сверху, на компьютере справа во всю высоту */
+.ai__art {
+  display: block; width: calc(100% + 40px); max-width: none; height: 240px; margin: -26px -20px -44px;
+  object-fit: cover; object-position: 50% 45%; pointer-events: none; user-select: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent);
+  mask-image: linear-gradient(180deg, #000 55%, transparent);
 }
 .ai__badge { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: rgba(220, 239, 58, .12); color: var(--lime); font: 600 13px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
 .ai__badge .ic { width: 16px; height: 16px; }
@@ -747,7 +755,18 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
 .aitotal div { display: flex; flex-direction: column; gap: 2px; }
 .aitotal span { font-size: 12.5px; color: var(--muted); }
 .aitotal b { font: 600 24px/1 var(--font-display); }
-@media (min-width: 900px) { .ai { padding: 44px 48px; } }
+@media (min-width: 900px) {
+  .ai { padding: 44px 48px; min-height: 526px; }
+  .ai > :not(.ai__art) { max-width: 54%; }
+  .ai__art {
+    position: absolute; z-index: 0; right: 0; top: 0; width: 50%; height: auto; margin: 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%), linear-gradient(180deg, #000 82%, transparent);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(90deg, transparent, #000 22%), linear-gradient(180deg, #000 82%, transparent);
+    mask-composite: intersect;
+  }
+  .ai > [data-ai-pane="ask"] { max-width: 62%; }
+}
 
 /* ASTTA Build */
 .aitabs { display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 4px; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
