@@ -168,7 +168,8 @@
       <h2 id="aiTitle">Скажи, что нужно.<br>Соберу корзину.</h2>
       <div class="aitabs" role="tablist" aria-label="Режим ASTTA AI">
         <button type="button" role="tab" data-ai-tab="ask" aria-selected="true">Подобрать</button>
-        <button type="button" role="tab" data-ai-tab="build" aria-selected="false">Build: комплект</button>
+        <button type="button" role="tab" data-ai-tab="build" aria-selected="false">Build</button>
+        <button type="button" role="tab" data-ai-tab="solve" aria-selected="false">Solve</button>
       </div>
       <div class="aipane" data-ai-pane="ask">
         <p class="ai__sub">Подберу из каталога, а чего нет — найду под заказ в Китае и проверю совместимость.</p>
@@ -183,6 +184,17 @@
           <button class="chip" type="button" data-ai-ask="Собери игровой компьютер за 70 000 ₽">Игровой ПК за 70 000 ₽</button>
         </div>
       </div>
+      <form class="aipane build" data-ai-pane="solve" id="solveForm" novalidate hidden>
+        <p class="ai__sub">Не знаете, как называется деталь? Снимите фото или короткое видео поломки — определю проблему и предложу запчасти или мастера.</p>
+        <label class="solve__drop" for="solveFile">
+          <svg class="ic"><use href="#i-camera"/></svg>
+          <span id="solveName">Фото или видео проблемы</span>
+          <input id="solveFile" type="file" accept="image/*,video/*">
+        </label>
+        <img class="solve__preview" id="solvePreview" alt="" hidden>
+        <label class="field"><span>Что случилось</span><input id="solveText" type="text" autocomplete="off" placeholder="Например: дверца шкафа перекосилась и не закрывается"></label>
+        <button class="btn btn--lime" type="submit"><svg class="ic"><use href="#i-spark"/></svg>Разобраться</button>
+      </form>
       <form class="aipane build" data-ai-pane="build" id="buildForm" novalidate hidden>
         <p class="ai__sub">Опишите цель, и я соберу полный комплект: все зоны, всё совместимо, в рамках бюджета.</p>
         <div class="build__goals" role="radiogroup" aria-label="Цель">

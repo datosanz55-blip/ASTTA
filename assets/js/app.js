@@ -190,6 +190,23 @@
     return null;
   }
 
+  // UsagePreview: габариты мебели в см (ширина × глубина; openD — глубина в разложенном виде)
+  const DIMS = {
+    sofa: { w: 210, d: 92, openD: 150, name: 'Диван' },
+    armchair: { w: 70, d: 72, name: 'Кресло' },
+    'lounge-chair': { w: 62, d: 68, name: 'Кресло' },
+    stool: { w: 40, d: 40, name: 'Табурет' },
+  };
+
+  // ASTTA Proof: проверка конкретного экземпляра на складе в Китае
+  const PROOF = {
+    tech: { price: 290, list: ['Включается и заряжается', 'Подключение по Bluetooth', 'Шумоподавление и микрофон', 'Корпус без царапин и сколов', 'Видео проверки 30–60 сек'] },
+    furniture: { price: 490, list: ['Замеры совпадают с карточкой', 'Каркас не шатается', 'Обивка без пятен и затяжек', 'Комплект фурнитуры полный', 'Фото со всех сторон и упаковки'] },
+    clothes: { price: 190, list: ['Замеры совпадают с таблицей', 'Швы ровные, без пропусков', 'Молнии и кнопки работают', 'Без пятен и запаха', 'Фото на вешалке и бирки'] },
+    other: { price: 190, list: ['Соответствует фото в карточке', 'Без дефектов и следов носки', 'Комплектация полная', 'Фото со всех сторон'] },
+  };
+  const proofOf = (p) => PROOF[p.cat] || PROOF.other;
+
   const SIZE_GRID = {
     shoes: [['39', 'RU 38 · 24,5 см'], ['40', 'RU 39 · 25 см'], ['41', 'RU 40 · 25,5 см'], ['42', 'RU 41 · 26,5 см'], ['43', 'RU 42 · 27 см'], ['44', 'RU 43 · 27,5 см'], ['45', 'RU 44 · 28,5 см']],
     clothes: [['S', 'RU 42'], ['M', 'RU 44'], ['L', 'RU 46'], ['XL', 'RU 48'], ['2XL', 'RU 50'], ['3XL', 'RU 52']],
@@ -201,6 +218,7 @@
         { t: 'Агент подтвердил заказ', d: '12 окт, 14:20' },
         { t: 'Выкуплен у поставщика', d: '13 окт, 10:05' },
         { t: 'Принят на склад в Гуанчжоу', d: '15 окт, 16:40', photo: 'stage-aisles', note: 'Фото товара на складе' },
+        { t: 'ASTTA Proof: проверка пройдена', d: '15 окт, 18:10', proof: true },
         { t: 'Упакован и взвешен: 2,1 кг', d: '16 окт, 09:15', photo: 'stage-box', note: 'Фото упаковки' },
         { t: 'Граница: Маньчжурия → Забайкальск', d: '22 окт, 07:30' },
         { t: 'Склад в Москве', d: 'ожидается 29–31 окт' },
@@ -234,6 +252,8 @@
         { id: 'f1', pid: 'sweatshirt', by: 'anya', status: 'pending', payer: 'me' },
         { id: 'f2', pid: 'lamp', by: 'mom', status: 'approved', payer: 'mom' },
         { id: 'f3', pid: 'headphones', by: 'dad', status: 'approved', payer: 'dad' },
+        { id: 'f4', pid: 'headphones-anc', by: 'anya', status: 'pending', payer: 'me' },
+        { id: 'f5', pid: 'sweatshirt', by: 'mom', status: 'pending', payer: 'mom' },
       ],
     },
     pools: [{
@@ -520,8 +540,8 @@
     const min = isSupplier() ? p.tiers[0][0] : 1;
     const qty = Math.max(min, opts.qty || min);
     const item = cart().find((i) => cartKey(i) === cartKey({ id, size: opts.size }));
-    if (item) item.qty += isSupplier() ? qty : (opts.qty || 1);
-    else cart().push({ id, qty, size: opts.size || null });
+    if (item) { item.qty += isSupplier() ? qty : (opts.qty || 1); if (opts.proof) item.proof = true; }
+    else cart().push({ id, qty, size: opts.size || null, proof: !!opts.proof });
     store.save();
     updateCartCount();
     if (currentView === 'cart') renderCart();
@@ -534,9 +554,10 @@
   }
 
   function cartTotals() {
-    let goods = 0, delivery = 0, fee = 0, goodsCny = 0;
+    let goods = 0, delivery = 0, fee = 0, goodsCny = 0, proof = 0;
     cart().forEach((i) => {
       const p = byId[i.id];
+      if (i.proof && !isSupplier()) proof += proofOf(p).price * i.qty;
       if (isSupplier()) {
         const w = wholesale(p, i.qty);
         goods += w.goods; delivery += w.delivery; fee += w.fee; goodsCny += w.goodsCny;
@@ -545,7 +566,7 @@
         goods += r.goods; delivery += r.delivery; fee += r.fee;
       }
     });
-    return { goods, delivery, fee, goodsCny, total: round10(goods + delivery + fee) };
+    return { goods, delivery, fee, goodsCny, proof, total: round10(goods + delivery + fee + proof) };
   }
 
   function renderCart() {
@@ -560,7 +581,7 @@
     const anyLight = items.some((i) => !byId[i.id].bulky);
     const rows = items.map((i, idx) => {
       const p = byId[i.id];
-      const sizeLabel = i.size === '?' ? ' · размер подберёт агент' : (i.size ? ` · размер CN ${esc(i.size)}` : '');
+      const sizeLabel = (i.size === '?' ? ' · размер подберёт агент' : (i.size ? ` · размер CN ${esc(i.size)}` : '')) + (i.proof ? ' · с проверкой Proof' : '');
       let price, hint = '', min = 1;
       if (isSupplier()) {
         const w = wholesale(p, i.qty);
@@ -594,6 +615,7 @@
     const summary = `<div class="sum">
         <div class="sum__row"><span>Товары${isSupplier() ? ` · ${cny(t.goodsCny)}` : ''}</span><span>${rub(t.goods + t.fee)}</span></div>
         <div class="sum__row"><span>Доставка</span><span>${rub(t.delivery)}</span></div>
+        ${t.proof ? `<div class="sum__row"><span>ASTTA Proof, проверка</span><span>${rub(t.proof)}</span></div>` : ''}
         <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(t.total)}</span></div>
         <p class="sum__note">Платите после того, как агент подтвердит заказ.</p>
       </div>`;
@@ -662,7 +684,8 @@
     const stages = o.stages.map((s, i) => {
       const cls = i < o.now || o.delivered ? 'is-done' : (i === o.now ? 'is-now' : '');
       const photo = s.photo ? `<button class="tl__photo" type="button" data-photo="${s.photo}" data-caption="${esc(s.t)}"><img src="${img(s.photo)}" alt="" width="84" height="60" loading="lazy"><span>${esc(s.note)}</span></button>` : '';
-      return `<li class="${cls}"><span class="dot">${cls === 'is-done' ? icon('check') : ''}</span><div class="tl__body"><b>${esc(s.t)}</b>${s.d ? `<span>${esc(s.d)}</span>` : ''}${photo}</div></li>`;
+      const proofBtn = s.proof ? `<button class="tl__photo" type="button" data-proof-report="${o.num}"><span class="tl__proof">${icon('check')}</span><span>Отчёт о проверке вашего экземпляра</span></button>` : '';
+      return `<li class="${cls}"><span class="dot">${cls === 'is-done' ? icon('check') : ''}</span><div class="tl__body"><b>${esc(s.t)}</b>${s.d ? `<span>${esc(s.d)}</span>` : ''}${photo}${proofBtn}</div></li>`;
     }).join('');
     return `<article class="order">
       <div class="order__head">
@@ -772,6 +795,7 @@
       <section class="stack">
         <h3 class="sublabel">Общий список</h3>
         ${rows || '<p class="note">Список пуст. Добавляйте товары кнопкой «В семейный список» в карточке товара.</p>'}
+        <button class="btn btn--line" type="button" data-fam-ai>${icon('spark')}BuyTogether AI: проверить список</button>
         ${approved.length ? `<button class="btn btn--lime" type="button" data-fam-checkout>Одобренное в корзину · ${rub(spent)}</button>` : ''}
         <p class="note">Дети добавляют товары, взрослые одобряют. Каждый оплачивает свою часть, агент собирает всё в одну посылку.</p>
       </section>
@@ -952,6 +976,11 @@
         </div>
         ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
         ${optNote}
+        ${sup ? '' : `<button class="proofbox${pdState.proof ? ' is-on' : ''}" type="button" data-proof aria-pressed="${!!pdState.proof}">
+          <span class="proofbox__check">${icon('check')}</span>
+          <span class="proofbox__body"><b>ASTTA Proof · +${rub(proofOf(p).price)}</b><span>Проверим именно ваш экземпляр на складе до отправки: ${proofOf(p).list.slice(0, 3).join(', ').toLowerCase()}. Отчёт с фото и видео придёт в заказ.</span></span>
+        </button>`}
+        ${DIMS[p.id] ? `<button class="btn btn--line" type="button" data-room="${p.id}">${icon('ruler')}Примерить в комнату · ${DIMS[p.id].w}×${DIMS[p.id].d} см</button>` : ''}
         ${sup ? '' : `<div class="pdextra"><button class="btn btn--ghost btn--sm" type="button" data-pool-new="${p.id}">${icon('users')}Скинуться на подарок</button><button class="btn btn--ghost btn--sm" type="button" data-family-add="${p.id}">${icon('home')}В семейный список</button></div>`}
         <p class="pd__desc">${esc(p.desc)}</p>
         <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
@@ -1144,6 +1173,7 @@
 5. Если бюджет указан — не превышай его. Если данных мало — всё равно предложи лучший вариант и задай до двух уточняющих вопросов в questions.
 6. Пиши по-русски, коротко и по делу, без воды и без markdown.
 7. Бюджет в евро переводи по курсу 1 € = ${EUR} ₽.
+9. Режим ASTTA Solve (запрос начинается с «ASTTA Solve», к нему приложено фото или кадр из видео): определи, что сломалось и как называется нужная деталь (дай название на русском и для поиска на китайских площадках). В reply коротко объясни поломку и как её исправить. В custom предложи подходящие запчасти и нужный инструмент с оценкой цены; если ремонт сложный, добавь в custom услугу мастера (name начинается с «Услуга:», est_cny 0). В compat перечисли, что измерить или проверить перед заказом (размер, тип крепления). Если по фото непонятно — задай вопросы в questions.
 8. Режим ASTTA Build (запрос начинается с «ASTTA Build»): покупатель хочет обустроить пространство или собрать полный комплект. Закрой все основные зоны (например, для игровой комнаты: игровое место, кресло и стол, свет, звук, хранение, атмосфера), чтобы ничего не пришлось докупать. У каждого товара укажи role — зону комплекта, 1–2 слова. В compat отметь, что всё сочетается по размерам, питанию и стилю.
 
 Каталог ASTTA (JSON):
@@ -1220,7 +1250,7 @@ ${aiCatalogJSON()}
     const box = $('#aiMsgs');
     if (!box) return;
     box.innerHTML = ai.log.map((m, idx) => {
-      if (m.me) return `<div class="msg msg--me">${esc(m.text)}</div>`;
+      if (m.me) return `<div class="msg msg--me">${m.thumb ? `<img class="msg__img" src="${esc(m.thumb)}" alt="">` : ''}${esc(m.text)}</div>`;
       if (m.typing) return `<div class="msg msg--typing"><span id="aiStage">${AI_STAGES[ai.stage % AI_STAGES.length]}</span>${ai.ctl ? ' <button class="linkbtn" type="button" data-ai-stop>Стоп</button>' : ''}</div>`;
       let html = `<div class="msg msg--ai">${esc(m.reply || m.text)}</div>`;
       html += aiResultHTML(m, idx);
@@ -1255,7 +1285,7 @@ ${aiCatalogJSON()}
     const start = $('#aiStart');
     if (start) start.remove();
     ai.busy = true;
-    if (!opts.silent) ai.log.push({ me: true, text: opts.label || q });
+    if (!opts.silent) ai.log.push({ me: true, text: opts.label || q, thumb: opts.thumb });
     ai.stage = 0;
     ai.log.push({ typing: true });
     aiRender();
@@ -1268,6 +1298,7 @@ ${aiCatalogJSON()}
       aiRender();
     };
     const demo = () => {
+      if (opts.solve) return aiSolveDemo();
       const plan = aiPlan(opts.demoQuery || q, opts);
       ai.last = { q: opts.demoQuery || q, plan, variant: opts.variant || 0 };
       return { ...aiDemoAnswer(plan), source: 'demo' };
@@ -1282,13 +1313,15 @@ ${aiCatalogJSON()}
     aiRender();
     const turns = [{ role: 'user', content: aiRules() }, ...ai.turns.slice(-8), { role: 'user', content: q }];
     try {
-      const data = await sample.json(turns, { modelTier: 'complex', cache: false, signal: ai.ctl.signal });
+      const data = await sample.json(turns, { modelTier: 'complex', cache: false, signal: ai.ctl.signal, ...(opts.images ? { images: opts.images } : {}) });
       ai.mode = 'claude';
       ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: JSON.stringify(data).slice(0, 6000) });
       finish(aiNormalize(data));
     } catch (e) {
       const code = e && e.code;
-      if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) {
+      if (code === 'images_unavailable' || code === 'image_rejected') {
+        finish({ ...aiSolveDemo(), reply: 'Не получилось передать фото модели в этом просмотре. Пример того, как выглядит ответ: ' + aiSolveDemo().reply });
+      } else if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) {
         ai.mode = 'demo';
         const d = demo();
         finish({ ...d, reply: 'Модель недоступна в этом просмотре, отвечаю в демо-режиме. ' + d.reply });
@@ -1482,6 +1515,177 @@ ${aiCatalogJSON()}
   function buildOut() {
     const v = Number($('#buildRange').value);
     $('#buildOut').textContent = build.cur === 'eur' ? `${nf.format(v)} € ≈ ${rub(v * EUR)}` : rub(v);
+  }
+
+  /* ---------- ASTTA Solve: покажи проблему ---------- */
+  function aiSolveDemo() {
+    return {
+      source: 'demo',
+      reply: 'Демо-ответ (фото распознаёт только модель на claude.ai). Похоже, у дверцы разболталась или сломалась мебельная петля: дверца проседает и цепляет соседнюю. Петлю можно заменить самому за 10 минут отвёрткой.',
+      custom: [
+        { role: 'Деталь', name: 'Петля мебельная накладная 35 мм с доводчиком, 2 шт', specs: 'Чашка 35 мм, угол 110°, для двери 16–20 мм', why: 'Стандарт для шкафов', est_cny: 18, est_kg: 0.3 },
+        { role: 'Крепёж', name: 'Евровинты 6,3×16 мм, 20 шт', specs: 'Под планку петли', why: 'Старые часто разбиты', est_cny: 5, est_kg: 0.1 },
+        { role: 'Ремонт', name: 'Услуга: мастер на замену петель', specs: 'Если не хотите сами', why: 'Под ключ за час', est_cny: 0, est_kg: 0 },
+      ],
+      compat: ['Измерьте диаметр чашки петли в двери: 35 мм или 26 мм', 'Посмотрите тип: накладная, полунакладная или вкладная'],
+      questions: ['Дверца перекошена или вообще отвалилась?'],
+    };
+  }
+
+  // Видео модели не передать: берём кадр из середины ролика
+  function frameFromVideo(file) {
+    return new Promise((resolve, reject) => {
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.src = URL.createObjectURL(file);
+      v.onloadeddata = () => { v.currentTime = Math.min(1.5, (v.duration || 2) / 2); };
+      v.onseeked = () => {
+        const c = document.createElement('canvas');
+        const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+        c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error('frame'))), 'image/jpeg', 0.85);
+      };
+      v.onerror = () => reject(new Error('video'));
+    });
+  }
+
+  /* ---------- BuyTogether AI: дубли, похожие покупки, бюджет ---------- */
+  function familyAnalysis() {
+    const f = state.family;
+    const live = f.items.filter((it) => it.status !== 'declined');
+    const price = (it) => retail(byId[it.pid]).total;
+    const remove = new Map();
+    const notes = [];
+    const groups = {};
+    live.forEach((it) => { (groups[it.pid] = groups[it.pid] || []).push(it); });
+    Object.values(groups).filter((g) => g.length > 1).forEach((g) => {
+      const keep = g.find((x) => x.status === 'approved') || g[0];
+      g.filter((x) => x !== keep).forEach((x) => remove.set(x.id, 'дубль'));
+      notes.push({ kind: 'dup', text: `Дубль: «${byId[g[0].pid].t}» добавили ${g.map((x) => member(x.by).name).join(' и ')}. Оставим один, у ${member(keep.by).name}.` });
+    });
+    const similar = [['headphones', 'headphones-anc'], ['armchair', 'lounge-chair'], ['tee-white', 'tee-black']];
+    similar.forEach(([a, b]) => {
+      const A = live.find((x) => x.pid === a && !remove.has(x.id)), B = live.find((x) => x.pid === b && !remove.has(x.id));
+      if (A && B) {
+        const drop = A.status === 'approved' && B.status !== 'approved' ? B : (B.status === 'approved' && A.status !== 'approved' ? A : (price(A) > price(B) ? A : B));
+        const keep = drop === A ? B : A;
+        remove.set(drop.id, 'похожая покупка');
+        notes.push({ kind: 'conflict', text: `Похожие покупки: «${byId[A.pid].t}» (${member(A.by).name}) и «${byId[B.pid].t}» (${member(B.by).name}). Предлагаю оставить «${byId[keep.pid].t}».` });
+      }
+    });
+    let set = live.filter((x) => !remove.has(x.id));
+    let total = set.reduce((sum, x) => sum + price(x), 0);
+    if (total > f.budget) {
+      const pend = set.filter((x) => x.status === 'pending').sort((a, b) => price(b) - price(a));
+      for (const x of pend) { if (total <= f.budget) break; remove.set(x.id, 'не влезает в бюджет'); total -= price(x); }
+      notes.push({ kind: 'budget', text: total <= f.budget ? `Без лишнего всё влезает в бюджет ${rub(f.budget)}.` : `Даже без лишнего выходит ${rub(total)} при лимите ${rub(f.budget)}. Поднимите лимит или уберите что-то из одобренного.` });
+    }
+    set = live.filter((x) => !remove.has(x.id));
+    const before = live.reduce((sum, x) => sum + price(x), 0);
+    return { notes, set, remove, total: set.reduce((sum, x) => sum + price(x), 0), saved: before - set.reduce((sum, x) => sum + price(x), 0) };
+  }
+
+  function familyAIHTML() {
+    const a = familyAnalysis();
+    const ic = { dup: 'box', conflict: 'users', budget: 'tag' };
+    return `<div class="stack">
+      <span class="ai__badge">${icon('spark')}BuyTogether AI</span>
+      <h2 class="sheet__title">Проверка общего списка</h2>
+      ${a.notes.length ? `<ul class="aicompat">${a.notes.map((n) => `<li>${icon(ic[n.kind])}${esc(n.text)}</li>`).join('')}</ul>` : '<p class="note">Дублей и конфликтов нет, список в порядке.</p>'}
+      <div class="sum">
+        <div class="sum__row"><span>Оптимальный набор</span><span>${a.set.length} ${plural(a.set.length, 'товар', 'товара', 'товаров')}</span></div>
+        ${a.set.map((x) => `<div class="sum__row"><span>${esc(byId[x.pid].t)} · ${esc(member(x.by).name)}</span><span>${rub(retail(byId[x.pid]).total)}</span></div>`).join('')}
+        <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(a.total)}</span></div>
+        ${a.saved ? `<p class="sum__note">Экономия ${rub(a.saved)} на дублях и лишнем.</p>` : ''}
+      </div>
+      ${a.remove.size ? '<button class="btn btn--lime btn--wide" type="button" data-fam-apply>Применить: убрать лишнее</button>' : ''}
+      <p class="note">Каждый, чья позиция убрана, получит уведомление с объяснением.</p>
+    </div>`;
+  }
+
+  /* ---------- UsagePreview: сколько места займёт мебель ---------- */
+  const room = { pid: null, W: 340, L: 420, x: 20, y: 0, rot: 0, open: false, drag: null };
+  function roomFoot() {
+    const dm = DIMS[room.pid];
+    const depth = room.open && dm.openD ? dm.openD : dm.d;
+    const side = room.rot % 180 === 0;
+    const w = side ? dm.w : dm.d, h = side ? dm.d : dm.w;
+    let fx = room.x, fy = room.y, fw = w, fh = h;
+    const extra = depth - dm.d;
+    if (extra) {
+      if (room.rot === 0) fh += extra;
+      if (room.rot === 90) { fw += extra; fx -= extra; }
+      if (room.rot === 180) { fh += extra; fy -= extra; }
+      if (room.rot === 270) fw += extra;
+    }
+    return { x: room.x, y: room.y, w, h, fx, fy, fw, fh };
+  }
+  function roomClamp() {
+    const f = roomFoot();
+    const dx = f.fx < 0 ? -f.fx : (f.fx + f.fw > room.W ? room.W - (f.fx + f.fw) : 0);
+    const dy = f.fy < 0 ? -f.fy : (f.fy + f.fh > room.L ? room.L - (f.fy + f.fh) : 0);
+    room.x += dx; room.y += dy;
+  }
+  function roomRender() {
+    const box = $('#roomBox');
+    if (!box) return;
+    roomClamp();
+    const f = roomFoot();
+    const gaps = { left: Math.round(f.fx), right: Math.round(room.W - f.fx - f.fw), top: Math.round(f.fy), bottom: Math.round(room.L - f.fy - f.fh) };
+    const front = { 0: 'bottom', 90: 'left', 180: 'top', 270: 'right' }[room.rot];
+    const pass = gaps[front];
+    const door = { x: 30, y: room.L - 85, w: 85, h: 85 };
+    const blocksDoor = f.fx < door.x + door.w && f.fx + f.fw > door.x && f.fy + f.fh > door.y;
+    const st = blocksDoor ? ['bad', 'Перекрывает дверь'] : (pass >= 70 ? ['ok', `Проход ${pass} см — хватает`] : (pass >= 50 ? ['warn', `Узко: ${pass} см, пройти боком`] : ['bad', `Прохода нет: ${pass} см`]));
+    const open = room.open && DIMS[room.pid].openD;
+    box.innerHTML = `<svg class="room__svg" id="roomSvg" viewBox="-30 -30 ${room.W + 60} ${room.L + 60}" role="img" aria-label="План комнаты">
+      <rect x="0" y="0" width="${room.W}" height="${room.L}" class="room__floor"/>
+      <path d="M${door.x} ${room.L} h${door.w}" class="room__doorgap"/>
+      <path d="M${door.x} ${room.L} A ${door.w} ${door.w} 0 0 1 ${door.x + door.w} ${room.L - door.w} L ${door.x} ${room.L - door.w} Z" class="room__door"/>
+      <text x="${door.x + 6}" y="${room.L - 8}" class="room__lbl">дверь</text>
+      <text x="${room.W / 2}" y="-10" class="room__dim" text-anchor="middle">${room.W} см</text>
+      <text x="-12" y="${room.L / 2}" class="room__dim" text-anchor="middle" transform="rotate(-90 -12 ${room.L / 2})">${room.L} см</text>
+      <g class="room__item room__item--${st[0]}" id="roomItem">
+        ${open ? `<rect x="${f.fx}" y="${f.fy}" width="${f.fw}" height="${f.fh}" rx="6" class="room__open"/>` : ''}
+        <rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="8" class="room__body"/>
+        <text x="${f.x + f.w / 2}" y="${f.y + f.h / 2 + 5}" text-anchor="middle" class="room__name">${esc(DIMS[room.pid].name)}</text>
+      </g>
+    </svg>`;
+    $('#roomStatus').className = `room__status room__status--${st[0]}`;
+    $('#roomStatus').textContent = st[1];
+    $('#roomGaps').textContent = `До стен: слева ${gaps.left} · справа ${gaps.right} · сверху ${gaps.top} · снизу ${gaps.bottom} см`;
+    const svg = $('#roomSvg');
+    const toCm = (e) => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); };
+    $('#roomItem').addEventListener('pointerdown', (e) => { const c = toCm(e); room.drag = { dx: c.x - room.x, dy: c.y - room.y }; svg.setPointerCapture(e.pointerId); });
+    svg.addEventListener('pointermove', (e) => {
+      if (!room.drag) return;
+      const c = toCm(e);
+      room.x = Math.round((c.x - room.drag.dx) / 5) * 5; room.y = Math.round((c.y - room.drag.dy) / 5) * 5;
+      const keep = room.drag; roomRender(); room.drag = keep;
+    });
+    svg.addEventListener('pointerup', () => { room.drag = null; });
+  }
+  function openRoom(pid) {
+    Object.assign(room, { pid, x: 20, y: 0, rot: 0, open: false, drag: null });
+    const dm = DIMS[pid];
+    openSheet(`<div class="stack room">
+      <span class="ai__badge">${icon('ruler')}UsagePreview</span>
+      <h2 class="sheet__title">${esc(byId[pid].t)} в вашей комнате</h2>
+      <div class="form">
+        <label class="field"><span>Ширина комнаты, см</span><input id="roomW" type="number" min="150" max="1000" step="10" value="${room.W}"></label>
+        <label class="field"><span>Длина комнаты, см</span><input id="roomL" type="number" min="150" max="1000" step="10" value="${room.L}"></label>
+      </div>
+      <div class="room__box" id="roomBox"></div>
+      <p class="room__status" id="roomStatus" aria-live="polite"></p>
+      <p class="note" id="roomGaps"></p>
+      <div class="pdextra">
+        <button class="btn btn--line btn--sm" type="button" data-room-rot>Повернуть</button>
+        ${dm.openD ? `<button class="btn btn--lime btn--sm" type="button" data-room-open>Разложить · глубина ${dm.openD} см</button>` : ''}
+      </div>
+      <p class="note">Перетащите ${esc(dm.name.toLowerCase())} по плану. Удобный проход — от 70 см. Размеры ${dm.w}×${dm.d} см${dm.openD ? `, в разложенном виде ${dm.w}×${dm.openD} см` : ''}.</p>
+    </div>`, { narrow: true });
+    roomRender();
   }
 
   /* ---------- Действия кабинета ---------- */
@@ -1752,9 +1956,9 @@ ${aiCatalogJSON()}
       if (!isSupplier() && p.sizes && !pdState.size) { toast('Выберите размер'); $('.sizes button', $('#sheetBody')).focus(); return; }
       const prevShip = state.ship;
       if (!p.bulky) state.ship = pdState.ship;
-      const id = pdState.id, size = pdState.size, qty = pdState.qty;
+      const id = pdState.id, size = pdState.size, qty = pdState.qty, proof = pdState.proof;
       closeSheet();
-      addToCart(id, { size, qty });
+      addToCart(id, { size, qty, proof });
       if (state.ship !== prevShip) store.save();
       return;
     }
@@ -1772,6 +1976,30 @@ ${aiCatalogJSON()}
     }
     if (d.cab) { cabAction(d.cab); return; }
     if (d.quick) { sendChat(d.quick); return; }
+    if (d.proof !== undefined && pdState) { pdState.proof = !pdState.proof; rerenderProduct(); return; }
+    if (d.room) { openRoom(d.room); return; }
+    if (d.roomRot !== undefined) { room.rot = (room.rot + 90) % 360; roomRender(); return; }
+    if (d.roomOpen !== undefined) { room.open = !room.open; t.textContent = room.open ? 'Сложить' : `Разложить · глубина ${DIMS[room.pid].openD} см`; roomRender(); return; }
+    if (d.proofReport) {
+      const pr = PROOF.clothes;
+      openSheet(`<div class="stack">
+        <span class="ai__badge">${icon('check')}ASTTA Proof</span>
+        <h2 class="sheet__title">Отчёт о проверке</h2>
+        <p class="note">Заказ ${esc(d.proofReport)} · проверено 15 октября в 18:10 · склад TT Логистики в Гуанчжоу · инспектор Ли Вэй · отчёт PR-${esc(d.proofReport.slice(-5))}</p>
+        <ul class="aicompat">${['Замеры совпадают с таблицей: грудь 104 см, длина 66 см (M)', ...pr.list.slice(1)].map((x) => `<li>${icon('check')}${esc(x)}</li>`).join('')}</ul>
+        <div class="proofphotos">${['leather-jacket', 'stage-aisles', 'stage-box', 'tee-white'].map((ph) => `<button class="tl__photo" type="button" data-photo="${ph}" data-caption="Фото из отчёта Proof"><img src="${img(ph)}" alt="" width="120" height="90" loading="lazy"></button>`).join('')}</div>
+        <p class="note">Это фото и замеры именно вашего экземпляра. Если бы что-то не совпало, агент заменил бы товар до отправки в Россию.</p>
+      </div>`, { narrow: true });
+      return;
+    }
+    if (t.matches('[data-fam-ai]')) { openSheet(familyAIHTML(), { narrow: true }); return; }
+    if (t.matches('[data-fam-apply]')) {
+      const a = familyAnalysis();
+      state.family.items.forEach((it) => { if (a.remove.has(it.id)) it.status = 'declined'; });
+      store.save(); closeSheet(); renderProfile();
+      toast(`Убрали ${a.remove.size} ${plural(a.remove.size, 'позицию', 'позиции', 'позиций')}, экономия ${rub(a.saved)}`);
+      return;
+    }
     if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
     if (d.measures !== undefined) { state.ptab = 'size'; closeSheet(); go('profile'); return; }
     if (d.familyAdd) {
@@ -1950,11 +2178,33 @@ ${aiCatalogJSON()}
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
+    if (t.id === 'solveFile') {
+      const file = t.files[0];
+      $('#solveName').textContent = file ? file.name : 'Фото или видео проблемы';
+      const pv = $('#solvePreview');
+      if (file && file.type.startsWith('image/')) { pv.src = URL.createObjectURL(file); pv.hidden = false; } else pv.hidden = true;
+    }
+    if (t.id === 'roomW' || t.id === 'roomL') {
+      const v = Math.max(150, Math.min(1000, parseInt(t.value, 10) || 0));
+      if (t.value && v) { room[t.id === 'roomW' ? 'W' : 'L'] = v; roomRender(); }
+    }
   }
 
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
+    if (f.id === 'solveForm') {
+      const file = $('#solveFile').files[0];
+      const text = $('#solveText').value.trim();
+      if (!file && !text) { toast('Добавьте фото или видео, или опишите проблему'); return; }
+      (async () => {
+        let blob = null;
+        try { blob = file ? (file.type.startsWith('video/') ? await frameFromVideo(file) : file) : null; } catch (err) { blob = null; }
+        const thumb = blob ? URL.createObjectURL(blob) : null;
+        aiAsk(`ASTTA Solve: ${text || 'что сломалось на фото и что купить, чтобы починить?'}`, { label: text || 'Что тут сломалось?', thumb, images: blob ? [blob] : null, solve: true });
+      })();
+      return;
+    }
     if (f.id === 'measForm') {
       const num = (id) => { const v = parseFloat(String($(id).value).replace(',', '.')); return Number.isFinite(v) && v > 0 ? v : null; };
       state.measures = { height: num('#msHeight'), chest: num('#msChest'), waist: num('#msWaist'), hips: num('#msHips'), foot: num('#msFoot') };

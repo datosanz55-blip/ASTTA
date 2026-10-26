@@ -722,7 +722,7 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
 @media (min-width: 900px) { .ai { padding: 44px 48px; } }
 
 /* ASTTA Build */
-.aitabs { display: inline-flex; padding: 4px; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
+.aitabs { display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 4px; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
 .aitabs button { padding: 9px 16px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 14px; font-weight: 600; }
 .aitabs button[aria-selected="true"] { background: var(--lime); color: var(--on-lime); }
 .aipane { display: flex; flex-direction: column; gap: 16px; width: 100%; }
@@ -804,6 +804,50 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
 .gcard div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .gcard span, .gcard small { font-size: 13px; color: var(--muted); }
 @media (min-width: 900px) { .family { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); } }
+
+/* ASTTA Solve */
+.solve__drop { position: relative; display: flex; align-items: center; gap: 12px; padding: 18px; border-radius: var(--r-sm); background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--line); cursor: pointer; font-size: 15px; color: var(--muted); }
+.solve__drop:hover { box-shadow: inset 0 0 0 1.5px var(--lime); }
+.solve__drop .ic { width: 28px; height: 28px; color: var(--lime); }
+.solve__drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.solve__drop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.solve__preview { max-width: 200px; max-height: 160px; border-radius: var(--r-sm); object-fit: cover; }
+.msg__img { display: block; max-width: 200px; max-height: 180px; margin-bottom: 8px; border-radius: 12px; object-fit: cover; }
+
+/* ASTTA Proof */
+.proofbox { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 0; border-radius: var(--r-sm); background: var(--surface-2); text-align: left; box-shadow: inset 0 0 0 1px var(--line); }
+.proofbox.is-on { box-shadow: inset 0 0 0 2px var(--lime); }
+.proofbox__check { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px; box-shadow: inset 0 0 0 2px var(--line); color: transparent; }
+.proofbox.is-on .proofbox__check { background: var(--lime); box-shadow: none; color: var(--on-lime); }
+.proofbox__check .ic { width: 16px; height: 16px; stroke-width: 2.6; }
+.proofbox__body { display: flex; flex-direction: column; gap: 4px; }
+.proofbox__body b { font-size: 14.5px; }
+.proofbox__body span { font-size: 13px; color: var(--muted); }
+.tl__proof { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: rgba(220, 239, 58, .14); color: var(--lime); }
+.tl__proof .ic { width: 22px; height: 22px; stroke-width: 2.4; }
+.proofphotos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.proofphotos .tl__photo { margin: 0; }
+.proofphotos img { width: 100%; height: auto; aspect-ratio: 4 / 3; }
+
+/* UsagePreview */
+.room__box { width: 100%; border-radius: var(--r-sm); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; touch-action: none; }
+.room__svg { display: block; width: 100%; height: auto; max-height: 52vh; }
+.room__floor { fill: var(--surface); stroke: var(--ink); stroke-width: 4; }
+.room__doorgap { stroke: var(--surface); stroke-width: 6; }
+.room__door { fill: rgba(255, 255, 255, .05); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.room__lbl, .room__dim { fill: var(--muted); font: 500 12px var(--font-body); }
+.room__dim { font-size: 13px; }
+.room__item { cursor: grab; }
+.room__item:active { cursor: grabbing; }
+.room__body { fill: var(--emerald); stroke: var(--lime); stroke-width: 2.5; }
+.room__open { fill: rgba(220, 239, 58, .14); stroke: var(--lime); stroke-width: 2; stroke-dasharray: 6 5; }
+.room__item--warn .room__body { stroke: #f5b731; }
+.room__item--bad .room__body { stroke: var(--hot); fill: rgba(255, 106, 77, .45); }
+.room__name { fill: var(--photo-text); font: 600 14px var(--font-body); pointer-events: none; }
+.room__status { padding: 10px 14px; border-radius: var(--r-sm); font-weight: 600; font-size: 15px; }
+.room__status--ok { background: rgba(220, 239, 58, .14); color: var(--lime); }
+.room__status--warn { background: rgba(245, 183, 49, .14); color: #f5b731; }
+.room__status--bad { background: rgba(255, 106, 77, .14); color: var(--hot); }
 
 /* Чат */
 .chat { display: flex; flex-direction: column; gap: 16px; }
