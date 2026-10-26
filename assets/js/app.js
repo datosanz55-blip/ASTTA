@@ -73,6 +73,28 @@
   ];
   const byId = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
 
+  // Фон под цвет товара: светлый центр и тёмный край, посчитаны по вырезанному фото
+  const TONES = {
+    "armchair": ["#838367", "#2f3026"],
+    "backpack": ["#5a6c8f", "#222834"],
+    "bag": ["#b14639", "#3f1b17"],
+    "bomber": ["#a16149", "#3a241c"],
+    "headphones-anc": ["#757575", "#2b2b2b"],
+    "headphones": ["#757575", "#2b2b2b"],
+    "lamp": ["#70797a", "#292c2d"],
+    "leather-jacket": ["#737576", "#2a2b2b"],
+    "loafers": ["#6b7f6d", "#272e28"],
+    "lounge-chair": ["#857665", "#302b26"],
+    "runner": ["#767673", "#2b2b2a"],
+    "sofa": ["#599188", "#213431"],
+    "stool": ["#757674", "#2b2b2a"],
+    "sunglasses": ["#6c7d75", "#282e2b"],
+    "sweatshirt": ["#7b6b7f", "#2d282e"],
+    "tee-black": ["#817b68", "#2f2d27"],
+    "tee-white": ["#787275", "#2c2a2b"],
+    "watch": ["#757575", "#2b2b2b"],
+  };
+
   const POSTS = [
     { id: 1, sup: 'gz', pid: 'leather-jacket', time: '2 ч назад', auto: false, kind: 'new', likes: 128, comments: 14,
       text: 'Новая партия косух из натуральной кожи. Перед отправкой каждую проверяем на складе и фотографируем. Опт от 3 штук.' },
@@ -196,6 +218,8 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (name, cls = '') => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const img = (name) => `assets/img/${name}.jpg`;
+  const cut = (id) => `assets/img/cut/${id}.webp`;
+  const tone = (id) => `--t1:${TONES[id][0]};--t2:${TONES[id][1]}`;
   const plural = (n, one, few, many) => {
     const a = Math.abs(n) % 100, b = a % 10;
     if (a > 10 && a < 20) return many;
@@ -260,8 +284,8 @@
     else if (p.isNew) badge = '<span class="badge">Новинка</span>';
     const days = SHIP[shipFor(p)].days;
     return `<article class="card">
-      <div class="card__media">
-        <img class="card__img" src="${img(p.id)}" alt="" loading="lazy" width="720" height="720">
+      <div class="card__media" style="${tone(p.id)}">
+        <img class="card__img" src="${cut(p.id)}" alt="" loading="lazy" width="600" height="600">
         ${badge}
         <button class="card__add" type="button" data-add="${p.id}" aria-label="В корзину: ${esc(p.t)}">${icon('plus')}</button>
       </div>
@@ -284,7 +308,7 @@
       ? `<b>${cny(g.cny)}</b> за шт <s>${cny(p.tiers[0][1])}</s>`
       : `<b>${rub(retail(p, { cny: g.cny }).total)}</b> под ключ <s>${rub(retail(p).total)}</s>`;
     return `<article class="group">
-      <img src="${img(p.id)}" alt="" loading="lazy" width="92" height="92">
+      <div class="group__thumb" style="${tone(p.id)}"><img src="${cut(p.id)}" alt="" loading="lazy" width="200" height="200"></div>
       <div class="group__body">
         <h3 class="group__title"><button type="button" data-open="${p.id}">${esc(p.t)}</button></h3>
         <div class="group__price">${price}</div>
@@ -351,7 +375,7 @@
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     $('#saleRail').innerHTML = PRODUCTS.filter((p) => p.sale).map(cardHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
-    $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
+    renderHeroSlides();
     const cab = $('#cabinetPreview');
     cab.innerHTML = isSupplier() ? `<a class="cabcard" href="#profile">${icon('box')}<div><b>Кабинет поставщика</b><span>37 заказов за неделю · к выплате 18 240 ¥</span></div>${icon('arrow-ur')}</a>` : '';
     cab.hidden = !isSupplier();
@@ -647,8 +671,8 @@
   function openProduct(id, opts = {}) {
     const p = byId[id];
     if (!p) return;
-    pdState = { id, size: null, ship: shipFor(p), qty: isSupplier() ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
-    openSheet(productHTML(), {});
+    pdState = { id, size: opts.size || null, ship: shipFor(p), qty: isSupplier() ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
+    openSheet(productHTML(), { product: true });
     if (opts.needSize) toast('Выберите размер');
   }
 
@@ -681,11 +705,6 @@
 
     const ship = `<fieldset class="ship" data-pd-ship><legend>Доставка</legend>${shipOptionsHTML('pdShip', pdState.ship, p.bulky)}</fieldset>`;
 
-    const sizes = (!sup && p.sizes) ? `<div class="stack" style="gap:10px">
-        <span class="sublabel">Размер · китайский и наш</span>
-        <div class="sizes" role="group" aria-label="Размер">${SIZE_GRID[p.sizes].map(([cn, ru]) => `<button class="size" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${ru}</span></button>`).join('')}</div>
-      </div>` : '';
-
     let group = '';
     if (p.group) {
       const g = p.group;
@@ -713,35 +732,65 @@
         <div class="review__head"><b>${esc(r.who)}</b><span class="stars" aria-label="${r.stars} из 5">${[1, 2, 3, 4, 5].map((n) => icon('star', 'ic--fill' + (n > r.stars ? ' is-off' : ''))).join('')}</span></div>
         <p>${esc(r.text)}</p></div>`).join('');
 
-    return `<div class="pd">
-      <div class="pd__media"><img src="${img(p.id)}" alt="${esc(p.t)}" width="720" height="720"></div>
-      <div class="pd__info">
-        <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)}</button>
-        <h2>${esc(p.t)}</h2>
-        <div class="pd__rating"><span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span><span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span><span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
-        ${priceBlock}
-        ${sizes}
-        ${ship}
-        ${breakdown}
-        ${group}
-        <div class="buyrow">
-          ${qty}
-          <button class="btn btn--lime" type="button" data-pd-add>${sup ? 'Добавить партию' : 'В корзину'}</button>
+    const sizeCircles = (!sup && p.sizes) ? `<div class="pd__sizes">
+        <span class="sublabel">Выберите размер</span>
+        <div class="circles" role="group" aria-label="Размер">${SIZE_GRID[p.sizes].map(([cn, ru]) => `<button class="circle" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}" title="${ru}"><b>${cn}</b></button>`).join('')}</div>
+        <span class="note">${pdState.size ? `CN ${pdState.size} = ${SIZE_GRID[p.sizes].find(([cn]) => cn === pdState.size)[1]}` : 'Китайский размер, рядом наш'}</span>
+      </div>` : '';
+
+    return `<div class="pd" data-id="${p.id}" style="${tone(p.id)}">
+      <div class="pd__stage">
+        <div class="pd__head">
+          <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)}</button>
+          <h2>${esc(p.t)}</h2>
+          <div class="pd__rating"><span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span><span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span></div>
+          <p class="pd__lead">${esc(p.desc)}</p>
         </div>
-        ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
-        ${optNote}
-        <p class="pd__desc">${esc(p.desc)}</p>
-        <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
-        <div class="reviews">${reviews}</div>
+        <div class="pd__float">${floatHTML(p, 'eager')}</div>
+        <div class="pd__side">
+          ${priceBlock}
+          ${sizeCircles}
+          <div class="buyrow">
+            ${qty}
+            <button class="btn btn--lime" type="button" data-pd-add>${sup ? 'Добавить партию' : 'В корзину'}</button>
+          </div>
+          ${nt ? `<p class="note">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
+        </div>
+      </div>
+      <div class="pd__more">
+        <div class="stack">
+          ${ship}
+          ${breakdown}
+          ${group}
+        </div>
+        <div class="stack">
+          <p class="note">Доставка ${s.fact[0]}–${s.fact[1]} дней по последним заказам этого поставщика.</p>
+          ${optNote}
+          <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
+          <div class="reviews">${reviews}</div>
+        </div>
       </div>
     </div>`;
   }
 
+  // Парящий товар: картинка без фона качается, тень под ней дышит в такт
+  function floatHTML(p, loading = 'lazy') {
+    return `<div class="float"><div class="float__in"><img class="float__img" src="${cut(p.id)}" alt="${esc(p.t)}" width="900" height="900" loading="${loading}"></div><span class="float__shadow" aria-hidden="true"></span></div>`;
+  }
+
+  // Перерисовываем всё, кроме парящего товара, чтобы он не дёргался при выборе размера
   function rerenderProduct() {
     if (!pdState) return;
     const body = $('#sheetBody');
     const top = body.scrollTop;
-    body.innerHTML = productHTML();
+    const old = $('.pd', body);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = productHTML();
+    if (old && old.dataset.id === pdState.id) {
+      ['.pd__head', '.pd__side', '.pd__more'].forEach((sel) => $(sel, old).replaceWith($(sel, tmp)));
+    } else {
+      body.innerHTML = tmp.innerHTML;
+    }
     body.scrollTop = top;
   }
 
@@ -827,6 +876,7 @@
     if (sheet.hidden) lastFocus = document.activeElement;
     if (!opts.keepProduct) pdState = html.includes('class="pd"') ? pdState : null;
     panel.classList.toggle('is-narrow', !!opts.narrow);
+    panel.classList.toggle('is-product', !!opts.product);
     $('#toast').hidden = true;
     $('#sheetBody').innerHTML = html;
     $('#sheetBody').scrollTop = 0;
@@ -923,34 +973,66 @@
     updateCartCount();
   }
 
-  /* ---------- Герой ---------- */
-  const HERO_TAGS = ['Новинки', 'Фото со склада', 'Опт'];
+  /* ---------- Герой: парящий товар на фоне его цвета ---------- */
+  const HERO = [
+    { pid: 'bomber', h: 'Китай<br>ближе.', p: 'Бомбер oversize от TT · Гуанчжоу. Цена в рублях сразу с доставкой.' },
+    { pid: 'sofa', h: 'Дом без<br>переплат.', p: 'Диван из Фошаня едет в обрешётке. Фото со склада до отправки.' },
+    { pid: 'bag', h: 'Опт для<br>своих.', p: 'Сумки из Иу от 5 штук. Цены в юанях в разделе для поставщиков.' },
+  ];
+  let heroIndex = 0;
+
+  function heroSideHTML(p) {
+    const price = isSupplier()
+      ? `<b>${cny(p.tiers[0][1])}</b><span>за шт · от ${p.tiers[0][0]} шт</span>`
+      : `<b>${rub(retail(p).total)}</b>${p.sale ? `<s>${rub(retailFull(p))}</s>` : '<span>под ключ</span>'}`;
+    const sizes = p.sizes
+      ? `<span class="sublabel">Размер</span><div class="circles">${SIZE_GRID[p.sizes].slice(1, 4).map(([cn, ru]) => `<button class="circle" type="button" data-open="${p.id}" data-open-size="${cn}" title="${ru}"><b>${cn}</b></button>`).join('')}</div>`
+      : `<span class="sublabel">Доставка</span><p>${SUPPLIERS[p.sup].fact[0]}–${SUPPLIERS[p.sup].fact[1]} дней</p>`;
+    return `<div class="hero__price">${price}</div>${sizes}`;
+  }
+
+  function renderHeroSlides() {
+    const on = (j) => (j === heroIndex ? ' is-on' : '');
+    $('#heroBgs').innerHTML = HERO.map((h, j) => `<span class="${on(j).trim()}" style="${tone(h.pid)}"></span>`).join('');
+    $('#heroTexts').innerHTML = HERO.map((h, j) => `<div class="htext${on(j)}">${j === 0 ? `<h1>${h.h}</h1>` : `<h2>${h.h}</h2>`}<p>${esc(h.p)}</p></div>`).join('');
+    $('#heroStage').innerHTML = HERO.map((h, j) => `<div class="hero__slide${on(j)}">${floatHTML(byId[h.pid], j === 0 ? 'eager' : 'lazy')}</div>`).join('');
+    $('#heroSide').innerHTML = HERO.map((h, j) => `<div class="hero__sideitem${on(j)}">${heroSideHTML(byId[h.pid])}</div>`).join('');
+    $('#heroTotal').textContent = String(HERO.length).padStart(2, '0');
+    setHeroNext();
+  }
+
+  function setHeroNext() {
+    const next = HERO[(heroIndex + 1) % HERO.length];
+    $('#heroNext').innerHTML = `<img src="${cut(next.pid)}" alt="" width="120" height="120" loading="lazy">`;
+  }
+
+  function showHero(k) {
+    heroIndex = (k + HERO.length) % HERO.length;
+    ['#heroBgs > span', '.htext', '.hero__slide', '.hero__sideitem'].forEach((sel) => {
+      $$(sel, $('#hero')).forEach((el, j) => el.classList.toggle('is-on', j === heroIndex));
+    });
+    $('#heroNum').textContent = String(heroIndex + 1).padStart(2, '0');
+    setHeroNext();
+  }
+
   function initHero() {
     const hero = $('#hero');
-    const imgs = $$('.hero__media img', hero);
-    const texts = $$('.htext', hero);
-    const dots = $$('.hero__dots button', hero);
-    const n = imgs.length;
-    let i = 0, timer = null;
+    let timer = null;
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const show = (k) => {
-      i = (k + n) % n;
-      imgs.forEach((el, j) => el.classList.toggle('is-on', j === i));
-      texts.forEach((el, j) => el.classList.toggle('is-on', j === i));
-      dots.forEach((d, j) => d.setAttribute('aria-selected', String(j === i)));
-      $('#heroNum').textContent = String(i + 1).padStart(2, '0');
-      $('#heroTag').textContent = HERO_TAGS[i];
-    };
     const stop = () => { clearInterval(timer); timer = null; };
-    const start = () => { if (!reduce && !timer) timer = setInterval(() => show(i + 1), 6000); };
-    dots.forEach((d, j) => d.addEventListener('click', () => { stop(); show(j); }));
+    const start = () => { if (!reduce && !timer) timer = setInterval(() => showHero(heroIndex + 1), 7000); };
+    hero.addEventListener('click', (e) => {
+      const step = e.target.closest('[data-hero-step]');
+      if (step) { stop(); showHero(heroIndex + Number(step.dataset.heroStep)); }
+      if (e.target.closest('[data-hero-open]')) openProduct(HERO[heroIndex].pid);
+    });
     let x0 = null;
     hero.addEventListener('pointerdown', (e) => { x0 = e.clientX; });
     hero.addEventListener('pointerup', (e) => {
       if (x0 == null) return;
       const dx = e.clientX - x0;
       x0 = null;
-      if (Math.abs(dx) > 40) { stop(); show(i + (dx < 0 ? 1 : -1)); }
+      if (Math.abs(dx) > 40) { stop(); showHero(heroIndex + (dx < 0 ? 1 : -1)); }
     });
     document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
     start();
@@ -983,7 +1065,7 @@
 
     if (d.mode) { setMode(d.mode); return; }
     if (d.switchMode) { setMode(d.switchMode); return; }
-    if (d.open) { openProduct(d.open); return; }
+    if (d.open) { openProduct(d.open, { size: d.openSize }); return; }
     if (d.add) { addToCart(d.add); return; }
     if (d.openChat !== undefined) { openChat(d.openChat); return; }
     if (d.cat) { state.cat = d.cat; state.q = ''; $('#q').value = ''; if (location.hash === '#catalog') { e.preventDefault(); renderCatalog(); } else go('catalog'); return; }
@@ -1035,7 +1117,7 @@
     }
     if (t.matches('[data-pd-add]')) {
       const p = byId[pdState.id];
-      if (!isSupplier() && p.sizes && !pdState.size) { toast('Выберите размер'); $('.sizes button', $('#sheetBody')).focus(); return; }
+      if (!isSupplier() && p.sizes && !pdState.size) { toast('Выберите размер'); $('.circles button', $('#sheetBody')).focus(); return; }
       const prevShip = state.ship;
       if (!p.bulky) state.ship = pdState.ship;
       const id = pdState.id, size = pdState.size, qty = pdState.qty;
