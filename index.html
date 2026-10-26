@@ -15,6 +15,32 @@
 </head>
 <body>
 
+<div class="splash" id="splash" aria-hidden="true">
+  <div class="splash__dots"></div>
+  <svg class="splash__waves" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <filter id="splashGlow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="splashSoft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="22"/></filter>
+    </defs>
+    <g class="splash__flow">
+      <path class="band" d="M-80 230 C 220 190, 380 470, 640 560 S 900 610, 1000 560" pathLength="1"/>
+      <path class="band" d="M700 360 C 900 300, 1150 300, 1300 330 S 1550 200, 1700 150" pathLength="1"/>
+      <path class="band band--2" d="M-80 420 C 200 380, 420 560, 700 600" pathLength="1"/>
+      <path class="line" d="M-80 240 C 220 200, 380 470, 560 545 S 660 575, 690 572" pathLength="1"/>
+      <path class="line line--r" d="M930 335 C 1050 315, 1180 305, 1310 335 S 1560 250, 1700 210" pathLength="1"/>
+      <path class="line line--thin" d="M-80 430 C 200 390, 420 540, 640 600" pathLength="1"/>
+      <path class="line line--thin line--r" d="M980 390 C 1120 370, 1300 420, 1450 440 S 1620 420, 1700 400" pathLength="1"/>
+    </g>
+  </svg>
+  <div class="splash__logo">
+    <span class="splash__halo"></span>
+    <img class="splash__mark" src="assets/img/brand/logo-mark.png" alt="" width="256" height="250">
+    <img class="splash__word" src="assets/img/brand/logo-word.png" alt="" width="600" height="99">
+    <span class="splash__sub">Marketplace</span>
+  </div>
+  <div class="splash__bar"><i></i></div>
+</div>
+
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>

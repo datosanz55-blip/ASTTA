@@ -1142,8 +1142,28 @@
     if (e.key === 'Escape') { closeSheet(); closeMenu(); }
   }
 
+  /* ---------- Заставка ---------- */
+  function initSplash() {
+    const el = $('#splash');
+    if (!el) return;
+    const root = document.documentElement;
+    root.classList.add('is-splash');
+    let gone = false;
+    const finish = () => {
+      if (gone) return;
+      gone = true;
+      root.classList.remove('is-splash');
+      el.remove();
+    };
+    // Анимация сама прячет заставку примерно через 3 с (CSS); касание пропускает её
+    el.addEventListener('click', () => { el.classList.add('is-done'); setTimeout(finish, 500); });
+    el.addEventListener('animationend', (e) => { if (e.target === el && e.animationName === 'splashOut') finish(); });
+    setTimeout(finish, 4000);
+  }
+
   /* ---------- Старт ---------- */
   function init() {
+    initSplash();
     store.load();
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${c.id}" data-close-menu>${c.name}</a>`).join('');
