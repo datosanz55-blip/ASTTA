@@ -12,11 +12,11 @@
   };
 
   const CATS = [
-    { id: 'clothes', name: 'Одежда', img: 'bomber' },
-    { id: 'shoes', name: 'Обувь', img: 'runner' },
-    { id: 'furniture', name: 'Мебель', img: 'sofa' },
-    { id: 'home', name: 'Дом', img: 'lamp' },
-    { id: 'tech', name: 'Электроника', img: 'headphones' },
+    { id: 'clothes', name: 'Одежда', img: 'cat-clothes' },
+    { id: 'shoes', name: 'Обувь', img: 'cat-shoes' },
+    { id: 'furniture', name: 'Мебель', img: 'cat-furniture' },
+    { id: 'home', name: 'Дом', img: 'cat-home' },
+    { id: 'tech', name: 'Электроника', img: 'cat-tech' },
     { id: 'acc', name: 'Аксессуары', img: 'watch' },
     { id: 'bags', name: 'Сумки', img: 'bag' },
   ];
@@ -252,7 +252,7 @@
       const r = retail(p);
       price = rub(r.total);
       if (p.sale) old = `<s>${rub(retailFull(p))}</s>`;
-      sub = 'под ключ, с доставкой';
+      sub = '';
     }
     let badge = '';
     if (p.sale && !isSupplier()) badge = `<span class="badge badge--hot">−${p.sale}%</span>`;
@@ -270,25 +270,6 @@
         <div class="card__unit">${sub}</div>
         <h3 class="card__title"><button class="card__hit" type="button" data-open="${p.id}">${esc(p.t)}</button></h3>
         <div class="card__meta"><span>${icon('star', 'ic--fill')}${nf1.format(p.rating)}</span><span>${daysText(days)}</span></div>
-      </div>
-    </article>`;
-  }
-
-  function spotlightHTML() {
-    const p = byId['headphones-anc'];
-    const price = isSupplier()
-      ? `${cny(p.tiers[0][1])}<small>за шт, от ${p.tiers[0][0]} шт</small>`
-      : `${rub(retail(p).total)}<small>под ключ</small>`;
-    return `<article class="spot">
-      <img src="${img(p.id)}" alt="${esc(p.t)}" width="720" height="720">
-      <div class="spot__body">
-        <span class="eyebrow">Новинка</span>
-        <h3>${esc(p.t)}</h3>
-        <p>Шумоподавление до 35 дБ, 30 часов работы. Видео проверки в каждом заказе.</p>
-        <div class="spot__foot">
-          <div class="spot__price">${price}</div>
-          <button class="roundbtn" type="button" data-open="${p.id}" aria-label="Открыть товар">${icon('arrow')}</button>
-        </div>
       </div>
     </article>`;
   }
@@ -344,25 +325,39 @@
   }
 
   /* ---------- Главная ---------- */
+  const TILES = [
+    { title: 'Акции дня', img: 'tile-sale', filter: 'sale' },
+    { title: 'До 1\u00a0000\u00a0₽', img: 'tile-discount', filter: 'budget' },
+    { title: 'Новинки', img: 'tile-new', filter: 'new' },
+    { title: 'Хиты', img: 'tile-hits', filter: 'all', sort: 'pop' },
+    { title: 'Совместный опт', img: 'tile-group', filter: 'group' },
+    { title: 'Опт от поставщиков', img: 'tile-opt', filter: 'all', mode: 'supplier' },
+  ];
+
+  function tileHTML(tile, i) {
+    const n = filterProducts(tile.filter, '').length;
+    const maxSale = Math.max(...PRODUCTS.map((p) => p.sale || 0));
+    return `<button class="tile" type="button" data-tile="${i}">
+      <img src="${img(tile.img)}" alt="" loading="lazy" width="900" height="1000">
+      ${tile.filter === 'sale' ? `<span class="tile__badge">до −${maxSale}%</span>` : ''}
+      <span class="roundbtn" aria-hidden="true">${icon('arrow-ur')}</span>
+      <span class="tile__body"><span class="tile__text"><span class="tile__title">${tile.title}</span><span class="tile__sub">${n} ${plural(n, 'товар', 'товара', 'товаров')}</span></span></span>
+    </button>`;
+  }
+
   function renderHome() {
-    $('#spotlight').innerHTML = spotlightHTML();
-    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${img(c.img)}" alt="" loading="lazy" width="92" height="92"><span>${c.name}</span></button>`).join('');
+    $('#tiles').innerHTML = TILES.map(tileHTML).join('');
+    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${img(c.img)}" alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     $('#saleRail').innerHTML = PRODUCTS.filter((p) => p.sale).map(cardHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
-    $('#cabinetPreview').innerHTML = isSupplier() ? `<a class="cabcard" href="#profile">
-        ${icon('box')}
-        <div><b>Кабинет поставщика</b><span>37 заказов за неделю · к выплате 18 240 ¥ · следующий автопост в 18:00</span></div>
-        ${icon('arrow')}
-      </a>` : '';
-    $('#cabinetPreview').hidden = !isSupplier();
-    renderCalc();
+    const cab = $('#cabinetPreview');
+    cab.innerHTML = isSupplier() ? `<a class="cabcard" href="#profile">${icon('box')}<div><b>Кабинет поставщика</b><span>37 заказов за неделю · к выплате 18 240 ¥</span></div>${icon('arrow-ur')}</a>` : '';
+    cab.hidden = !isSupplier();
   }
 
-  /* ---------- Калькулятор ссылки ---------- */
   const PLATFORMS = [[/1688\./i, '1688'], [/taobao\.|tb\.cn/i, 'Taobao'], [/tmall\./i, 'Tmall'], [/poizon|dewu/i, 'Poizon'], [/pinduoduo|yangkeduo/i, 'Pinduoduo']];
-  let calcShip = 'auto';
 
   function shipOptionsHTML(name, current, onlyCargo) {
     const keys = onlyCargo ? ['cargo'] : ['auto', 'air'];
@@ -371,51 +366,30 @@
       return `<label class="shipopt ${current === k ? 'is-on' : ''}">
         <input type="radio" name="${name}" value="${k}" ${current === k ? 'checked' : ''}>
         ${icon(s.icon)}
-        <div><b>${s.name}</b><span>${daysText(s.days)}</span><span>${nf.format(s.perKg)}\u00a0₽ за кг</span></div>
+        <div><b>${s.name}</b><span>${daysText(s.days)}</span></div>
       </label>`;
     }).join('');
   }
 
-  function renderCalc() {
-    const group = $('[data-ship-group]', $('#calcForm'));
-    group.innerHTML = '<legend>Доставка</legend>' + shipOptionsHTML('calcShip', calcShip, false);
-    updateCalc();
-  }
-
-  function updateCalc() {
-    const link = $('#calcLink').value.trim();
-    const price = parseFloat($('#calcPrice').value.replace(',', '.')) || 0;
-    const kg = parseFloat($('#calcKg').value.replace(',', '.')) || 0;
-    const qty = Math.max(1, parseInt($('#calcQty').value, 10) || 1);
-    const found = PLATFORMS.find(([re]) => re.test(link));
-    $('#calcSource').textContent = link ? `Площадка: ${found ? found[1] : 'определим по ссылке'}` : 'Вставьте ссылку на товар';
-    const s = SHIP[calcShip];
-    const goods = price * RATE * qty;
-    const delivery = kg * s.perKg * qty;
-    const fee = goods * FEE_RETAIL;
-    const total = round10(goods + delivery + fee);
-    $('#calcResult').innerHTML = `<div class="sum">
-      <div class="sum__row"><span>Товар: ${nf.format(price)} ¥ × ${rateText} × ${qty} шт</span><span>${rub(goods)}</span></div>
-      <div class="sum__row"><span>Доставка ${s.name.toLowerCase()}: ${nf1.format(kg * qty)} кг × ${nf.format(s.perKg)} ₽</span><span>${rub(delivery)}</span></div>
-      <div class="sum__row"><span>Сервис ASTTA, 5%</span><span>${rub(fee)}</span></div>
-      <div class="sum__row sum__row--total"><span>Итого под ключ</span><span>${price > 0 ? rub(total) : '—'}</span></div>
-      <p class="sum__note">Срок ${daysText(s.days)} до Москвы. Точный вес агент подтвердит после взвешивания на складе.</p>
-    </div>`;
-    return { price, total, found };
-  }
-
   /* ---------- Каталог ---------- */
-  function renderCatalog() {
-    const chips = [{ id: 'all', name: 'Все' }, { id: 'sale', name: 'Акции' }, ...CATS];
-    $('#catChips').innerHTML = chips.map((c) => `<button class="chip" type="button" data-chip="${c.id}" aria-pressed="${state.cat === c.id}">${c.name}</button>`).join('');
-    const q = state.q.toLowerCase();
-    let list = PRODUCTS.filter((p) => {
-      if (state.cat === 'sale' && !p.sale) return false;
-      if (state.cat !== 'all' && state.cat !== 'sale' && p.cat !== state.cat) return false;
-      if (!q) return true;
+  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'sale', name: 'Акции' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }, { id: 'group', name: 'Совместный опт' }];
+
+  function filterProducts(filter, q) {
+    const ql = (q || '').toLowerCase();
+    return PRODUCTS.filter((p) => {
+      if (filter === 'sale' && !p.sale) return false;
+      if (filter === 'new' && !p.isNew) return false;
+      if (filter === 'group' && !p.group) return false;
+      if (filter === 'budget' && (isSupplier() ? wholesale(p, p.tiers[0][0]).landed : retail(p).total) > 1000) return false;
+      if (CATS.some((c) => c.id === filter) && p.cat !== filter) return false;
+      if (!ql) return true;
       const catName = (CATS.find((c) => c.id === p.cat) || {}).name || '';
-      return (p.t + ' ' + catName + ' ' + SUPPLIERS[p.sup].name).toLowerCase().includes(q);
+      return (p.t + ' ' + catName + ' ' + SUPPLIERS[p.sup].name).toLowerCase().includes(ql);
     });
+  }
+
+  function renderCatalog() {
+    $('#catChips').innerHTML = [...FILTERS, ...CATS].map((c) => `<button class="chip" type="button" data-chip="${c.id}" aria-pressed="${state.cat === c.id}">${c.name}</button>`).join('');
     const priceOf = (p) => (isSupplier() ? p.tiers[0][1] : retail(p).total);
     const sorters = {
       pop: (a, b) => b.sold - a.sold,
@@ -423,7 +397,7 @@
       fast: (a, b) => SHIP[shipFor(a)].days[0] - SHIP[shipFor(b)].days[0] || b.sold - a.sold,
       rating: (a, b) => b.rating - a.rating,
     };
-    list = list.sort(sorters[state.sort]);
+    const list = filterProducts(state.cat, state.q).sort(sorters[state.sort]);
     $('#catalogGrid').innerHTML = list.map(cardHTML).join('');
     $('#catalogEmpty').hidden = list.length > 0;
   }
@@ -491,7 +465,7 @@
     if (!items.length) {
       root.innerHTML = `<div class="emptystate">${icon('bag')}<h2>Корзина пустая</h2>
         <p>${isSupplier() ? 'Добавьте товары оптом: минимальная партия подставится сама.' : 'Добавьте товары из каталога или закажите по своей ссылке.'}</p>
-        <a class="btn btn--dark" href="#catalog">Открыть каталог</a></div>`;
+        <a class="btn btn--lime" href="#catalog">Открыть каталог</a></div>`;
       return;
     }
     const anyLight = items.some((i) => !byId[i.id].bulky);
@@ -528,21 +502,12 @@
       </article>`;
     }).join('');
     const t = cartTotals();
-    const summary = isSupplier()
-      ? `<div class="sum">
-          <div class="sum__row"><span>Товары: ${cny(t.goodsCny)} по курсу ${rateText}</span><span>${rub(t.goods)}</span></div>
-          <div class="sum__row"><span>Доставка до Москвы</span><span>${rub(t.delivery)}</span></div>
-          <div class="sum__row"><span>Сервис ASTTA, 3%</span><span>${rub(t.fee)}</span></div>
-          <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(t.total)}</span></div>
-          <p class="sum__note">Можно оплатить в юанях напрямую поставщику или в рублях через ASTTA.</p>
-        </div>`
-      : `<div class="sum">
-          <div class="sum__row"><span>Товары по курсу ${rateText}</span><span>${rub(t.goods)}</span></div>
-          <div class="sum__row"><span>Доставка до пункта выдачи</span><span>${rub(t.delivery)}</span></div>
-          <div class="sum__row"><span>Сервис ASTTA, 5%</span><span>${rub(t.fee)}</span></div>
-          <div class="sum__row sum__row--total"><span>Итого под ключ</span><span>${rub(t.total)}</span></div>
-          <p class="sum__note">Сумма фиксируется при оформлении. Платите после того, как агент подтвердит наличие и размеры.</p>
-        </div>`;
+    const summary = `<div class="sum">
+        <div class="sum__row"><span>Товары${isSupplier() ? ` · ${cny(t.goodsCny)}` : ''}</span><span>${rub(t.goods + t.fee)}</span></div>
+        <div class="sum__row"><span>Доставка</span><span>${rub(t.delivery)}</span></div>
+        <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(t.total)}</span></div>
+        <p class="sum__note">Платите после того, как агент подтвердит заказ.</p>
+      </div>`;
     root.innerHTML = `<div class="cart">
       <div class="cartlist">${rows}</div>
       <aside class="panel">
@@ -550,7 +515,7 @@
         ${anyLight ? `<fieldset class="ship" data-cart-ship><legend class="sr">Способ доставки</legend>${shipOptionsHTML('cartShip', state.ship === 'cargo' ? 'auto' : state.ship, false)}</fieldset>` : ''}
         ${items.some((i) => byId[i.id].bulky) ? `<p class="note">Мебель едет сборным грузом в обрешётке: ${daysText(SHIP.cargo.days)}.</p>` : ''}
         ${summary}
-        <button class="btn btn--dark btn--wide" type="button" data-checkout>Оформить через агента ${icon('arrow')}</button>
+        <button class="btn btn--lime btn--wide" type="button" data-checkout>Оформить ${icon('arrow')}</button>
       </aside>
     </div>`;
   }
@@ -558,34 +523,25 @@
   function checkoutHTML() {
     const t = cartTotals();
     return `<div class="stack">
-      <h2 class="sheet__title">Оформление</h2>
-      <p class="note">Агент TT Логистики проверит заказ у поставщика и напишет вам. Платить сейчас не нужно.</p>
-      <form class="form" id="checkoutForm" novalidate>
-        <label class="field field--full"><span>Как к вам обращаться</span><input id="ckName" name="name" autocomplete="name" required></label>
-        <label class="field field--full"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" required></label>
-        <label class="field"><span>Город</span><input id="ckCity" name="city" autocomplete="address-level2" required></label>
-        <label class="field"><span>Пункт выдачи</span>
-          <select id="ckPoint" name="point"><option>СДЭК</option><option>Boxberry</option><option>Почта России</option><option>Курьер до двери</option></select>
-        </label>
-        <label class="field field--full"><span>Комментарий для агента</span><textarea id="ckNote" name="note" placeholder="Например: проверьте, пожалуйста, длину рукава"></textarea></label>
-        <div class="field--full sum"><div class="sum__row sum__row--total" style="margin:0;padding:0;border:0"><span>К оплате после подтверждения</span><span>${rub(t.total)}</span></div></div>
-        <button class="btn btn--dark btn--wide field--full" type="submit">Отправить заказ агенту</button>
+      <h2 class="sheet__title">Оформить</h2>
+      <p class="note">Агент проверит наличие и размеры и напишет вам. Платить сейчас не нужно.</p>
+      <form class="stack" id="checkoutForm" novalidate>
+        <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" required></label>
+        <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
+        <button class="btn btn--lime btn--wide" type="submit">Отправить агенту</button>
       </form>
     </div>`;
   }
 
-  function submitCheckout(form) {
-    let ok = true;
-    $$('[required]', form).forEach((input) => {
-      const field = input.closest('.field');
-      const bad = !input.value.trim();
-      field.classList.toggle('is-error', bad);
-      let err = $('.field__err', field);
-      if (bad && !err) { err = document.createElement('small'); err.className = 'field__err'; err.textContent = 'Заполните это поле'; field.append(err); }
-      if (!bad && err) err.remove();
-      if (bad) ok = false;
-    });
-    if (!ok) { $('.is-error input', form).focus(); return; }
+  function submitCheckout() {
+    const input = $('#ckContact');
+    const field = input.closest('.field');
+    const bad = !input.value.trim();
+    field.classList.toggle('is-error', bad);
+    let err = $('.field__err', field);
+    if (bad && !err) { err = document.createElement('small'); err.className = 'field__err'; err.textContent = 'Укажите телефон или Telegram'; field.append(err); }
+    if (!bad && err) err.remove();
+    if (bad) { input.focus(); return; }
     const first = byId[cart()[0].id];
     const num = `ASTTA-${SUPPLIERS[first.sup].short}-${String(24200 + Math.floor(Math.random() * 700))}`;
     const t = cartTotals();
@@ -599,16 +555,15 @@
         { t: 'Пункт выдачи', d: '' },
       ],
     });
-    const name = esc($('#ckName').value.trim());
     state.carts[state.mode] = [];
     store.save();
     updateCartCount();
     renderCart();
     openSheet(`<div class="success">
       <span class="success__ic">${icon('check')}</span>
-      <h2 class="sheet__title">Заказ ${num} отправлен</h2>
-      <p>${name}, агент Мария из TT Логистики проверит наличие и размеры у поставщика и напишет вам в течение 15 минут. Оплата после её подтверждения.</p>
-      <div class="buyrow"><a class="btn btn--dark" href="#profile" data-close>Смотреть заказ</a><button class="btn btn--ghost" type="button" data-open-chat>Написать агенту</button></div>
+      <h2 class="sheet__title">Заказ ${num} у агента</h2>
+      <p>Мария из TT Логистики проверит наличие и размеры и напишет в течение 15 минут. Платите после её подтверждения.</p>
+      <div class="buyrow"><a class="btn btn--lime" href="#profile" data-close>Мой заказ</a><button class="btn btn--ghost" type="button" data-open-chat>Чат с агентом</button></div>
     </div>`, { narrow: true });
   }
 
@@ -704,41 +659,32 @@
     let priceBlock, breakdown;
     if (sup) {
       const w = wholesale(p, pdState.qty, pdState.ship);
-      priceBlock = `<div class="pd__price"><b>${cny(w.each)}</b><span class="note">за штуку при партии ${pdState.qty} шт</span></div>`;
+      priceBlock = `<div class="pd__price"><b>${cny(w.each)}</b><span class="note">за штуку · партия ${pdState.qty} шт</span></div>`;
       const tierRows = p.tiers.map(([from, c]) => `<tr class="${w.each === c ? 'is-on' : ''}"><td>от ${from} шт</td><td>${cny(c)}</td></tr>`).join('');
-      breakdown = `<div class="stack" style="gap:8px">
-          <span class="sublabel">Оптовые цены</span>
-          <table class="tiers"><tbody>${tierRows}<tr><td>Розница, 1 шт</td><td>${cny(p.cny)}</td></tr></tbody></table>
-        </div>
-        <div class="sum">
-          <div class="sum__row"><span>Партия: ${pdState.qty} шт × ${cny(w.each)}</span><span>${cny(w.goodsCny)}</span></div>
-          <div class="sum__row"><span>По курсу ${rateText}</span><span>${rub(w.goods)}</span></div>
-          <div class="sum__row"><span>Доставка ${w.ship.name.toLowerCase()}: ${nf1.format(p.kg * pdState.qty)} кг</span><span>${rub(w.delivery)}</span></div>
+      breakdown = `<table class="tiers"><tbody>${tierRows}<tr><td>Розница, 1 шт</td><td>${cny(p.cny)}</td></tr></tbody></table>
+        <details class="why"><summary>Итого за партию: ${rub(w.total)}</summary><div class="sum">
+          <div class="sum__row"><span>${pdState.qty} шт × ${cny(w.each)}</span><span>${rub(w.goods)}</span></div>
+          <div class="sum__row"><span>Доставка, ${nf1.format(p.kg * pdState.qty)} кг</span><span>${rub(w.delivery)}</span></div>
           <div class="sum__row"><span>Сервис ASTTA, 3%</span><span>${rub(w.fee)}</span></div>
-          <div class="sum__row sum__row--total"><span>Итого за партию</span><span>${rub(w.total)}</span></div>
-          <p class="sum__note">Себестоимость одной штуки в Москве ≈ ${rub(w.landed)}</p>
-        </div>`;
+          <p class="sum__note">Одна штука в Москве ≈ ${rub(w.landed)}</p>
+        </div></details>`;
     } else {
       const r = retail(p, { ship: pdState.ship });
-      priceBlock = `<div class="pd__price"><b>${rub(r.total)}</b>${p.sale ? `<s>${rub(retail(p, { ship: pdState.ship, cny: p.cny }).total)}</s>` : ''}<span class="pill">под ключ</span></div>`;
-      breakdown = `<div class="sum">
+      priceBlock = `<div class="pd__price"><b>${rub(r.total)}</b>${p.sale ? `<s>${rub(retail(p, { ship: pdState.ship, cny: p.cny }).total)}</s>` : ''}</div>`;
+      breakdown = `<details class="why"><summary>Из чего цена</summary><div class="sum">
           <div class="sum__row"><span>Товар: ${cny(r.unit)} × ${rateText}</span><span>${rub(r.goods)}</span></div>
-          <div class="sum__row"><span>Доставка ${r.ship.name.toLowerCase()}: ${nf1.format(p.kg)} кг × ${nf.format(r.ship.perKg)} ₽</span><span>${rub(r.delivery)}</span></div>
+          <div class="sum__row"><span>Доставка, ${nf1.format(p.kg)} кг</span><span>${rub(r.delivery)}</span></div>
           <div class="sum__row"><span>Сервис ASTTA, 5%</span><span>${rub(r.fee)}</span></div>
-          <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(r.total)}</span></div>
-          <p class="sum__note">Пошлину считаем сами, если заказ выйдет за беспошлинный лимит. Доплат после заказа нет.</p>
-        </div>`;
+          <p class="sum__note">Доплат после заказа нет.</p>
+        </div></details>`;
     }
 
     const ship = `<fieldset class="ship" data-pd-ship><legend>Доставка</legend>${shipOptionsHTML('pdShip', pdState.ship, p.bulky)}</fieldset>`;
 
-    const sizes = (!sup && p.sizes) ? `<div class="stack" style="gap:8px">
-        <span class="sublabel">Размер: китайский и наш${p.sizes === 'shoes' ? ', с длиной стопы' : ''}</span>
+    const sizes = (!sup && p.sizes) ? `<div class="stack" style="gap:10px">
+        <span class="sublabel">Размер · китайский и наш</span>
         <div class="sizes" role="group" aria-label="Размер">${SIZE_GRID[p.sizes].map(([cn, ru]) => `<button class="size" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${ru}</span></button>`).join('')}</div>
-      </div>` : (sup && p.sizes ? '<p class="note">Опт идёт размерной линейкой: ассорти по вашей раскладке, напишите её агенту.</p>' : '');
-
-    const fact = SUPPLIERS[p.sup].fact;
-    const facts = `<div class="fact">${icon('route')}<div>По последним 40 заказам этого поставщика посылки шли <b>${fact[0]}–${fact[1]} дней</b>. Перед отправкой вы увидите фото товара на складе.</div></div>`;
+      </div>` : '';
 
     let group = '';
     if (p.group) {
@@ -746,14 +692,14 @@
       const joined = state.joined.has(p.id);
       const have = g.have + (joined ? (sup ? 10 : 1) : 0);
       group = `<div class="groupbox">
-        <span class="sublabel" style="color:var(--accent)">Совместный опт</span>
-        <p>Когда наберётся ${g.need} шт, цена для всех участников станет ${sup ? cny(g.cny) + ' за штуку' : rub(retail(p, { cny: g.cny, ship: pdState.ship }).total) + ' под ключ'}. Собрано ${have}, осталось ${g.days} ${plural(g.days, 'день', 'дня', 'дней')}.</p>
+        <span class="sublabel" style="color:var(--lime)">Совместный опт</span>
+        <p>При ${g.need} шт цена для всех станет ${sup ? cny(g.cny) + ' за штуку' : rub(retail(p, { cny: g.cny, ship: pdState.ship }).total)}. Собрано ${have}.</p>
         <div class="bar"><i style="width:${Math.min(100, Math.round((have / g.need) * 100))}%"></i></div>
-        <button class="btn ${joined ? 'btn--line' : 'btn--accent'} btn--sm" type="button" data-join="${p.id}" aria-pressed="${joined}" style="align-self:flex-start">${joined ? 'Вы участвуете' : 'Участвовать в закупке'}</button>
+        <button class="btn ${joined ? 'btn--line' : 'btn--lime'} btn--sm" type="button" data-join="${p.id}" aria-pressed="${joined}" style="align-self:flex-start">${joined ? 'Вы участвуете' : 'Участвовать'}</button>
       </div>`;
     }
 
-    const optNote = !sup ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b> за штуку</span><button class="linkbtn" type="button" data-switch-mode="supplier">Раздел для поставщиков</button></div>` : '';
+    const optNote = !sup ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b></span><button class="linkbtn" type="button" data-switch-mode="supplier">Раздел для поставщиков</button></div>` : '';
 
     const minQty = sup ? p.tiers[0][0] : 1;
     const qty = `<div class="qty" role="group" aria-label="Количество">
@@ -770,27 +716,23 @@
     return `<div class="pd">
       <div class="pd__media"><img src="${img(p.id)}" alt="${esc(p.t)}" width="720" height="720"></div>
       <div class="pd__info">
-        <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)} · ${esc(s.about)}</button>
+        <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)}</button>
         <h2>${esc(p.t)}</h2>
-        <div class="pd__rating"><span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span><span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span><span>${nf.format(p.sold)} продано</span></div>
+        <div class="pd__rating"><span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span><span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span><span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
         ${priceBlock}
-        <p class="pd__desc">${esc(p.desc)}</p>
         ${sizes}
         ${ship}
         ${breakdown}
         ${group}
-        ${facts}
-        ${optNote}
-        ${nt ? `<p class="note" style="color:var(--accent)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])} за штуку</p>` : ''}
         <div class="buyrow">
           ${qty}
-          <button class="btn ${sup ? 'btn--accent' : 'btn--dark'}" type="button" data-pd-add>${sup ? 'Добавить партию' : 'В корзину'}</button>
+          <button class="btn btn--lime" type="button" data-pd-add>${sup ? 'Добавить партию' : 'В корзину'}</button>
         </div>
-        <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента про этот товар</button>
-        <div class="stack" style="gap:10px">
-          <span class="sublabel">Отзывы</span>
-          <div class="reviews">${reviews}</div>
-        </div>
+        ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
+        ${optNote}
+        <p class="pd__desc">${esc(p.desc)}</p>
+        <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
+        <div class="reviews">${reviews}</div>
       </div>
     </div>`;
   }
@@ -819,7 +761,7 @@
       <form class="chat__form" id="chatForm"><input id="chatInput" name="msg" autocomplete="off" placeholder="Сообщение агенту" aria-label="Сообщение агенту"><button class="roundbtn" type="submit" aria-label="Отправить">${icon('arrow')}</button></form>
     </div>`, { narrow: true });
   }
-  function sendChat(text) {
+  function sendChat(text, reply) {
     const t = text.trim();
     if (!t) return;
     const box = $('#msgs');
@@ -827,7 +769,7 @@
     const typing = box.lastElementChild;
     setTimeout(() => {
       typing.classList.remove('msg--typing');
-      typing.textContent = 'Приняла. Уточню у поставщика и вернусь с ответом и фото в течение 15 минут.';
+      typing.textContent = reply || 'Приняла. Уточню у поставщика и вернусь с ответом и фото в течение 15 минут.';
     }, 1200);
   }
 
@@ -885,6 +827,7 @@
     if (sheet.hidden) lastFocus = document.activeElement;
     if (!opts.keepProduct) pdState = html.includes('class="pd"') ? pdState : null;
     panel.classList.toggle('is-narrow', !!opts.narrow);
+    $('#toast').hidden = true;
     $('#sheetBody').innerHTML = html;
     $('#sheetBody').scrollTop = 0;
     sheet.hidden = false;
@@ -981,17 +924,22 @@
   }
 
   /* ---------- Герой ---------- */
+  const HERO_TAGS = ['Новинки', 'Фото со склада', 'Опт'];
   function initHero() {
     const hero = $('#hero');
-    const track = $('#heroTrack');
+    const imgs = $$('.hero__media img', hero);
+    const texts = $$('.htext', hero);
     const dots = $$('.hero__dots button', hero);
-    const n = dots.length;
+    const n = imgs.length;
     let i = 0, timer = null;
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const show = (k) => {
       i = (k + n) % n;
-      track.style.transform = `translateX(${-i * 100}%)`;
+      imgs.forEach((el, j) => el.classList.toggle('is-on', j === i));
+      texts.forEach((el, j) => el.classList.toggle('is-on', j === i));
       dots.forEach((d, j) => d.setAttribute('aria-selected', String(j === i)));
+      $('#heroNum').textContent = String(i + 1).padStart(2, '0');
+      $('#heroTag').textContent = HERO_TAGS[i];
     };
     const stop = () => { clearInterval(timer); timer = null; };
     const start = () => { if (!reduce && !timer) timer = setInterval(() => show(i + 1), 6000); };
@@ -1017,16 +965,29 @@
     if (d.close !== undefined) { if (t.tagName !== 'A') e.preventDefault(); closeSheet(); if (t.tagName !== 'A') return; }
     if (d.closeMenu !== undefined) { closeMenu(); if (t.tagName !== 'A' && d.openChat === undefined) return; }
 
-    if (t.tagName === 'A' && t.getAttribute('href') === location.hash) { e.preventDefault(); route(); return; }
+    if (d.filter) {
+      state.cat = d.filter; state.q = ''; $('#q').value = '';
+      if (location.hash === '#catalog') { e.preventDefault(); renderCatalog(); window.scrollTo({ top: 0, behavior: 'instant' }); }
+      else if (t.tagName !== 'A') go('catalog');
+      return;
+    }
+    if (d.tile !== undefined) {
+      const tile = TILES[Number(d.tile)];
+      state.cat = tile.filter; state.q = ''; $('#q').value = '';
+      if (tile.sort) { state.sort = tile.sort; $('#sort').value = tile.sort; }
+      if (tile.mode && tile.mode !== state.mode) setMode(tile.mode, true);
+      go('catalog');
+      return;
+    }
+    if (t.matches('[data-telegram]')) { toast('Канал откроем к запуску площадки'); return; }
 
     if (d.mode) { setMode(d.mode); return; }
     if (d.switchMode) { setMode(d.switchMode); return; }
     if (d.open) { openProduct(d.open); return; }
     if (d.add) { addToCart(d.add); return; }
     if (d.openChat !== undefined) { openChat(d.openChat); return; }
-    if (d.cat) { state.cat = d.cat; state.q = ''; $('#q').value = ''; go('catalog'); return; }
+    if (d.cat) { state.cat = d.cat; state.q = ''; $('#q').value = ''; if (location.hash === '#catalog') { e.preventDefault(); renderCatalog(); } else go('catalog'); return; }
     if (d.chip) { state.cat = d.chip; renderCatalog(); return; }
-    if (t.matches('[data-goto-sale]')) { state.cat = 'sale'; return; }
     if (d.feed) { state.feed = d.feed; renderFeed(); return; }
     if (d.story) { state.feedSup = state.feedSup === d.story ? null : d.story; renderFeed(); return; }
     if (d.gotoSup) { state.feedSup = d.gotoSup; state.feed = 'all'; go('feed'); return; }
@@ -1096,6 +1057,7 @@
       return;
     }
     if (d.cab) { cabAction(d.cab); return; }
+    if (t.tagName === 'A' && t.getAttribute('href') === location.hash) { e.preventDefault(); route(); }
   }
   function selectText(el) {
     const range = document.createRange();
@@ -1111,10 +1073,8 @@
     if (t.type === 'radio' && t.closest('.ship')) {
       $$('.shipopt', t.closest('.ship')).forEach((l) => l.classList.toggle('is-on', $('input', l).checked));
     }
-    if (t.name === 'calcShip') { calcShip = t.value; updateCalc(); return; }
     if (t.name === 'cartShip') { state.ship = t.value; store.save(); renderCart(); renderHome(); return; }
     if (t.name === 'pdShip') { pdState.ship = t.value; rerenderProduct(); return; }
-    if (t.id === 'calcCat') { $('#calcKg').value = t.value; updateCalc(); return; }
     if (t.id === 'sort') { state.sort = t.value; renderCatalog(); return; }
     if (t.dataset.factory) {
       const key = t.dataset.factory;
@@ -1125,25 +1085,23 @@
 
   function onInput(e) {
     const t = e.target;
-    if (t.closest('#calcForm')) updateCalc();
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
   }
 
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
-    if (f.id === 'calcForm') {
-      const r = updateCalc();
-      if (!r.price) { toast('Укажите цену у продавца в юанях'); $('#calcPrice').focus(); return; }
-      openSheet(`<div class="success">
-        <span class="success__ic">${icon('check')}</span>
-        <h2 class="sheet__title">Заявка у агента</h2>
-        <p>Товар с ${r.found ? r.found[1] : 'вашей ссылки'}, предварительно ${rub(r.total)} под ключ. Агент проверит продавца и наличие, уточнит вес и пришлёт итоговую цену. Она уже не изменится.</p>
-        <button class="btn btn--dark" type="button" data-open-chat>Открыть чат с агентом</button>
-      </div>`, { narrow: true });
+    if (f.id === 'linkForm') {
+      const input = $('#linkInput');
+      const link = input.value.trim();
+      if (!link) { toast('Вставьте ссылку на товар'); input.focus(); return; }
+      const found = PLATFORMS.find(([re]) => re.test(link));
+      input.value = '';
+      openChat();
+      sendChat(`Посчитайте цену${found ? ` с ${found[1]}` : ''}: ${link}`, 'Приняла ссылку. Проверю продавца и пришлю цену в рублях с доставкой в течение 15 минут.');
       return;
     }
-    if (f.id === 'checkoutForm') { submitCheckout(f); return; }
+    if (f.id === 'checkoutForm') { submitCheckout(); return; }
     if (f.id === 'chatForm') { const i = $('#chatInput'); sendChat(i.value); i.value = ''; return; }
     if (f.id === 'addForm') {
       const name = $('#apName').value.trim();
