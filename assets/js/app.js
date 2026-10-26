@@ -1158,7 +1158,7 @@
     // Анимация сама прячет заставку примерно через 3 с (CSS); касание пропускает её
     el.addEventListener('click', () => { el.classList.add('is-done'); setTimeout(finish, 500); });
     el.addEventListener('animationend', (e) => { if (e.target === el && e.animationName === 'splashOut') finish(); });
-    setTimeout(finish, 4000);
+    setTimeout(finish, 4800);
   }
 
   /* ---------- Старт ---------- */
