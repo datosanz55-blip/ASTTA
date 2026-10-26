@@ -106,24 +106,43 @@
   <section class="view" data-view="home" aria-label="Главная">
 
     <section class="hero" id="hero" aria-roledescription="карусель" aria-label="Главное">
-      <div class="hero__bgs" id="heroBgs" aria-hidden="true"></div>
-      <div class="hero__top">
-        <div class="hero__arrows">
-          <button class="hero__arrow" type="button" data-hero-step="-1" aria-label="Предыдущий слайд"><svg class="ic"><use href="#i-arrow"/></svg></button>
-          <button class="hero__arrow" type="button" data-hero-step="1" aria-label="Следующий слайд"><svg class="ic"><use href="#i-arrow"/></svg></button>
+      <span class="hero__vword" aria-hidden="true">ASTTA</span>
+      <div class="hero__visual">
+        <div class="hero__media">
+          <img class="is-on" src="assets/img/hero-parka.jpg" alt="Парень в куртке-парке" width="1000" height="1250">
+          <img src="assets/img/hero-leopard.jpg" alt="Парень в рубашке и солнцезащитных очках" width="1000" height="1250" loading="lazy">
+          <img src="assets/img/hero-denim.jpg" alt="Девушка в джинсовой куртке и худи" width="1000" height="1250" loading="lazy">
         </div>
-        <div class="hero__count" aria-hidden="true"><b id="heroNum">01</b><i></i><span id="heroTotal">03</span></div>
+        <div class="hero__meta">
+          <span class="hero__tag" id="heroTag">Новинки</span>
+          <div class="hero__count" aria-hidden="true"><b id="heroNum">01</b><i></i><span>03</span></div>
+        </div>
       </div>
       <div class="hero__copy">
-        <div class="hero__texts" id="heroTexts"></div>
+        <div class="hero__texts">
+          <div class="htext is-on">
+            <h1>Китай<br>ближе.</h1>
+            <p>Цены в рублях сразу с доставкой.</p>
+          </div>
+          <div class="htext">
+            <h2>Без<br>сюрпризов.</h2>
+            <p>Фото со склада до отправки.</p>
+          </div>
+          <div class="htext">
+            <h2>Опт для<br>своих.</h2>
+            <p>Цены в юанях от 5 штук.</p>
+          </div>
+        </div>
         <div class="hero__cta">
           <a class="btn btn--lime" href="#catalog">В каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a>
-          <button class="btn btn--text" type="button" data-hero-open>Смотреть товар <span class="dot" aria-hidden="true"></span></button>
+          <a class="btn btn--text" href="#link">По ссылке <span class="dot" aria-hidden="true"></span></a>
         </div>
       </div>
-      <div class="hero__stage" id="heroStage"></div>
-      <div class="hero__side" id="heroSide"></div>
-      <button class="hero__next" id="heroNext" type="button" data-hero-step="1" aria-label="Следующий товар"></button>
+      <div class="hero__dots" role="tablist" aria-label="Слайды">
+        <button type="button" role="tab" aria-label="Слайд 1" aria-selected="true"></button>
+        <button type="button" role="tab" aria-label="Слайд 2" aria-selected="false"></button>
+        <button type="button" role="tab" aria-label="Слайд 3" aria-selected="false"></button>
+      </div>
     </section>
 
     <ul class="perks" aria-label="Почему ASTTA">
@@ -174,6 +193,15 @@
       <div class="grid" id="popular"></div>
     </section>
 
+    <section class="block">
+      <div class="block__head"><h2>Лента</h2><a href="#feed" class="more">Открыть <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="feed feed--preview" id="feedPreview"></div>
+    </section>
+
+    <section class="community">
+      <h2>Дропы и скидки<br>в Telegram.</h2>
+      <button class="btn btn--lime" type="button" data-telegram>Подписаться <svg class="ic"><use href="#i-send"/></svg></button>
+    </section>
   </section>
 
   <!-- КАТАЛОГ -->
