@@ -834,8 +834,8 @@ html.is-splash, html.is-splash body { overflow: hidden; }
 @keyframes splashFade { to { opacity: 1; } }
 /* Линии «рисуются» от краёв к центру: окно едет внутрь, картинка внутри едет навстречу и стоит на месте */
 .splash__half { position: absolute; top: 0; bottom: 0; width: calc(50vw + 1px); overflow: hidden; will-change: transform; }
-.splash__half--l { left: 0; transform: translate3d(calc(-50vw - 1px), 0, 0); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
-.splash__half--r { right: 0; transform: translate3d(calc(50vw + 1px), 0, 0); -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.splash__half--l { left: 0; transform: translate3d(calc(-50vw - 1px), 0, 0); }
+.splash__half--r { right: 0; transform: translate3d(calc(50vw + 1px), 0, 0); }
 .splash__lines {
   position: absolute; top: 0; bottom: 0; width: 100vw;
   background: url("../img/brand/splash-lines-land.png") center / cover no-repeat; will-change: transform;
