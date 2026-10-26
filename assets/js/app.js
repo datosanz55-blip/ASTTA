@@ -157,6 +157,39 @@
       ok: 88, issue: 'затирается дно при ежедневной носке' },
   };
 
+  // Smart Size: реальные замеры изделий каждой модели (обхват груди изделия, см; длина стельки, см)
+  const MEAS = {
+    'leather-jacket': { fit: 'slim', chest: [96, 100, 104, 108, 112, 116] },
+    bomber: { fit: 'oversize', chest: [110, 114, 118, 122, 126, 130] },
+    'tee-white': { fit: 'regular', chest: [98, 102, 106, 110, 114, 118] },
+    sweatshirt: { fit: 'regular', chest: [104, 108, 112, 116, 120, 124] },
+    'tee-black': { fit: 'regular', chest: [98, 102, 106, 110, 114, 118] },
+    runner: { insole: [24, 24.5, 25, 25.5, 26, 26.5, 27.5] },
+    loafers: { insole: [24.5, 25, 25.5, 26.5, 27, 27.5, 28.5] },
+  };
+  const FIT = { slim: { ease: 4, name: 'по фигуре' }, regular: { ease: 8, name: 'свободная посадка' }, oversize: { ease: 14, name: 'оверсайз' } };
+
+  function smartSize(p) {
+    const m = MEAS[p.id];
+    const me = state.measures;
+    if (!m || !me || !p.sizes) return null;
+    const grid = SIZE_GRID[p.sizes];
+    if (m.insole && me.foot) {
+      const need = me.foot + 0.5;
+      let k = m.insole.findIndex((x) => x >= need);
+      const over = k === -1; if (over) k = m.insole.length - 1;
+      return { size: grid[k][0], why: `стелька ${nf1.format(m.insole[k])} см при вашей стопе ${nf1.format(me.foot)} см`, over };
+    }
+    if (m.chest && me.chest) {
+      const f = FIT[m.fit];
+      const need = me.chest + f.ease;
+      let k = m.chest.findIndex((x) => x >= need);
+      const over = k === -1; if (over) k = m.chest.length - 1;
+      return { size: grid[k][0], why: `грудь изделия ${m.chest[k]} см при ваших ${me.chest} см, ${f.name}`, over };
+    }
+    return null;
+  }
+
   const SIZE_GRID = {
     shoes: [['39', 'RU 38 · 24,5 см'], ['40', 'RU 39 · 25 см'], ['41', 'RU 40 · 25,5 см'], ['42', 'RU 41 · 26,5 см'], ['43', 'RU 42 · 27 см'], ['44', 'RU 43 · 27,5 см'], ['45', 'RU 44 · 28,5 см']],
     clothes: [['S', 'RU 42'], ['M', 'RU 44'], ['L', 'RU 46'], ['XL', 'RU 48'], ['2XL', 'RU 50'], ['3XL', 'RU 52']],
@@ -192,6 +225,21 @@
     orders: [],
     myProducts: [],
     factory: { newItems: true, weekly: true, restock: false, perDay: '3' },
+    ptab: 'orders',
+    measures: null,
+    family: {
+      budget: 30000,
+      members: [{ id: 'me', name: 'Вы' }, { id: 'mom', name: 'Мама' }, { id: 'dad', name: 'Папа' }, { id: 'anya', name: 'Аня' }],
+      items: [
+        { id: 'f1', pid: 'sweatshirt', by: 'anya', status: 'pending', payer: 'me' },
+        { id: 'f2', pid: 'lamp', by: 'mom', status: 'approved', payer: 'mom' },
+        { id: 'f3', pid: 'headphones', by: 'dad', status: 'approved', payer: 'dad' },
+      ],
+    },
+    pools: [{
+      id: 'g1', pid: 'headphones-anc', who: 'Дима', occasion: 'День рождения', date: '2026-11-14', people: 5,
+      paid: [{ name: 'Вы', wish: 'С днём рождения! Теперь в метро только музыка.' }, { name: 'Саша', wish: 'Расти большой и громкий' }, { name: 'Катя', wish: '' }],
+    }],
   };
   const FOLLOWING = ['gz', 'sz'];
 
@@ -209,6 +257,9 @@
         }
         if (Array.isArray(d.liked)) state.liked = new Set(d.liked);
         if (Array.isArray(d.joined)) state.joined = new Set(d.joined);
+        if (d.measures && typeof d.measures === 'object') state.measures = d.measures;
+        if (d.family && Array.isArray(d.family.items)) state.family = d.family;
+        if (Array.isArray(d.pools)) state.pools = d.pools.filter((g) => byId[g.pid]);
       } catch (e) { /* хранилище недоступно: работаем без него */ }
     },
     save() {
@@ -216,6 +267,7 @@
         localStorage.setItem('astta-demo', JSON.stringify({
           mode: state.mode, ship: state.ship, carts: state.carts,
           liked: [...state.liked], joined: [...state.joined],
+          measures: state.measures, family: state.family, pools: state.pools,
         }));
       } catch (e) { /* ничего */ }
     },
@@ -673,9 +725,137 @@
   }
 
   function renderProfile() {
-    $('#profileBody').innerHTML = isSupplier()
-      ? cabinetHTML()
-      : `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`;
+    if (isSupplier()) { $('#profileBody').innerHTML = cabinetHTML(); return; }
+    const tabs = [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
+    const body = {
+      orders: () => `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`,
+      family: familyHTML, gifts: giftsHTML, size: measuresHTML,
+    }[state.ptab]();
+    $('#profileBody').innerHTML = `<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
+  }
+
+  /* ---------- ASTTA Family: общий список, бюджет, согласование, кто платит ---------- */
+  const member = (id) => state.family.members.find((m) => m.id === id) || { name: '—' };
+  function familyHTML() {
+    const f = state.family;
+    const priceOf = (it) => retail(byId[it.pid]).total;
+    const approved = f.items.filter((it) => it.status === 'approved');
+    const spent = approved.reduce((s, it) => s + priceOf(it), 0);
+    const pct = Math.min(100, Math.round((spent / f.budget) * 100));
+    const byPayer = {};
+    approved.forEach((it) => { byPayer[it.payer] = (byPayer[it.payer] || 0) + priceOf(it); });
+    const rows = f.items.map((it) => {
+      const p = byId[it.pid];
+      const status = it.status === 'pending' ? '<span class="pill pill--wait">Ждёт согласования</span>' : (it.status === 'declined' ? '<span class="pill">Отклонено</span>' : '<span class="pill pill--go">Одобрено</span>');
+      return `<article class="fitem${it.status === 'declined' ? ' is-off' : ''}">
+        <img src="${img(p.id)}" alt="" width="64" height="64" loading="lazy">
+        <div class="fitem__body">
+          <button class="citem__title" type="button" data-open="${p.id}">${esc(p.t)}</button>
+          <span class="citem__meta">Добавил(а): ${esc(member(it.by).name)} · ${rub(priceOf(it))}</span>
+          <div class="fitem__row">${status}
+            ${it.status === 'pending' ? `<button class="btn btn--lime btn--sm" type="button" data-fam-ok="${it.id}">Одобрить</button><button class="btn btn--line btn--sm" type="button" data-fam-no="${it.id}">Отклонить</button>` : ''}
+            ${it.status === 'approved' ? `<label class="fitem__payer">Платит <select class="minisel" data-fam-payer="${it.id}">${f.members.map((m) => `<option value="${m.id}" ${m.id === it.payer ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>` : ''}
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+    return `<div class="family">
+      <section class="panel">
+        <div class="family__head"><h3>Семья</h3><div class="family__avas">${f.members.map((m) => `<span class="ava" title="${esc(m.name)}">${esc(m.name.slice(0, 2).toUpperCase())}</span>`).join('')}</div></div>
+        <div class="family__budget">
+          <div class="build__row"><span>Бюджет на месяц</span><output>${rub(spent)} из ${rub(f.budget)}</output></div>
+          <div class="bar"><i style="width:${pct}%${pct >= 100 ? ';background:var(--hot)' : ''}"></i></div>
+          <label class="field"><span>Лимит</span><select id="famBudget">${[15000, 30000, 50000, 100000].map((v) => `<option value="${v}" ${v === f.budget ? 'selected' : ''}>${rub(v)}</option>`).join('')}</select></label>
+        </div>
+        ${Object.keys(byPayer).length ? `<div class="sum">${Object.entries(byPayer).map(([id, sum]) => `<div class="sum__row"><span>${esc(member(id).name)}</span><span>${rub(sum)}</span></div>`).join('')}</div>` : ''}
+      </section>
+      <section class="stack">
+        <h3 class="sublabel">Общий список</h3>
+        ${rows || '<p class="note">Список пуст. Добавляйте товары кнопкой «В семейный список» в карточке товара.</p>'}
+        ${approved.length ? `<button class="btn btn--lime" type="button" data-fam-checkout>Одобренное в корзину · ${rub(spent)}</button>` : ''}
+        <p class="note">Дети добавляют товары, взрослые одобряют. Каждый оплачивает свою часть, агент собирает всё в одну посылку.</p>
+      </section>
+    </div>`;
+  }
+
+  /* ---------- ASTTA GiftPool: скинуться на подарок ---------- */
+  const poolTotal = (g) => retail(byId[g.pid]).total;
+  const poolShare = (g) => Math.ceil(poolTotal(g) / g.people / 10) * 10;
+  const dateText = (iso) => { try { return new Date(iso + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }); } catch (e) { return iso; } };
+
+  function poolHTML(g) {
+    const p = byId[g.pid];
+    const share = poolShare(g);
+    const got = Math.min(poolTotal(g), g.paid.length * share);
+    const pct = Math.min(100, Math.round((g.paid.length / g.people) * 100));
+    const left = Math.max(0, g.people - g.paid.length);
+    const people = [...g.paid.map((x) => ({ ...x, ok: true })), ...Array.from({ length: left }, () => ({ name: 'Ждём участника', ok: false }))];
+    return `<div class="stack pool">
+      <span class="ai__badge">${icon('users')}GiftPool</span>
+      <h2 class="sheet__title">${esc(g.occasion)}: ${esc(g.who)}</h2>
+      <div class="pool__item"><img src="${img(p.id)}" alt="" width="72" height="72"><div><b>${esc(p.t)}</b><span>${rub(poolTotal(g))} с доставкой</span></div></div>
+      <div class="pool__sum">
+        <div class="build__row"><span>Собрано ${g.paid.length} из ${g.people}</span><output>${rub(got)}</output></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <p class="note">С каждого ${rub(share)}. Доставим ${dateText(g.date)}, адрес именинника спросим у вас, чтобы сюрприз не раскрылся.</p>
+      </div>
+      <div class="pool__link"><span class="mono">astta.ru/gift/${g.id}</span><button class="btn btn--lime btn--sm" type="button" data-pool-copy="${g.id}">Скопировать ссылку</button></div>
+      <ul class="pool__people">${people.map((x) => `<li class="${x.ok ? 'is-ok' : ''}"><span class="dot">${x.ok ? icon('check') : ''}</span><div><b>${esc(x.name)}</b>${x.wish ? `<span>«${esc(x.wish)}»</span>` : (x.ok ? '<span>оплатил(а) свою часть</span>' : '')}</div></li>`).join('')}</ul>
+      ${left ? `<button class="btn btn--ghost btn--sm" type="button" data-pool-sim="${g.id}" style="align-self:flex-start">Демо: ещё один друг оплатил</button>` : '<p class="note" style="color:var(--lime)">Вся сумма собрана. Агент выкупит подарок и привезёт его к дате вместе с открыткой из поздравлений.</p>'}
+    </div>`;
+  }
+
+  function giftsHTML() {
+    const list = state.pools.map((g) => {
+      const p = byId[g.pid];
+      const pct = Math.min(100, Math.round((g.paid.length / g.people) * 100));
+      return `<button class="gcard" type="button" data-pool-open="${g.id}">
+        <img src="${img(p.id)}" alt="" width="72" height="72" loading="lazy">
+        <div><b>${esc(g.occasion)}: ${esc(g.who)}</b><span>${esc(p.t)} · ${dateText(g.date)}</span><div class="bar"><i style="width:${pct}%"></i></div><small>${g.paid.length} из ${g.people} скинулись</small></div>
+      </button>`;
+    }).join('');
+    return `<div class="stack">
+      ${list || '<p class="note">Пока нет общих подарков.</p>'}
+      <p class="note">Откройте любой товар и нажмите «Скинуться на подарок»: друзья оплачивают свою часть по ссылке, добавляют поздравления, а мы доставляем в выбранную дату.</p>
+    </div>`;
+  }
+
+  function poolNewHTML(pid) {
+    const p = byId[pid];
+    const d = new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10);
+    return `<div class="stack">
+      <span class="ai__badge">${icon('users')}GiftPool</span>
+      <h2 class="sheet__title">Общий подарок</h2>
+      <div class="pool__item"><img src="${img(p.id)}" alt="" width="72" height="72"><div><b>${esc(p.t)}</b><span>${rub(retail(p).total)} с доставкой</span></div></div>
+      <form class="form" id="poolForm" data-pid="${pid}" novalidate>
+        <label class="field"><span>Кому</span><input id="plWho" required placeholder="Имя"></label>
+        <label class="field"><span>Повод</span><select id="plOcc"><option>День рождения</option><option>Новый год</option><option>Свадьба</option><option>Новоселье</option><option>Просто так</option></select></label>
+        <label class="field"><span>Дата вручения</span><input id="plDate" type="date" value="${d}" min="${new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)}"></label>
+        <label class="field"><span>Сколько человек</span><input id="plPeople" type="number" min="2" max="50" value="6"></label>
+        <label class="field field--full"><span>Ваше поздравление</span><textarea id="plWish" placeholder="Попадёт в открытку вместе с подарком"></textarea></label>
+        <p class="note field--full" id="plShare"></p>
+        <button class="btn btn--lime btn--wide field--full" type="submit">Создать и оплатить свою часть</button>
+      </form>
+    </div>`;
+  }
+
+  /* ---------- Smart Size: мерки ---------- */
+  function measuresHTML() {
+    const m = state.measures || {};
+    const f = (id, label, hint, val, step = 1) => `<label class="field"><span>${label}</span><input id="${id}" type="number" inputmode="decimal" step="${step}" value="${val ?? ''}" placeholder="${hint}"></label>`;
+    return `<form class="panel" id="measForm" novalidate>
+      <h3>Мои мерки</h3>
+      <p class="note">Вводятся один раз. Дальше в карточке одежды и обуви мы подскажем размер по реальным замерам именно этой модели, а не по таблице «S, M, L».</p>
+      <div class="form">
+        ${f('msHeight', 'Рост, см', '178', m.height)}
+        ${f('msChest', 'Обхват груди, см', '100', m.chest)}
+        ${f('msWaist', 'Обхват талии, см', '84', m.waist)}
+        ${f('msHips', 'Обхват бёдер, см', '98', m.hips)}
+        ${f('msFoot', 'Длина стопы, см', '26', m.foot, 0.5)}
+      </div>
+      <p class="note">Как мерить: грудь по самым выступающим точкам, стопу — от пятки до большого пальца, стоя на листе бумаги.</p>
+      <button class="btn btn--lime" type="submit">Сохранить мерки</button>
+    </form>`;
   }
 
   /* ---------- Карточка товара ---------- */
@@ -718,9 +898,14 @@
 
     const ship = `<fieldset class="ship" data-pd-ship><legend>Доставка</legend>${shipOptionsHTML('pdShip', pdState.ship, p.bulky)}</fieldset>`;
 
+    const rec = smartSize(p);
+    const smart = !p.sizes ? '' : (rec
+      ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size: вам CN ${esc(rec.size)}</b><span>${esc(rec.why)}${rec.over ? '. Это самый большой размер модели, уточните у агента' : ''}</span></div>${pdState.size === rec.size ? '' : `<button class="btn btn--line btn--sm" type="button" data-size="${esc(rec.size)}">Выбрать</button>`}</div>`
+      : (MEAS[p.id] ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size</b><span>Укажите мерки один раз, и мы подскажем размер по реальным замерам этой модели</span></div><button class="btn btn--line btn--sm" type="button" data-measures>Указать</button></div>` : ''));
     const sizes = (!sup && p.sizes) ? `<div class="stack" style="gap:10px">
         <span class="sublabel">Размер · китайский и наш</span>
-        <div class="sizes" role="group" aria-label="Размер">${SIZE_GRID[p.sizes].map(([cn, ru]) => `<button class="size" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${ru}</span></button>`).join('')}</div>
+        <div class="sizes" role="group" aria-label="Размер">${SIZE_GRID[p.sizes].map(([cn, ru]) => `<button class="size${rec && rec.size === cn ? ' size--rec' : ''}" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${rec && rec.size === cn ? 'ваш размер' : ru}</span></button>`).join('')}</div>
+        ${smart}
       </div>` : '';
 
     let group = '';
@@ -767,6 +952,7 @@
         </div>
         ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
         ${optNote}
+        ${sup ? '' : `<div class="pdextra"><button class="btn btn--ghost btn--sm" type="button" data-pool-new="${p.id}">${icon('users')}Скинуться на подарок</button><button class="btn btn--ghost btn--sm" type="button" data-family-add="${p.id}">${icon('home')}В семейный список</button></div>`}
         <p class="pd__desc">${esc(p.desc)}</p>
         <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
         ${reviews}
@@ -1284,6 +1470,14 @@ ${aiCatalogJSON()}
     </div>`, { narrow: true });
   }
 
+  function updatePoolShare() {
+    const f = $('#poolForm');
+    if (!f) return;
+    const p = byId[f.dataset.pid];
+    const n = Math.max(2, parseInt($('#plPeople').value, 10) || 2);
+    $('#plShare').textContent = `С каждого ${rub(Math.ceil(retail(p).total / n / 10) * 10)}. Друзья оплачивают по ссылке, вы ничего не собираете вручную.`;
+  }
+
   const build = { cur: 'eur' };
   function buildOut() {
     const v = Number($('#buildRange').value);
@@ -1578,6 +1772,50 @@ ${aiCatalogJSON()}
     }
     if (d.cab) { cabAction(d.cab); return; }
     if (d.quick) { sendChat(d.quick); return; }
+    if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
+    if (d.measures !== undefined) { state.ptab = 'size'; closeSheet(); go('profile'); return; }
+    if (d.familyAdd) {
+      state.family.items.unshift({ id: 'f' + Date.now(), pid: d.familyAdd, by: 'me', status: 'approved', payer: 'me' });
+      store.save(); toast('Добавили в семейный список');
+      return;
+    }
+    if (d.famOk || d.famNo) {
+      const it = state.family.items.find((x) => x.id === (d.famOk || d.famNo));
+      if (it) it.status = d.famOk ? 'approved' : 'declined';
+      store.save(); renderProfile();
+      toast(d.famOk ? 'Одобрено' : `Отклонено, ${it ? member(it.by).name : 'автор'} получит уведомление`);
+      return;
+    }
+    if (t.matches('[data-fam-checkout]')) {
+      const list = cart();
+      state.family.items.filter((x) => x.status === 'approved').forEach((x) => {
+        const p = byId[x.pid];
+        const size = p.sizes ? '?' : null;
+        const ex = list.find((c) => c.id === x.pid && c.size === size);
+        if (ex) ex.qty += 1; else list.push({ id: x.pid, qty: 1, size });
+      });
+      store.save(); updateCartCount(); toast('Одобренные товары в корзине');
+      return;
+    }
+    if (d.poolNew) { openSheet(poolNewHTML(d.poolNew), { narrow: true }); updatePoolShare(); return; }
+    if (d.poolOpen) { const g = state.pools.find((x) => x.id === d.poolOpen); if (g) openSheet(poolHTML(g), { narrow: true }); return; }
+    if (d.poolCopy) {
+      const text = `Скидываемся на подарок в ASTTA: astta.ru/gift/${d.poolCopy}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast('Ссылка скопирована, отправьте её друзьям')).catch(() => toast(text));
+      else toast(text);
+      return;
+    }
+    if (d.poolSim) {
+      const g = state.pools.find((x) => x.id === d.poolSim);
+      const names = ['Лёша', 'Оля', 'Макс', 'Ира', 'Дэн', 'Соня', 'Гоша', 'Лиза'];
+      const wishes = ['Счастья и побольше музыки', '', 'Ты лучший!', 'С праздником!', ''];
+      if (g && g.paid.length < g.people) {
+        g.paid.push({ name: names[g.paid.length % names.length], wish: wishes[g.paid.length % wishes.length] });
+        store.save(); openSheet(poolHTML(g), { narrow: true });
+        if (currentView === 'profile') renderProfile();
+      }
+      return;
+    }
     if (d.rv) { pdState.rv = d.rv; rerenderProduct(); return; }
     if (t.matches('[data-rv-now]')) { toast('Спасибо! Форма отзыва появится в рабочей версии'); return; }
     if (d.aiTab) {
@@ -1693,6 +1931,13 @@ ${aiCatalogJSON()}
     if (t.name === 'cartShip') { state.ship = t.value; store.save(); renderCart(); renderHome(); return; }
     if (t.name === 'pdShip') { pdState.ship = t.value; rerenderProduct(); return; }
     if (t.id === 'sort') { state.sort = t.value; renderCatalog(); return; }
+    if (t.dataset.famPayer) {
+      const it = state.family.items.find((x) => x.id === t.dataset.famPayer);
+      if (it) it.payer = t.value;
+      store.save(); renderProfile();
+      return;
+    }
+    if (t.id === 'famBudget') { state.family.budget = Number(t.value); store.save(); renderProfile(); return; }
     if (t.dataset.factory) {
       const key = t.dataset.factory;
       state.factory[key] = t.type === 'checkbox' ? t.checked : t.value;
@@ -1704,11 +1949,30 @@ ${aiCatalogJSON()}
     const t = e.target;
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
+    if (t.id === 'plPeople') updatePoolShare();
   }
 
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
+    if (f.id === 'measForm') {
+      const num = (id) => { const v = parseFloat(String($(id).value).replace(',', '.')); return Number.isFinite(v) && v > 0 ? v : null; };
+      state.measures = { height: num('#msHeight'), chest: num('#msChest'), waist: num('#msWaist'), hips: num('#msHips'), foot: num('#msFoot') };
+      store.save(); toast('Мерки сохранены');
+      return;
+    }
+    if (f.id === 'poolForm') {
+      const who = $('#plWho').value.trim();
+      if (!who) { $('#plWho').closest('.field').classList.add('is-error'); $('#plWho').focus(); return; }
+      const people = Math.max(2, Math.min(50, parseInt($('#plPeople').value, 10) || 2));
+      const g = { id: 'g' + String(Date.now()).slice(-6), pid: f.dataset.pid, who, occasion: $('#plOcc').value, date: $('#plDate').value || new Date().toISOString().slice(0, 10), people,
+        paid: [{ name: 'Вы', wish: $('#plWish').value.trim() }] };
+      state.pools.unshift(g);
+      store.save();
+      openSheet(poolHTML(g), { narrow: true });
+      toast('Подарок создан, ваша часть оплачена');
+      return;
+    }
     if (f.id === 'buildForm') {
       const goal = $('#buildGoal').value.trim() || 'Игровая комната';
       const val = Number($('#buildRange').value);

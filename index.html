@@ -63,6 +63,7 @@
     <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
     <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4V9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4V9Z"/><path d="m17 9 5 6M22 9l-5 6"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="1.5"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 4 3 11l7 2.5L12.5 21 21 4Z"/><path d="m10 13.5 4.5-4.5"/></symbol>
   </defs>
 </svg>
@@ -79,7 +80,7 @@
       <a href="#catalog" data-filter="sale">Акции</a>
       <a href="#trends" data-nav="trends">Тренды</a>
       <a href="#feed" data-nav="feed">Лента</a>
-      <a href="#profile" data-nav="profile" data-mode-text="Заказы|Кабинет"></a>
+      <a href="#profile" data-nav="profile" data-mode-text="Профиль|Кабинет"></a>
     </nav>
 
     <div class="mode mode--top" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
@@ -311,8 +312,8 @@
   <!-- ПРОФИЛЬ -->
   <section class="view" data-view="profile" aria-label="Профиль" hidden>
     <div class="pagehead">
-      <h1 data-mode-text="Заказы|Кабинет"></h1>
-      <p class="pagehead__sub" data-mode-text="Где сейчас ваши посылки|TT · Гуанчжоу, одежда"></p>
+      <h1 data-mode-text="Профиль|Кабинет"></h1>
+      <p class="pagehead__sub" data-mode-text="Заказы, семья, подарки и мерки|TT · Гуанчжоу, одежда"></p>
     </div>
     <div id="profileBody"></div>
   </section>
@@ -334,7 +335,7 @@
   <a href="#catalog" data-nav="catalog"><svg class="ic"><use href="#i-grid"/></svg><span>Каталог</span></a>
   <a href="#trends" data-nav="trends"><svg class="ic"><use href="#i-play"/></svg><span>Тренды</span></a>
   <a href="#cart" data-nav="cart"><svg class="ic"><use href="#i-bag"/></svg><span>Корзина</span><b class="count" data-cart-count hidden>0</b></a>
-  <a href="#profile" data-nav="profile"><svg class="ic"><use href="#i-user"/></svg><span data-mode-text="Заказы|Кабинет"></span></a>
+  <a href="#profile" data-nav="profile"><svg class="ic"><use href="#i-user"/></svg><span data-mode-text="Профиль|Кабинет"></span></a>
 </nav>
 
 <div class="sheet" id="sheet" hidden>
@@ -359,7 +360,7 @@
     <div class="drawer__links">
       <a href="#link" data-close-menu>Заказ по ссылке</a>
       <a href="#feed" data-close-menu>Лента поставщиков</a>
-      <a href="#profile" data-close-menu data-mode-text="Мои заказы|Кабинет поставщика"></a>
+      <a href="#profile" data-close-menu data-mode-text="Профиль|Кабинет поставщика"></a>
       <button type="button" data-open-chat data-close-menu>Написать агенту</button>
     </div>
   </aside>
