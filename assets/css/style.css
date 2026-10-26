@@ -254,19 +254,47 @@ main {
 .hero__dots button::before { content: ""; position: absolute; inset: -12px -4px; }
 .hero__dots button[aria-selected="true"] { width: 26px; background: var(--lime); }
 
-/* ---------- Полоса преимуществ ---------- */
+/* ---------- Полоса преимуществ: светящаяся лента во всю ширину ---------- */
+.perkband {
+  position: relative; overflow: hidden; isolation: isolate;
+  margin: -64px calc(50% - 50vw) 0; padding-block: 44px;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+  background:
+    radial-gradient(60% 90% at 0% 0%, rgba(70, 230, 150, .42), rgba(20, 120, 80, .12) 45%, transparent 70%),
+    radial-gradient(40% 60% at 100% 0%, rgba(30, 140, 95, .18), transparent 70%),
+    #020504;
+}
+/* дуга света снизу справа */
+.perkband::after {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  width: 150%; height: 420px; right: -80%; bottom: -330px; border-radius: 50%;
+  border-top: 2px solid rgba(190, 255, 220, .95);
+  box-shadow: 0 -12px 50px rgba(60, 230, 150, .55), inset 0 18px 60px rgba(60, 230, 150, .3);
+  transform: rotate(-13deg);
+}
+.perkband__strip {
+  position: relative;
+  background: linear-gradient(180deg, rgba(12, 34, 24, .55), rgba(2, 6, 4, .85));
+}
+.perkband__strip::before, .perkband__strip::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, rgba(140, 255, 195, .95), rgba(60, 200, 130, .35) 35%, rgba(60, 200, 130, .3) 65%, rgba(140, 255, 195, .9));
+  box-shadow: 0 0 12px rgba(70, 230, 150, .6);
+}
+.perkband__strip::before { top: 0; }
+.perkband__strip::after { bottom: 0; }
 .perks {
-  list-style: none; margin: -24px 0 0; padding: 0;
+  list-style: none; margin: 0 auto; max-width: 1320px;
+  padding-left: var(--gl); padding-right: var(--gr); padding-block: 6px;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-block: 1px solid var(--line);
 }
 .perks li {
-  position: relative; display: flex; align-items: center; gap: 12px; padding: 18px 8px;
-  font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; line-height: 1.25;
+  position: relative; display: flex; align-items: center; gap: 12px; padding: 16px 4px;
+  font-size: 13px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; line-height: 1.25;
+  color: var(--photo-text);
 }
-.perks li:nth-child(odd) { border-right: 1px solid var(--line); }
-.perks li:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-.perks .ic { width: 28px; height: 28px; color: var(--lime); }
+.perks .ic { flex: none; width: 30px; height: 30px; color: var(--lime); filter: drop-shadow(0 0 6px rgba(220, 239, 58, .45)); }
 
 /* ---------- Плитки подборок ---------- */
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -954,9 +982,16 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
   }
   .hero__dots { display: flex; left: 48px; bottom: 32px; }
 
-  .perks { margin-top: -48px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .perks li { justify-content: center; padding: 26px 12px; border: 0 !important; }
-  .perks li:not(:last-child)::after { content: "+"; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); font-size: 22px; font-weight: 300; color: var(--muted); }
+  .perkband { margin-top: -96px; padding-block: 132px; }
+  .perks { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-block: 14px; }
+  .perks li { justify-content: center; gap: 18px; padding: 22px 12px; font-size: 15px; }
+  .perks .ic { width: 38px; height: 38px; }
+  /* звёздочка-разделитель между пунктами */
+  .perks li:not(:last-child)::after {
+    content: ""; position: absolute; right: -14px; top: 50%; width: 28px; height: 28px; margin-top: -14px;
+    background: radial-gradient(circle, rgba(200, 255, 225, .95) 0 8%, rgba(70, 230, 150, .5) 22%, transparent 60%);
+    clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%);
+  }
   .tiles { gap: 16px; }
   .tile { aspect-ratio: 5 / 4; }
   .tile__body { left: 22px; right: 22px; bottom: 22px; }
