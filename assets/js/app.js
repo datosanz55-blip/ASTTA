@@ -3,6 +3,7 @@
 
   /* ---------- Настройки (в рабочей версии приходят с сервера) ---------- */
   const RATE = 11.4;          // ₽ за 1 ¥, демо-значение
+  const EUR = 95;             // ₽ за 1 €, демо-значение для бюджета в евро
   const FEE_RETAIL = 0.05;    // сервисный сбор ASTTA с розничной продажи
   const FEE_OPT = 0.03;       // сервисный сбор ASTTA с оптовой продажи
   const SHIP = {
@@ -129,6 +130,31 @@
       { who: 'Вика, Челябинск', stars: 5, text: 'Пришла в пыльнике, без запаха. Фурнитура крепкая.' },
       { who: 'Павел, Ростов-на-Дону', stars: 5, text: 'Брал рюкзак сыну, ноутбук влезает спокойно.' },
     ],
+  };
+
+  // Review+: как товар ведёт себя через 3 и 6 месяцев
+  const REVIEWS_LONG = {
+    clothes: { m3: [{ who: 'Анна, Казань', stars: 5, state: 'Как новая', text: '15 стирок при 30 °C: цвет не ушёл, швы целые, не села.' }],
+      m6: [{ who: 'Дмитрий, Екатеринбург', stars: 4, state: 'Лёгкий износ', text: 'Носил всю осень и зиму. На манжетах появились катышки, остальное держится.' }],
+      ok: 86, issue: 'катышки на манжетах после 4–5 месяцев' },
+    shoes: { m3: [{ who: 'Игорь, Новосибирск', stars: 5, state: 'Как новые', text: 'Около 250 км пробега, подошва почти не стёрлась, сетка целая.' }],
+      m6: [{ who: 'Мария, Самара', stars: 4, state: 'Лёгкий износ', text: 'Полгода каждый день. Пятка внутри протёрлась, амортизация на месте.' }],
+      ok: 81, issue: 'протирается задник внутри при ежедневной носке' },
+    furniture: { m3: [{ who: 'Олег, Краснодар', stars: 5, state: 'Как новый', text: 'Ткань не скаталась, кот пока не победил, каркас не скрипит.' }],
+      m6: [{ who: 'Светлана, Москва', stars: 5, state: 'Как новый', text: 'Полгода без изменений, наполнитель не просел.' }],
+      ok: 93, issue: 'жалоб на износ почти нет' },
+    home: { m3: [{ who: 'Ксения, Пермь', stars: 5, state: 'Работает', text: 'Лампа светит каждый вечер, крепление плафона не разболталось.' }],
+      m6: [{ who: 'Артём, Тула', stars: 4, state: 'Работает', text: 'Поменял лампочку на тёплую, сам торшер без нареканий.' }],
+      ok: 90, issue: 'шарнир плафона иногда приходится подтягивать' },
+    tech: { m3: [{ who: 'Никита, Москва', stars: 5, state: 'Работают', text: 'Батарея держит так же, как в первый день: около 30 часов.' }],
+      m6: [{ who: 'Алексей, Уфа', stars: 4, state: 'Лёгкий износ', text: 'Амбушюры чуть потёрлись, звук и шумодав без изменений. Новые амбушюры есть под заказ.' }],
+      ok: 84, issue: 'изнашиваются амбушюры, их можно заказать отдельно' },
+    acc: { m3: [{ who: 'Руслан, Воронеж', stars: 5, state: 'Как новые', text: 'Ремешок не потрескался, стекло без царапин.' }],
+      m6: [{ who: 'Елена, Омск', stars: 4, state: 'Лёгкий износ', text: 'Сменила батарейку в часах, по корпусу пара мелких царапин.' }],
+      ok: 85, issue: 'мелкие царапины на корпусе' },
+    bags: { m3: [{ who: 'Вика, Челябинск', stars: 5, state: 'Как новая', text: 'Экокожа не потрескалась, фурнитура не облезла.' }],
+      m6: [{ who: 'Павел, Ростов-на-Дону', stars: 4, state: 'Лёгкий износ', text: 'Рюкзак полгода в школу каждый день. Лямки целы, дно немного затёрлось.' }],
+      ok: 88, issue: 'затирается дно при ежедневной носке' },
   };
 
   const SIZE_GRID = {
@@ -596,7 +622,7 @@
       </div>
       <div class="thumbs">${o.items.map((id) => `<img src="${img(id)}" alt="${esc(byId[id].t)}" width="52" height="52" loading="lazy">`).join('')}</div>
       <ol class="timeline">${stages}</ol>
-      ${o.delivered ? '' : `<button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>`}
+      ${o.delivered ? `<div class="rvremind">${icon('star')}<div><b>Review+ через 3 месяца</b><span>8 января напомним рассказать, как кроссовки после 3 месяцев носки</span></div><button class="btn btn--line btn--sm" type="button" data-rv-now>Отзыв сейчас</button></div>` : `<button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>`}
     </article>`;
   }
 
@@ -720,9 +746,7 @@
       </div>`;
     const nt = sup ? nextTier(p, pdState.qty) : null;
 
-    const reviews = (REVIEWS[p.cat] || []).map((r) => `<div class="review">
-        <div class="review__head"><b>${esc(r.who)}</b><span class="stars" aria-label="${r.stars} из 5">${[1, 2, 3, 4, 5].map((n) => icon('star', 'ic--fill' + (n > r.stars ? ' is-off' : ''))).join('')}</span></div>
-        <p>${esc(r.text)}</p></div>`).join('');
+    const reviews = reviewsHTML(p);
 
     return `<div class="pd" data-id="${p.id}">
       <div class="pd__media">${FLOATING[p.id]
@@ -745,9 +769,32 @@
         ${optNote}
         <p class="pd__desc">${esc(p.desc)}</p>
         <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
-        <div class="reviews">${reviews}</div>
+        ${reviews}
       </div>
     </div>`;
+  }
+
+  function reviewsHTML(p) {
+    const tab = pdState.rv || 'first';
+    const long = REVIEWS_LONG[p.cat] || { m3: [], m6: [], ok: 0, issue: '' };
+    const lists = { first: REVIEWS[p.cat] || [], m3: long.m3, m6: long.m6 };
+    const stars = (n) => `<span class="stars" aria-label="${n} из 5">${[1, 2, 3, 4, 5].map((k) => icon('star', 'ic--fill' + (k > n ? ' is-off' : ''))).join('')}</span>`;
+    const count = { first: p.reviews, m3: Math.round(p.reviews * 0.34), m6: Math.round(p.reviews * 0.17) };
+    const tabs = [['first', 'Первые впечатления'], ['m3', 'Через 3 месяца'], ['m6', 'Через 6 месяцев']];
+    return `<section class="rvplus" aria-label="Отзывы">
+      <div class="rvplus__head"><span class="sublabel">Отзывы · Review+</span></div>
+      <div class="rvplus__tabs" role="tablist">${tabs.map(([id, name]) => `<button type="button" role="tab" data-rv="${id}" aria-selected="${tab === id}">${name}<small>${count[id]}</small></button>`).join('')}</div>
+      ${tab !== 'first' && long.ok ? `<div class="rvplus__sum">
+        <div class="rvplus__ok"><b>${tab === 'm6' ? long.ok : Math.min(99, long.ok + 6)}%</b><span>довольны спустя ${tab === 'm6' ? 'полгода' : '3 месяца'}</span></div>
+        <div class="bar"><i style="width:${tab === 'm6' ? long.ok : Math.min(99, long.ok + 6)}%"></i></div>
+        <p class="note">Частое со временем: ${esc(long.issue)}</p>
+      </div>` : ''}
+      <div class="reviews">${lists[tab].map((r) => `<div class="review">
+        <div class="review__head"><b>${esc(r.who)}</b>${stars(r.stars)}</div>
+        ${r.state ? `<span class="rvstate">${esc(r.state)} · ${tab === 'm6' ? '6 мес.' : '3 мес.'} использования</span>` : ''}
+        <p>${esc(r.text)}</p></div>`).join('')}</div>
+      <p class="note">Через 3 и 6 месяцев после покупки ASTTA напоминает дописать отзыв, поэтому здесь видно, что стало с товаром со временем.</p>
+    </section>`;
   }
 
   function rerenderProduct() {
@@ -797,7 +844,7 @@
   const AI_INTENTS = [
     { id: 'look', what: 'образ', words: ['образ', 'лук', 'одет', 'одеж', 'гардероб', 'осен', 'стил', 'шмот'],
       slots: [['bomber', 'leather-jacket'], ['sweatshirt', 'tee-white', 'tee-black'], ['runner', 'loafers'], ['sunglasses', 'watch', 'backpack']] },
-    { id: 'room', what: 'комплект для комнаты', words: ['комнат', 'квартир', 'интерьер', 'мебел', 'обстав', 'гостин', 'дом'],
+    { id: 'room', what: 'комплект для комнаты', words: ['комнат', 'спальн', 'офис', 'кабинет', 'квартир', 'интерьер', 'мебел', 'обстав', 'гостин', 'дом'],
       slots: [['sofa', 'armchair', 'lounge-chair'], ['lamp'], ['stool']] },
     { id: 'gift', what: 'подарок', words: ['подар', 'девушк', 'парн', 'друг', 'маме', 'папе', 'брат', 'сестр'],
       slots: [['headphones-anc', 'headphones'], ['watch', 'sunglasses', 'bag']] },
@@ -814,9 +861,10 @@
     for (const m of text.toLowerCase().matchAll(/(\d[\d\s]*\d|\d)\s*(к|k|тыс[а-я]*)?/g)) {
       let n = parseInt(m[1].replace(/\s/g, ''), 10);
       if (m[2]) n *= 1000;
-      if (n >= 300 && n > best) best = n;
+      if (n >= 50 && n > best) best = n;
     }
-    return best || null;
+    if (best && /€|евро|eur/i.test(text)) best *= EUR;
+    return best >= 300 ? best : null;
   }
 
   function aiPlan(text, opts = {}) {
@@ -909,12 +957,14 @@
 4. Для техники и сборок (компьютеры, комплектующие, электроника) проверь совместимость: сокет и чипсет, тип и частота памяти, мощность и разъёмы блока питания, габариты видеокарты и кулера в корпусе, интерфейсы. Коротко перечисли проверки в compat. Для одежды — сочетаемость и размеры.
 5. Если бюджет указан — не превышай его. Если данных мало — всё равно предложи лучший вариант и задай до двух уточняющих вопросов в questions.
 6. Пиши по-русски, коротко и по делу, без воды и без markdown.
+7. Бюджет в евро переводи по курсу 1 € = ${EUR} ₽.
+8. Режим ASTTA Build (запрос начинается с «ASTTA Build»): покупатель хочет обустроить пространство или собрать полный комплект. Закрой все основные зоны (например, для игровой комнаты: игровое место, кресло и стол, свет, звук, хранение, атмосфера), чтобы ничего не пришлось докупать. У каждого товара укажи role — зону комплекта, 1–2 слова. В compat отметь, что всё сочетается по размерам, питанию и стилю.
 
 Каталог ASTTA (JSON):
 ${aiCatalogJSON()}
 
 Отвечай только JSON такого вида:
-{"reply":"1–3 предложения: что собрал и почему","catalog":[{"id":"id из каталога","why":"чем подходит, до 6 слов"}],"custom":[{"name":"конкретная модель","specs":"ключевые характеристики","why":"чем подходит, до 6 слов","est_cny":число,"est_kg":число}],"compat":["одна проверка совместимости"],"questions":["уточняющий вопрос"]}
+{"reply":"1–3 предложения: что собрал и почему","catalog":[{"id":"id из каталога","role":"зона комплекта или пусто","why":"чем подходит, до 6 слов"}],"custom":[{"name":"конкретная модель","role":"зона комплекта или пусто","specs":"ключевые характеристики","why":"чем подходит, до 6 слов","est_cny":число,"est_kg":число}],"compat":["одна проверка совместимости"],"questions":["уточняющий вопрос"]}
 Пустые массивы допустимы.`;
   }
 
@@ -925,10 +975,10 @@ ${aiCatalogJSON()}
     const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
     const out = { reply: str(data && data.reply, 900) || 'Готово.', source: 'claude' };
     out.cat = (Array.isArray(data && data.catalog) ? data.catalog : [])
-      .filter((c) => c && byId[c.id]).slice(0, 8).map((c) => ({ id: c.id, why: [str(c.why, 60)].filter(Boolean) }));
+      .filter((c) => c && byId[c.id]).slice(0, 10).map((c) => ({ id: c.id, role: str(c.role, 30), why: [str(c.why, 60)].filter(Boolean) }));
     out.custom = (Array.isArray(data && data.custom) ? data.custom : [])
-      .filter((c) => c && c.name).slice(0, 10)
-      .map((c) => ({ name: str(c.name, 120), specs: str(c.specs, 200), why: str(c.why, 60), est_cny: num(c.est_cny), est_kg: num(c.est_kg) || 1 }));
+      .filter((c) => c && c.name).slice(0, 14)
+      .map((c) => ({ role: str(c.role, 30), name: str(c.name, 120), specs: str(c.specs, 200), why: str(c.why, 60), est_cny: num(c.est_cny), est_kg: num(c.est_kg) || 1 }));
     out.compat = (Array.isArray(data && data.compat) ? data.compat : []).slice(0, 8).map((x) => str(x, 200));
     out.questions = (Array.isArray(data && data.questions) ? data.questions : []).slice(0, 2).map((x) => str(x, 200));
     return out;
@@ -945,6 +995,7 @@ ${aiCatalogJSON()}
       return `<article class="aicard">
         <button class="aicard__img" type="button" data-open="${c.id}" aria-label="${esc(p.t)}"><img src="${img(c.id)}" alt="" width="160" height="160" loading="lazy"></button>
         <div class="aicard__body">
+          ${c.role ? `<span class="aicard__role">${esc(c.role)}</span>` : ''}
           <b>${esc(p.t)}</b>
           <span class="aicard__price">${rub(retail(p).total)}</span>
           <div class="aicard__why">${c.why.map((r) => `<span>${esc(r)}</span>`).join('')}</div>
@@ -953,6 +1004,7 @@ ${aiCatalogJSON()}
     }).join('') + custom.map((c) => `<article class="aicard aicard--custom">
         <div class="aicard__img aicard__ph">${icon('box')}<span>Под заказ из Китая</span></div>
         <div class="aicard__body">
+          ${c.role ? `<span class="aicard__role">${esc(c.role)}</span>` : ''}
           <b>${esc(c.name)}</b>
           ${c.specs ? `<small>${esc(c.specs)}</small>` : ''}
           <span class="aicard__price">${c.est_cny ? `≈ ${rub(aiCustomRub(c))}` : 'цену уточнит агент'}</span>
@@ -1230,6 +1282,12 @@ ${aiCatalogJSON()}
         <button class="btn btn--lime btn--wide field--full" type="submit">Опубликовать</button>
       </form>
     </div>`, { narrow: true });
+  }
+
+  const build = { cur: 'eur' };
+  function buildOut() {
+    const v = Number($('#buildRange').value);
+    $('#buildOut').textContent = build.cur === 'eur' ? `${nf.format(v)} € ≈ ${rub(v * EUR)}` : rub(v);
   }
 
   /* ---------- Действия кабинета ---------- */
@@ -1520,6 +1578,30 @@ ${aiCatalogJSON()}
     }
     if (d.cab) { cabAction(d.cab); return; }
     if (d.quick) { sendChat(d.quick); return; }
+    if (d.rv) { pdState.rv = d.rv; rerenderProduct(); return; }
+    if (t.matches('[data-rv-now]')) { toast('Спасибо! Форма отзыва появится в рабочей версии'); return; }
+    if (d.aiTab) {
+      $$('[data-ai-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.aiTab === d.aiTab)));
+      $$('[data-ai-pane]').forEach((el) => { el.hidden = el.dataset.aiPane !== d.aiTab; });
+      return;
+    }
+    if (d.buildGoal) {
+      $$('[data-build-goal]').forEach((b) => b.setAttribute('aria-pressed', String(b === t)));
+      $('#buildGoal').value = d.buildGoal;
+      return;
+    }
+    if (d.buildCur) {
+      const toRub = d.buildCur === 'rub';
+      if ((build.cur === 'rub') === toRub) return;
+      const range = $('#buildRange');
+      const val = Number(range.value);
+      build.cur = d.buildCur;
+      if (toRub) { range.min = 10000; range.max = 500000; range.step = 5000; range.value = Math.round(val * EUR / 5000) * 5000; }
+      else { range.min = 100; range.max = 5000; range.step = 50; range.value = Math.round(val / EUR / 50) * 50; }
+      $$('[data-build-cur]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.buildCur === d.buildCur)));
+      buildOut();
+      return;
+    }
     if (d.trend !== undefined) { tr.start = Number(d.trend); go('trends'); return; }
     if (d.reelStep) { showPhoto(tr.photo + Number(d.reelStep)); return; }
     if (d.reelHeart !== undefined) { likeReel(Number(d.reelHeart)); return; }
@@ -1621,11 +1703,19 @@ ${aiCatalogJSON()}
   function onInput(e) {
     const t = e.target;
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
+    if (t.id === 'buildRange') buildOut();
   }
 
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
+    if (f.id === 'buildForm') {
+      const goal = $('#buildGoal').value.trim() || 'Игровая комната';
+      const val = Number($('#buildRange').value);
+      const money = build.cur === 'eur' ? `${nf.format(val)} €` : `${nf.format(val)} ₽`;
+      aiAsk(`ASTTA Build: ${goal} за ${money}. Собери полный комплект, чтобы ничего не пришлось докупать.`, { label: `Build: ${goal} за ${money}` });
+      return;
+    }
     if (f.id === 'tCommentForm') {
       const input = $('#tCommentInput');
       const text = input.value.trim();
@@ -1744,6 +1834,7 @@ ${aiCatalogJSON()}
       requestAnimationFrame(() => $('#q').focus());
     });
     window.addEventListener('hashchange', route);
+    buildOut();
     $('#trendsScroll').addEventListener('dblclick', (e) => {
       const reel = e.target.closest('.reel');
       if (reel && !e.target.closest('.reel__side, .reel__info')) likeReel(Number(reel.dataset.reel), true);

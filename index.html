@@ -165,18 +165,42 @@
     <section class="ai" id="ai" aria-labelledby="aiTitle">
       <span class="ai__badge"><svg class="ic"><use href="#i-spark"/></svg>ASTTA AI</span>
       <h2 id="aiTitle">Скажи, что нужно.<br>Соберу корзину.</h2>
-      <p class="ai__sub">Подберу из каталога, а чего нет — найду под заказ в Китае и проверю совместимость.</p>
-      <form class="ai__form" id="aiForm" novalidate>
-        <label class="sr" for="aiInput">Запрос для ASTTA AI</label>
-        <input id="aiInput" type="text" autocomplete="off" placeholder="Что подобрать и за сколько?">
-        <button class="roundbtn" type="submit" aria-label="Подобрать"><svg class="ic"><use href="#i-arrow"/></svg></button>
-      </form>
-      <div class="ai__chips">
-        <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ на осень до 15 000 ₽</button>
-        <button class="chip" type="button" data-ai-ask="Подарок парню до 5 000 ₽">Подарок парню до 5 000 ₽</button>
-        <button class="chip" type="button" data-ai-ask="Обставить комнату до 60 000 ₽">Комната до 60 000 ₽</button>
-        <button class="chip" type="button" data-ai-ask="Собери игровой компьютер за 70 000 ₽">Игровой ПК за 70 000 ₽</button>
+      <div class="aitabs" role="tablist" aria-label="Режим ASTTA AI">
+        <button type="button" role="tab" data-ai-tab="ask" aria-selected="true">Подобрать</button>
+        <button type="button" role="tab" data-ai-tab="build" aria-selected="false">Build: комплект</button>
       </div>
+      <div class="aipane" data-ai-pane="ask">
+        <p class="ai__sub">Подберу из каталога, а чего нет — найду под заказ в Китае и проверю совместимость.</p>
+        <form class="ai__form" id="aiForm" novalidate>
+          <label class="sr" for="aiInput">Запрос для ASTTA AI</label>
+          <input id="aiInput" type="text" autocomplete="off" placeholder="Что подобрать и за сколько?">
+          <button class="roundbtn" type="submit" aria-label="Подобрать"><svg class="ic"><use href="#i-arrow"/></svg></button>
+        </form>
+        <div class="ai__chips">
+          <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ на осень до 15 000 ₽</button>
+          <button class="chip" type="button" data-ai-ask="Подарок парню до 5 000 ₽">Подарок парню до 5 000 ₽</button>
+          <button class="chip" type="button" data-ai-ask="Собери игровой компьютер за 70 000 ₽">Игровой ПК за 70 000 ₽</button>
+        </div>
+      </div>
+      <form class="aipane build" data-ai-pane="build" id="buildForm" novalidate hidden>
+        <p class="ai__sub">Опишите цель, и я соберу полный комплект: все зоны, всё совместимо, в рамках бюджета.</p>
+        <div class="build__goals" role="radiogroup" aria-label="Цель">
+          <button class="chip" type="button" data-build-goal="Игровая комната" aria-pressed="true">Игровая комната</button>
+          <button class="chip" type="button" data-build-goal="Домашний офис" aria-pressed="false">Домашний офис</button>
+          <button class="chip" type="button" data-build-goal="Спальня" aria-pressed="false">Спальня</button>
+          <button class="chip" type="button" data-build-goal="Гардероб на осень" aria-pressed="false">Гардероб на осень</button>
+        </div>
+        <label class="field"><span>Или своя цель</span><input id="buildGoal" type="text" autocomplete="off" value="Игровая комната" placeholder="Например: кухня в съёмной квартире"></label>
+        <div class="build__budget">
+          <div class="build__row"><span>Бюджет</span><output id="buildOut">1 000 €</output></div>
+          <input id="buildRange" type="range" min="100" max="5000" step="50" value="1000" aria-label="Бюджет">
+          <div class="build__cur" role="radiogroup" aria-label="Валюта">
+            <button type="button" data-build-cur="eur" aria-pressed="true">€</button>
+            <button type="button" data-build-cur="rub" aria-pressed="false">₽</button>
+          </div>
+        </div>
+        <button class="btn btn--lime" type="submit"><svg class="ic"><use href="#i-spark"/></svg>Собрать комплект</button>
+      </form>
     </section>
 
     <section class="block">
