@@ -82,6 +82,7 @@
     </div>
 
     <div class="topbar__actions">
+      <button class="topbtn topbtn--ai" type="button" data-ai-open aria-label="ASTTA AI"><span>AI</span><svg class="ic"><use href="#i-spark"/></svg></button>
       <button class="topbtn" id="searchBtn" type="button" aria-label="Поиск"><span>Поиск</span><svg class="ic"><use href="#i-search"/></svg></button>
       <a class="topbtn" href="#cart" aria-label="Корзина"><span>Корзина</span><svg class="ic"><use href="#i-bag"/></svg><b class="count" data-cart-count hidden>0</b></a>
       <button class="menubtn" id="menuBtn" type="button" aria-label="Открыть меню" aria-controls="menu" aria-expanded="false"><svg class="ic"><use href="#i-menu"/></svg></button>
@@ -153,6 +154,22 @@
     </ul>
 
     <div id="cabinetPreview" hidden></div>
+
+    <section class="ai" id="ai" aria-labelledby="aiTitle">
+      <span class="ai__badge"><svg class="ic"><use href="#i-spark"/></svg>ASTTA AI</span>
+      <h2 id="aiTitle">Скажи, что нужно.<br>Соберу корзину.</h2>
+      <form class="ai__form" id="aiForm" novalidate>
+        <label class="sr" for="aiInput">Запрос для ASTTA AI</label>
+        <input id="aiInput" type="text" autocomplete="off" placeholder="Что подобрать и за сколько?">
+        <button class="roundbtn" type="submit" aria-label="Подобрать"><svg class="ic"><use href="#i-arrow"/></svg></button>
+      </form>
+      <div class="ai__chips">
+        <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ на осень до 15 000 ₽</button>
+        <button class="chip" type="button" data-ai-ask="Подарок парню до 5 000 ₽">Подарок парню до 5 000 ₽</button>
+        <button class="chip" type="button" data-ai-ask="Обставить комнату до 60 000 ₽">Комната до 60 000 ₽</button>
+        <button class="chip" type="button" data-ai-ask="Собери игровой компьютер за 70 000 ₽">Игровой ПК за 70 000 ₽</button>
+      </div>
+    </section>
 
     <section class="block">
       <div class="block__head"><h2>Подборки</h2><a href="#catalog" class="more">Весь каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>

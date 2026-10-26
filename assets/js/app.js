@@ -481,7 +481,7 @@
     const anyLight = items.some((i) => !byId[i.id].bulky);
     const rows = items.map((i, idx) => {
       const p = byId[i.id];
-      const sizeLabel = i.size ? ` · размер CN ${esc(i.size)}` : '';
+      const sizeLabel = i.size === '?' ? ' · размер подберёт агент' : (i.size ? ` · размер CN ${esc(i.size)}` : '');
       let price, hint = '', min = 1;
       if (isSupplier()) {
         const w = wholesale(p, i.qty);
@@ -790,6 +790,153 @@
     }, 1200);
   }
 
+  /* ---------- ASTTA AI: помощник, который собирает корзину ----------
+     В прототипе это сценарная логика по каталогу. В рабочей версии запрос уходит
+     языковой модели, а она выбирает товары из базы и проверяет их совместимость. */
+  const AI_INTENTS = [
+    { id: 'look', what: 'образ', words: ['образ', 'лук', 'одет', 'одеж', 'гардероб', 'осен', 'стил', 'шмот'],
+      slots: [['bomber', 'leather-jacket'], ['sweatshirt', 'tee-white', 'tee-black'], ['runner', 'loafers'], ['sunglasses', 'watch', 'backpack']] },
+    { id: 'room', what: 'комплект для комнаты', words: ['комнат', 'квартир', 'интерьер', 'мебел', 'обстав', 'гостин', 'дом'],
+      slots: [['sofa', 'armchair', 'lounge-chair'], ['lamp'], ['stool']] },
+    { id: 'gift', what: 'подарок', words: ['подар', 'девушк', 'парн', 'друг', 'маме', 'папе', 'брат', 'сестр'],
+      slots: [['headphones-anc', 'headphones'], ['watch', 'sunglasses', 'bag']] },
+    { id: 'study', what: 'набор на учёбу', words: ['учёб', 'учеб', 'школ', 'универ', 'студент', 'колледж'],
+      slots: [['backpack'], ['headphones', 'headphones-anc'], ['tee-white', 'sweatshirt']] },
+    { id: 'tech', what: 'наушники', words: ['наушн', 'музык', 'звук'],
+      slots: [['headphones-anc', 'headphones']] },
+  ];
+  const AI_PC = ['компьют', 'пк', 'видеокарт', 'процессор', 'сборк', 'ноутбук', 'монитор'];
+  const ai = { log: [], last: null };
+
+  function aiBudget(text) {
+    let best = 0;
+    for (const m of text.toLowerCase().matchAll(/(\d[\d\s]*\d|\d)\s*(к|k|тыс[а-я]*)?/g)) {
+      let n = parseInt(m[1].replace(/\s/g, ''), 10);
+      if (m[2]) n *= 1000;
+      if (n >= 300 && n > best) best = n;
+    }
+    return best || null;
+  }
+
+  function aiPlan(text, opts = {}) {
+    const t = text.toLowerCase();
+    const budget = opts.budget || aiBudget(text);
+    if (AI_PC.some((w) => t.includes(w))) return { kind: 'pc', budget };
+    const priceOf = (id) => retail(byId[id]).total;
+    const intent = AI_INTENTS.find((i) => i.words.some((w) => t.includes(w)));
+    let combos = [];
+    if (intent) {
+      // перебираем варианты по слотам; слот можно пропустить, если бюджет не пускает
+      const walk = (k, picked) => {
+        if (k === intent.slots.length) { combos.push(picked.filter(Boolean)); return; }
+        for (const id of [...intent.slots[k], null]) walk(k + 1, [...picked, id]);
+      };
+      walk(0, []);
+    } else {
+      const stems = t.split(/[^а-яёa-z0-9]+/).filter((w) => w.length > 3).map((w) => w.slice(0, 5));
+      const hits = PRODUCTS.filter((p) => stems.some((st) => p.t.toLowerCase().includes(st))).map((p) => p.id);
+      if (!hits.length) return { kind: 'none', budget };
+      combos = hits.map((id) => [id]);
+    }
+    const scored = combos.filter((c) => c.length).map((ids) => {
+      const total = ids.reduce((sum, id) => sum + priceOf(id), 0);
+      const rating = ids.reduce((sum, id) => sum + byId[id].rating, 0) / ids.length;
+      return { ids, total, rating };
+    }).filter((c) => !budget || c.total <= budget)
+      .sort((a, b) => b.ids.length - a.ids.length || (budget ? b.total - a.total : 0) || b.rating - a.rating);
+    if (!scored.length) return { kind: 'tight', budget, intent };
+    const pick = scored[(opts.variant || 0) % scored.length];
+    return { kind: 'cart', intent, budget, ...pick };
+  }
+
+  function aiReasons(p, plan) {
+    const r = [];
+    if (p.rating >= 4.8) r.push(`Рейтинг ${nf1.format(p.rating)}`);
+    if (p.sale) r.push(`Скидка −${p.sale}%`);
+    if (p.group) r.push('Есть совместный опт');
+    if (plan.budget) r.push('Влезает в бюджет');
+    r.push(`${daysText(SHIP[shipFor(p)].days)} доставка`);
+    return r.slice(0, 2);
+  }
+
+  function aiAnswer(plan) {
+    if (plan.kind === 'pc') {
+      return { text: `Комплектующих для компьютеров в каталоге пока нет. Передам запрос агенту TT · Шэньчжэнь: он соберёт сборку${plan.budget ? ` до ${rub(plan.budget)}` : ''} у поставщиков на рынке Хуацянбэй, проверит совместимость и пришлёт готовую корзину.`, action: 'pc' };
+    }
+    if (plan.kind === 'none') return { text: 'Не нашёл такого в каталоге. Опишите задачу, например «подарок девушке до 7 000 ₽», или пришлите ссылку на товар, и агент найдёт его у поставщиков.' };
+    if (plan.kind === 'tight') return { text: `В ${rub(plan.budget)} не укладывается даже самый дешёвый вариант. Попробуйте увеличить бюджет или убрать часть вещей.` };
+    const sups = [...new Set(plan.ids.map((id) => SUPPLIERS[byId[id].sup].name))];
+    const what = plan.intent ? plan.intent.what : 'варианты';
+    const left = plan.budget ? ` из ${rub(plan.budget)}, остаётся ${rub(plan.budget - plan.total)}` : '';
+    return { text: `Собрал ${what} на ${rub(plan.total)}${left}. ${sups.length > 1 ? 'Поставщики' : 'Поставщик'}: ${sups.join(', ')}. Цены уже с доставкой.`, plan };
+  }
+
+  function aiResultHTML(plan) {
+    const cards = plan.ids.map((id) => {
+      const p = byId[id];
+      return `<article class="aicard">
+        <button class="aicard__img" type="button" data-open="${id}" aria-label="${esc(p.t)}"><img src="${img(id)}" alt="" width="160" height="160" loading="lazy"></button>
+        <div class="aicard__body">
+          <b>${esc(p.t)}</b>
+          <span class="aicard__price">${rub(retail(p).total)}</span>
+          <div class="aicard__why">${aiReasons(p, plan).map((r) => `<span>${r}</span>`).join('')}</div>
+        </div>
+      </article>`;
+    }).join('');
+    return `<div class="airesult">
+      <div class="aicards">${cards}</div>
+      <div class="aitotal"><div><span>Готовая корзина</span><b>${rub(plan.total)}</b></div><button class="btn btn--lime btn--sm" type="button" data-ai-add>Добавить всё</button></div>
+      <div class="quick"><button class="chip" type="button" data-ai-more="cheaper">Дешевле</button><button class="chip" type="button" data-ai-more="other">Другой вариант</button></div>
+    </div>`;
+  }
+
+  function aiRender() {
+    const box = $('#aiMsgs');
+    if (!box) return;
+    box.innerHTML = ai.log.map((m) => {
+      if (m.me) return `<div class="msg msg--me">${esc(m.text)}</div>`;
+      if (m.typing) return '<div class="msg msg--typing">ASTTA AI подбирает товары…</div>';
+      let html = `<div class="msg msg--ai">${esc(m.text)}</div>`;
+      if (m.plan) html += aiResultHTML(m.plan);
+      if (m.action === 'pc') html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="sz" style="align-self:flex-start">Передать агенту</button>';
+      return html;
+    }).join('');
+    box.lastElementChild && box.lastElementChild.scrollIntoView({ block: 'end' });
+  }
+
+  function openAI() {
+    openSheet(`<div class="chat aichat">
+      <div class="chat__agent"><span class="ava ava--ai" aria-hidden="true">${icon('spark')}</span><div><b>ASTTA AI</b><span>подбирает товары под задачу и бюджет</span></div></div>
+      <div class="msgs" id="aiMsgs"></div>
+      ${ai.log.length ? '' : `<div class="quick" id="aiStart">
+        <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ до 15 000 ₽</button>
+        <button class="chip" type="button" data-ai-ask="Подарок девушке до 7 000 ₽">Подарок девушке</button>
+        <button class="chip" type="button" data-ai-ask="Набор на учёбу до 5 000 ₽">На учёбу до 5 000 ₽</button>
+      </div>`}
+      <form class="chat__form" id="aiChatForm"><input id="aiChatInput" autocomplete="off" placeholder="Что подобрать?" aria-label="Запрос для ASTTA AI"><button class="roundbtn" type="submit" aria-label="Отправить">${icon('arrow')}</button></form>
+    </div>`, { narrow: true });
+    if (!ai.log.length) ai.log.push({ text: 'Привет! Напишите, что нужно и сколько готовы потратить. Соберу корзину из товаров поставщиков TT Логистики, цены сразу с доставкой.' });
+    aiRender();
+  }
+
+  function aiAsk(text, opts = {}) {
+    const q = text.trim();
+    if (!q) return;
+    if (!$('#aiMsgs')) openAI();
+    const start = $('#aiStart');
+    if (start) start.remove();
+    if (!opts.silent) ai.log.push({ me: true, text: q });
+    ai.log.push({ typing: true });
+    aiRender();
+    setTimeout(() => {
+      ai.log = ai.log.filter((m) => !m.typing);
+      const plan = aiPlan(q, opts);
+      ai.last = { q, plan, variant: opts.variant || 0 };
+      ai.log.push(aiAnswer(plan));
+      aiRender();
+    }, 900);
+  }
+
   /* ---------- Действия кабинета ---------- */
   function cabAction(kind) {
     if (kind === 'add') {
@@ -1074,6 +1221,28 @@
       return;
     }
     if (d.cab) { cabAction(d.cab); return; }
+    if (d.quick) { sendChat(d.quick); return; }
+    if (d.aiOpen !== undefined) { openAI(); return; }
+    if (d.aiAsk) { aiAsk(d.aiAsk); return; }
+    if (d.aiMore && ai.last && ai.last.plan.kind === 'cart') {
+      const { q, plan, variant } = ai.last;
+      if (d.aiMore === 'cheaper') { ai.log.push({ me: true, text: 'Дешевле' }); aiAsk(q, { silent: true, budget: Math.floor(plan.total * 0.8) }); }
+      else { ai.log.push({ me: true, text: 'Другой вариант' }); aiAsk(q, { silent: true, budget: plan.budget, variant: variant + 1 }); }
+      return;
+    }
+    if (t.matches('[data-ai-add]') && ai.last && ai.last.plan.kind === 'cart') {
+      const list = cart();
+      ai.last.plan.ids.forEach((id) => {
+        const p = byId[id];
+        const qty = isSupplier() ? p.tiers[0][0] : 1;
+        const size = !isSupplier() && p.sizes ? '?' : null;
+        const item = list.find((x) => x.id === id && x.size === size);
+        if (item) item.qty += qty; else list.push({ id, qty, size });
+      });
+      store.save(); updateCartCount();
+      toast(`В корзине ${ai.last.plan.ids.length} ${plural(ai.last.plan.ids.length, 'товар', 'товара', 'товаров')} от ASTTA AI`);
+      return;
+    }
     if (t.tagName === 'A' && t.getAttribute('href') === location.hash) { e.preventDefault(); route(); }
   }
   function selectText(el) {
@@ -1108,6 +1277,14 @@
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
+    if (f.id === 'aiForm' || f.id === 'aiChatForm') {
+      const input = $(f.id === 'aiForm' ? '#aiInput' : '#aiChatInput');
+      const q = input.value;
+      input.value = '';
+      if (!q.trim()) { toast('Напишите, что подобрать'); input.focus(); return; }
+      aiAsk(q);
+      return;
+    }
     if (f.id === 'linkForm') {
       const input = $('#linkInput');
       const link = input.value.trim();

@@ -674,6 +674,42 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
 @keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
+/* ASTTA AI */
+.ai {
+  position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 18px;
+  padding: 26px 20px; border-radius: var(--r-lg);
+  background: radial-gradient(80% 90% at 100% 0%, rgba(29, 154, 108, .45), transparent 70%), radial-gradient(60% 70% at 0% 100%, rgba(220, 239, 58, .1), transparent 70%), var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.ai__badge { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: rgba(220, 239, 58, .12); color: var(--lime); font: 600 13px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.ai__badge .ic { width: 16px; height: 16px; }
+.ai h2 { font: 600 clamp(32px, 8.5vw, 60px)/1 var(--font-display); text-transform: uppercase; }
+.ai__form { display: flex; gap: 8px; width: 100%; max-width: 620px; padding: 6px; border-radius: 999px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); }
+.ai__form:focus-within { box-shadow: inset 0 0 0 2px var(--lime); }
+.ai__form input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; border: 0; background: none; outline: none; font-size: 16px; }
+.ai__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai__chips .chip { background: transparent; }
+.topbtn--ai { color: var(--lime); }
+.ava--ai { background: var(--lime); color: var(--on-lime); box-shadow: none; }
+.ava--ai .ic { width: 20px; height: 20px; }
+.msg--ai { background: var(--surface-2); }
+.airesult { display: flex; flex-direction: column; gap: 10px; }
+.aicards { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; scroll-snap-type: x proximity; }
+.aicards::-webkit-scrollbar { display: none; }
+.aicard { flex: 0 0 210px; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-sm); background: var(--surface-2); scroll-snap-align: start; }
+.aicard__img { display: block; padding: 0; border: 0; background: var(--surface); }
+.aicard__img img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.aicard__body { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; }
+.aicard__body b { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.aicard__price { font: 600 19px/1 var(--font-display); }
+.aicard__why { display: flex; flex-wrap: wrap; gap: 4px; }
+.aicard__why span { padding: 4px 8px; border-radius: 999px; background: rgba(220, 239, 58, .12); color: var(--lime); font-size: 11.5px; font-weight: 600; }
+.aitotal { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1.5px var(--lime); }
+.aitotal div { display: flex; flex-direction: column; gap: 2px; }
+.aitotal span { font-size: 12.5px; color: var(--muted); }
+.aitotal b { font: 600 24px/1 var(--font-display); }
+@media (min-width: 900px) { .ai { padding: 44px 48px; } }
+
 /* Чат */
 .chat { display: flex; flex-direction: column; gap: 16px; }
 .chat__agent { display: flex; align-items: center; gap: 12px; padding-right: 52px; }
