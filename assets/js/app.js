@@ -806,7 +806,7 @@
       slots: [['headphones-anc', 'headphones']] },
   ];
   const AI_PC = ['компьют', 'пк', 'видеокарт', 'процессор', 'сборк', 'ноутбук', 'монитор'];
-  const ai = { log: [], last: null };
+  const ai = { log: [], last: null, turns: [], mode: null, busy: false, ctl: null, stage: 0 };
 
   function aiBudget(text) {
     let best = 0;
@@ -859,82 +859,206 @@
     return r.slice(0, 2);
   }
 
-  function aiAnswer(plan) {
+  // Ответ демо-режима (без модели): та же разметка, что и у ответа Claude
+  function aiDemoAnswer(plan) {
     if (plan.kind === 'pc') {
-      return { text: `Комплектующих для компьютеров в каталоге пока нет. Передам запрос агенту TT · Шэньчжэнь: он соберёт сборку${plan.budget ? ` до ${rub(plan.budget)}` : ''} у поставщиков на рынке Хуацянбэй, проверит совместимость и пришлёт готовую корзину.`, action: 'pc' };
+      return { reply: `Комплектующих для компьютеров в каталоге пока нет. Передам запрос агенту TT · Шэньчжэнь: он соберёт сборку${plan.budget ? ` до ${rub(plan.budget)}` : ''} у поставщиков на рынке Хуацянбэй, проверит совместимость и пришлёт готовую корзину.`, toAgent: true };
     }
-    if (plan.kind === 'none') return { text: 'Не нашёл такого в каталоге. Опишите задачу, например «подарок девушке до 7 000 ₽», или пришлите ссылку на товар, и агент найдёт его у поставщиков.' };
-    if (plan.kind === 'tight') return { text: `В ${rub(plan.budget)} не укладывается даже самый дешёвый вариант. Попробуйте увеличить бюджет или убрать часть вещей.` };
+    if (plan.kind === 'none') return { reply: 'Не нашёл такого в каталоге. Опишите задачу, например «подарок девушке до 7 000 ₽», или пришлите ссылку на товар, и агент найдёт его у поставщиков.' };
+    if (plan.kind === 'tight') return { reply: `В ${rub(plan.budget)} не укладывается даже самый дешёвый вариант. Попробуйте увеличить бюджет или убрать часть вещей.` };
     const sups = [...new Set(plan.ids.map((id) => SUPPLIERS[byId[id].sup].name))];
-    const what = plan.intent ? plan.intent.what : 'варианты';
     const left = plan.budget ? ` из ${rub(plan.budget)}, остаётся ${rub(plan.budget - plan.total)}` : '';
-    return { text: `Собрал ${what} на ${rub(plan.total)}${left}. ${sups.length > 1 ? 'Поставщики' : 'Поставщик'}: ${sups.join(', ')}. Цены уже с доставкой.`, plan };
+    return {
+      reply: `Собрал ${plan.intent ? plan.intent.what : 'варианты'} на ${rub(plan.total)}${left}. ${sups.length > 1 ? 'Поставщики' : 'Поставщик'}: ${sups.join(', ')}. Цены уже с доставкой.`,
+      cat: plan.ids.map((id) => ({ id, why: aiReasons(byId[id], plan) })), demoPlan: plan,
+    };
   }
 
-  function aiResultHTML(plan) {
-    const cards = plan.ids.map((id) => {
-      const p = byId[id];
+  /* --- Настоящая модель: в превью на claude.ai страница спрашивает Claude.
+     Модель не ходит в интернет: товары вне каталога она предлагает по своим знаниям
+     о китайском рынке, цены в юанях оценочные, точную цену подтверждает агент. --- */
+  let aiSamplePromise = null;
+  function aiSample() {
+    if (!aiSamplePromise) {
+      aiSamplePromise = (typeof claude !== 'undefined' && claude && typeof claude.use === 'function')
+        ? claude.use('sample').catch(() => null)
+        : Promise.resolve(null);
+    }
+    return aiSamplePromise;
+  }
+
+  function aiCatalogJSON() {
+    return JSON.stringify(PRODUCTS.map((p) => ({
+      id: p.id, title: p.t, category: (CATS.find((c) => c.id === p.cat) || {}).name, supplier: SUPPLIERS[p.sup].name,
+      price_rub_delivered: retail(p).total, rating: p.rating, sale_pct: p.sale || 0,
+      wholesale: `от ${p.tiers[0][0]} шт по ${p.tiers[0][1]} ¥`, delivery_days: SHIP[shipFor(p)].days.join('–'),
+      sizes: p.sizes ? SIZE_GRID[p.sizes].map(([cn]) => cn).join(',') : null, about: p.desc,
+    })));
+  }
+
+  function aiRules() {
+    return `Ты — ASTTA AI, умный помощник по покупкам маркетплейса ASTTA. ASTTA продаёт товары из Китая от поставщиков TT Логистики с доставкой в Россию, а агенты TT Логистики могут выкупить почти любой товар с 1688, Taobao, Tmall, JD и Poizon под индивидуальный заказ.
+
+Твоя задача: по запросу покупателя собрать готовое решение — корзину, в которой всё подходит друг к другу и укладывается в бюджет.
+
+Правила:
+1. Сначала подбирай из каталога ниже. Используй только id из каталога, ничего не выдумывай о его товарах. Цены каталога уже в рублях с доставкой до пункта выдачи.
+2. Если в каталоге нужного нет или не хватает части решения — предложи товары под индивидуальный заказ из Китая: конкретные модели, которые реально продаются на китайских площадках, с примерной ценой на китайском рынке в юанях (est_cny) и весом с упаковкой в кг (est_kg). Ты не видишь интернет, поэтому цены оценочные — так и считай их, агент подтвердит точную цену.
+3. Сайт сам переведёт est_cny в рубли так: цена_руб ≈ est_cny × ${rateText.replace(',', '.')} × 1,05 + est_kg × ${SHIP.auto.perKg}. Учитывай это, чтобы уложиться в бюджет.
+4. Для техники и сборок (компьютеры, комплектующие, электроника) проверь совместимость: сокет и чипсет, тип и частота памяти, мощность и разъёмы блока питания, габариты видеокарты и кулера в корпусе, интерфейсы. Коротко перечисли проверки в compat. Для одежды — сочетаемость и размеры.
+5. Если бюджет указан — не превышай его. Если данных мало — всё равно предложи лучший вариант и задай до двух уточняющих вопросов в questions.
+6. Пиши по-русски, коротко и по делу, без воды и без markdown.
+
+Каталог ASTTA (JSON):
+${aiCatalogJSON()}
+
+Отвечай только JSON такого вида:
+{"reply":"1–3 предложения: что собрал и почему","catalog":[{"id":"id из каталога","why":"чем подходит, до 6 слов"}],"custom":[{"name":"конкретная модель","specs":"ключевые характеристики","why":"чем подходит, до 6 слов","est_cny":число,"est_kg":число}],"compat":["одна проверка совместимости"],"questions":["уточняющий вопрос"]}
+Пустые массивы допустимы.`;
+  }
+
+  const aiCustomRub = (c) => round10(c.est_cny * RATE * (1 + FEE_RETAIL) + c.est_kg * SHIP.auto.perKg);
+
+  function aiNormalize(data) {
+    const str = (v, max = 300) => String(v == null ? '' : v).slice(0, max);
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+    const out = { reply: str(data && data.reply, 900) || 'Готово.', source: 'claude' };
+    out.cat = (Array.isArray(data && data.catalog) ? data.catalog : [])
+      .filter((c) => c && byId[c.id]).slice(0, 8).map((c) => ({ id: c.id, why: [str(c.why, 60)].filter(Boolean) }));
+    out.custom = (Array.isArray(data && data.custom) ? data.custom : [])
+      .filter((c) => c && c.name).slice(0, 10)
+      .map((c) => ({ name: str(c.name, 120), specs: str(c.specs, 200), why: str(c.why, 60), est_cny: num(c.est_cny), est_kg: num(c.est_kg) || 1 }));
+    out.compat = (Array.isArray(data && data.compat) ? data.compat : []).slice(0, 8).map((x) => str(x, 200));
+    out.questions = (Array.isArray(data && data.questions) ? data.questions : []).slice(0, 2).map((x) => str(x, 200));
+    return out;
+  }
+
+  function aiResultHTML(m, idx) {
+    const cat = m.cat || [];
+    const custom = m.custom || [];
+    if (!cat.length && !custom.length) return '';
+    const catTotal = cat.reduce((sum, c) => sum + retail(byId[c.id]).total, 0);
+    const customTotal = custom.reduce((sum, c) => sum + (c.est_cny ? aiCustomRub(c) : 0), 0);
+    const cards = cat.map((c) => {
+      const p = byId[c.id];
       return `<article class="aicard">
-        <button class="aicard__img" type="button" data-open="${id}" aria-label="${esc(p.t)}"><img src="${img(id)}" alt="" width="160" height="160" loading="lazy"></button>
+        <button class="aicard__img" type="button" data-open="${c.id}" aria-label="${esc(p.t)}"><img src="${img(c.id)}" alt="" width="160" height="160" loading="lazy"></button>
         <div class="aicard__body">
           <b>${esc(p.t)}</b>
           <span class="aicard__price">${rub(retail(p).total)}</span>
-          <div class="aicard__why">${aiReasons(p, plan).map((r) => `<span>${r}</span>`).join('')}</div>
+          <div class="aicard__why">${c.why.map((r) => `<span>${esc(r)}</span>`).join('')}</div>
         </div>
       </article>`;
-    }).join('');
+    }).join('') + custom.map((c) => `<article class="aicard aicard--custom">
+        <div class="aicard__img aicard__ph">${icon('box')}<span>Под заказ из Китая</span></div>
+        <div class="aicard__body">
+          <b>${esc(c.name)}</b>
+          ${c.specs ? `<small>${esc(c.specs)}</small>` : ''}
+          <span class="aicard__price">${c.est_cny ? `≈ ${rub(aiCustomRub(c))}` : 'цену уточнит агент'}</span>
+          ${c.why ? `<div class="aicard__why"><span>${esc(c.why)}</span></div>` : ''}
+        </div>
+      </article>`).join('');
+    const compat = (m.compat || []).length ? `<ul class="aicompat">${m.compat.map((x) => `<li>${icon('check')}${esc(x)}</li>`).join('')}</ul>` : '';
+    const total = catTotal + customTotal;
     return `<div class="airesult">
       <div class="aicards">${cards}</div>
-      <div class="aitotal"><div><span>Готовая корзина</span><b>${rub(plan.total)}</b></div><button class="btn btn--lime btn--sm" type="button" data-ai-add>Добавить всё</button></div>
-      <div class="quick"><button class="chip" type="button" data-ai-more="cheaper">Дешевле</button><button class="chip" type="button" data-ai-more="other">Другой вариант</button></div>
+      ${compat}
+      <div class="aitotal">
+        <div><span>${custom.length ? 'Итого, оценка' : 'Готовая корзина'}</span><b>${custom.length ? '≈ ' : ''}${rub(total)}</b></div>
+        <div class="aitotal__btns">
+          ${cat.length ? `<button class="btn btn--lime btn--sm" type="button" data-ai-add="${idx}">${custom.length ? 'Из каталога в корзину' : 'Добавить всё'}</button>` : ''}
+          ${custom.length ? `<button class="btn ${cat.length ? 'btn--line' : 'btn--lime'} btn--sm" type="button" data-ai-custom="${idx}">Индивидуальный заказ</button>` : ''}
+        </div>
+      </div>
+      ${custom.length ? '<p class="note">Цены под заказ оценочные, точную цену и наличие агент подтвердит до оплаты.</p>' : ''}
+      <div class="quick"><button class="chip" type="button" data-ai-more="cheaper" data-ai-idx="${idx}">Дешевле</button><button class="chip" type="button" data-ai-more="other" data-ai-idx="${idx}">Другой вариант</button></div>
     </div>`;
   }
+
+  const AI_STAGES = ['Разбираю запрос…', 'Ищу в каталоге ASTTA…', 'Подбираю под заказ из Китая…', 'Проверяю совместимость и бюджет…', 'Собираю корзину…'];
 
   function aiRender() {
     const box = $('#aiMsgs');
     if (!box) return;
-    box.innerHTML = ai.log.map((m) => {
+    box.innerHTML = ai.log.map((m, idx) => {
       if (m.me) return `<div class="msg msg--me">${esc(m.text)}</div>`;
-      if (m.typing) return '<div class="msg msg--typing">ASTTA AI подбирает товары…</div>';
-      let html = `<div class="msg msg--ai">${esc(m.text)}</div>`;
-      if (m.plan) html += aiResultHTML(m.plan);
-      if (m.action === 'pc') html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="sz" style="align-self:flex-start">Передать агенту</button>';
+      if (m.typing) return `<div class="msg msg--typing"><span id="aiStage">${AI_STAGES[ai.stage % AI_STAGES.length]}</span>${ai.ctl ? ' <button class="linkbtn" type="button" data-ai-stop>Стоп</button>' : ''}</div>`;
+      let html = `<div class="msg msg--ai">${esc(m.reply || m.text)}</div>`;
+      html += aiResultHTML(m, idx);
+      if (m.questions && m.questions.length) html += `<div class="quick">${m.questions.map((q) => `<button class="chip chip--q" type="button" data-ai-fill="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
+      if (m.toAgent) html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="sz" style="align-self:flex-start">Передать агенту</button>';
       return html;
     }).join('');
+    const head = $('#aiMode');
+    if (head) head.textContent = ai.mode === 'claude' ? 'работает на Claude · подбирает из каталога и под заказ' : (ai.mode === 'demo' ? 'демо-режим: сценарии по каталогу' : 'подбирает товары под задачу и бюджет');
     box.lastElementChild && box.lastElementChild.scrollIntoView({ block: 'end' });
   }
 
   function openAI() {
     openSheet(`<div class="chat aichat">
-      <div class="chat__agent"><span class="ava ava--ai" aria-hidden="true">${icon('spark')}</span><div><b>ASTTA AI</b><span>подбирает товары под задачу и бюджет</span></div></div>
+      <div class="chat__agent"><span class="ava ava--ai" aria-hidden="true">${icon('spark')}</span><div><b>ASTTA AI</b><span id="aiMode"></span></div></div>
       <div class="msgs" id="aiMsgs"></div>
-      ${ai.log.length ? '' : `<div class="quick" id="aiStart">
+      ${ai.log.length > 1 ? '' : `<div class="quick" id="aiStart">
+        <button class="chip" type="button" data-ai-ask="Собери игровой компьютер за 70 000 ₽">Игровой ПК за 70 000 ₽</button>
         <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ до 15 000 ₽</button>
         <button class="chip" type="button" data-ai-ask="Подарок девушке до 7 000 ₽">Подарок девушке</button>
-        <button class="chip" type="button" data-ai-ask="Набор на учёбу до 5 000 ₽">На учёбу до 5 000 ₽</button>
       </div>`}
       <form class="chat__form" id="aiChatForm"><input id="aiChatInput" autocomplete="off" placeholder="Что подобрать?" aria-label="Запрос для ASTTA AI"><button class="roundbtn" type="submit" aria-label="Отправить">${icon('arrow')}</button></form>
     </div>`, { narrow: true });
-    if (!ai.log.length) ai.log.push({ text: 'Привет! Напишите, что нужно и сколько готовы потратить. Соберу корзину из товаров поставщиков TT Логистики, цены сразу с доставкой.' });
+    if (!ai.log.length) ai.log.push({ reply: 'Привет! Напишите задачу и бюджет. Подберу из каталога ASTTA, а чего нет — найду под заказ в Китае и проверю, что всё подходит друг к другу.' });
     aiRender();
   }
 
-  function aiAsk(text, opts = {}) {
+  async function aiAsk(text, opts = {}) {
     const q = text.trim();
-    if (!q) return;
+    if (!q || ai.busy) return;
     if (!$('#aiMsgs')) openAI();
     const start = $('#aiStart');
     if (start) start.remove();
-    if (!opts.silent) ai.log.push({ me: true, text: q });
+    ai.busy = true;
+    if (!opts.silent) ai.log.push({ me: true, text: opts.label || q });
+    ai.stage = 0;
     ai.log.push({ typing: true });
     aiRender();
-    setTimeout(() => {
+    const tick = setInterval(() => { ai.stage += 1; const el = $('#aiStage'); if (el) el.textContent = AI_STAGES[ai.stage % AI_STAGES.length]; }, 4000);
+    const finish = (entry) => {
+      clearInterval(tick);
       ai.log = ai.log.filter((m) => !m.typing);
-      const plan = aiPlan(q, opts);
-      ai.last = { q, plan, variant: opts.variant || 0 };
-      ai.log.push(aiAnswer(plan));
+      if (entry) ai.log.push(entry);
+      ai.busy = false; ai.ctl = null;
       aiRender();
-    }, 900);
+    };
+    const demo = () => {
+      const plan = aiPlan(opts.demoQuery || q, opts);
+      ai.last = { q: opts.demoQuery || q, plan, variant: opts.variant || 0 };
+      return { ...aiDemoAnswer(plan), source: 'demo' };
+    };
+    const sample = ai.mode === 'demo' ? null : await aiSample();
+    if (!sample) {
+      ai.mode = 'demo';
+      setTimeout(() => finish(demo()), 900);
+      return;
+    }
+    ai.ctl = new AbortController();
+    aiRender();
+    const turns = [{ role: 'user', content: aiRules() }, ...ai.turns.slice(-8), { role: 'user', content: q }];
+    try {
+      const data = await sample.json(turns, { modelTier: 'complex', cache: false, signal: ai.ctl.signal });
+      ai.mode = 'claude';
+      ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: JSON.stringify(data).slice(0, 6000) });
+      finish(aiNormalize(data));
+    } catch (e) {
+      const code = e && e.code;
+      if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) {
+        ai.mode = 'demo';
+        const d = demo();
+        finish({ ...d, reply: 'Модель недоступна в этом просмотре, отвечаю в демо-режиме. ' + d.reply });
+      } else if (code === 'cancelled') finish({ reply: 'Остановил. Уточните запрос или спросите заново.' });
+      else if (code === 'rate_limited') finish({ reply: 'Слишком много запросов подряд. Попробуйте через минуту.' });
+      else if (code === 'invalid_json') finish({ reply: 'Не получилось разобрать ответ. Попробуйте переформулировать запрос.' });
+      else if (code === 'refused') finish({ reply: 'С этим запросом помочь не могу. Попробуйте описать задачу иначе.' });
+      else finish({ reply: 'Связь с моделью прервалась. Попробуйте ещё раз.' });
+    }
   }
 
   /* ---------- Действия кабинета ---------- */
@@ -1224,15 +1348,24 @@
     if (d.quick) { sendChat(d.quick); return; }
     if (d.aiOpen !== undefined) { openAI(); return; }
     if (d.aiAsk) { aiAsk(d.aiAsk); return; }
-    if (d.aiMore && ai.last && ai.last.plan.kind === 'cart') {
-      const { q, plan, variant } = ai.last;
-      if (d.aiMore === 'cheaper') { ai.log.push({ me: true, text: 'Дешевле' }); aiAsk(q, { silent: true, budget: Math.floor(plan.total * 0.8) }); }
-      else { ai.log.push({ me: true, text: 'Другой вариант' }); aiAsk(q, { silent: true, budget: plan.budget, variant: variant + 1 }); }
+    if (d.aiStop !== undefined) { if (ai.ctl) ai.ctl.abort(); return; }
+    if (d.aiFill) { const i = $('#aiChatInput'); if (i) { i.value = ''; i.placeholder = d.aiFill; i.focus(); } return; }
+    if (d.aiMore) {
+      const m = ai.log[Number(d.aiIdx)];
+      if (m && m.source === 'demo' && m.demoPlan && m.demoPlan.kind === 'cart' && ai.last) {
+        const { q, plan, variant } = ai.last;
+        if (d.aiMore === 'cheaper') aiAsk(q, { label: 'Дешевле', budget: Math.floor(plan.total * 0.8) });
+        else aiAsk(q, { label: 'Другой вариант', budget: plan.budget, variant: variant + 1 });
+      } else {
+        aiAsk(d.aiMore === 'cheaper' ? 'Сделай дешевле, задача та же' : 'Предложи другой вариант под ту же задачу', { label: d.aiMore === 'cheaper' ? 'Дешевле' : 'Другой вариант' });
+      }
       return;
     }
-    if (t.matches('[data-ai-add]') && ai.last && ai.last.plan.kind === 'cart') {
+    if (d.aiAdd !== undefined) {
+      const m = ai.log[Number(d.aiAdd)];
+      if (!m || !m.cat || !m.cat.length) return;
       const list = cart();
-      ai.last.plan.ids.forEach((id) => {
+      m.cat.forEach(({ id }) => {
         const p = byId[id];
         const qty = isSupplier() ? p.tiers[0][0] : 1;
         const size = !isSupplier() && p.sizes ? '?' : null;
@@ -1240,7 +1373,15 @@
         if (item) item.qty += qty; else list.push({ id, qty, size });
       });
       store.save(); updateCartCount();
-      toast(`В корзине ${ai.last.plan.ids.length} ${plural(ai.last.plan.ids.length, 'товар', 'товара', 'товаров')} от ASTTA AI`);
+      toast(`В корзине ${m.cat.length} ${plural(m.cat.length, 'товар', 'товара', 'товаров')} от ASTTA AI`);
+      return;
+    }
+    if (d.aiCustom !== undefined) {
+      const m = ai.log[Number(d.aiCustom)];
+      if (!m || !m.custom) return;
+      const lines = m.custom.map((c) => `• ${c.name}${c.est_cny ? ` (~${c.est_cny} ¥)` : ''}`).join('\n');
+      openChat('sz');
+      sendChat(`Индивидуальный заказ от ASTTA AI:\n${lines}`, 'Приняла индивидуальный заказ. Проверю наличие у поставщиков, пришлю фото и точную цену с доставкой в течение часа. Платить сейчас не нужно.');
       return;
     }
     if (t.tagName === 'A' && t.getAttribute('href') === location.hash) { e.preventDefault(); route(); }
