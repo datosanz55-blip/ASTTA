@@ -21,7 +21,9 @@ services:
     restart: unless-stopped
 
   backend: &backend
-    build: ../backend
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
@@ -35,7 +37,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    command: sh -c "python manage.py migrate --noinput && python manage.py setup_roles && gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 3 --access-logfile -"
+    command: sh -c "python manage.py migrate --noinput && python manage.py setup_roles && gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 3 --access-logfile - --no-control-socket"
     ports:
       - "127.0.0.1:8000:8000"
 

@@ -14,8 +14,9 @@ ROLE_PERMISSIONS = {
     # Модератор правит любые товары, поставщиков, заказы и цены. Пользователей только смотрит:
     # право менять пользователей позволило бы выдать себе права суперпользователя.
     "Модераторы": [
-        *_all("catalog", "category", "supplier", "product", "pricetier", "productimage"),
-        *_all("orders", "order", "orderitem", "orderevent"),
+        *_all("catalog", "category", "supplier", "product", "pricetier", "productimage", "factorysettings",
+              "supplierpost"),
+        *_all("orders", "order", "orderitem", "orderevent", "supplierorder", "payout"),
         *_all("pricing", "exchangerate", "shippingmethod", "pricingconfig"),
         "accounts.view_user",
     ],
@@ -29,6 +30,7 @@ ROLE_PERMISSIONS = {
         "orders.view_order", "orders.change_order",
         "orders.view_orderitem",
         "orders.view_orderevent", "orders.add_orderevent", "orders.change_orderevent",
+        "orders.view_supplierorder", "orders.change_supplierorder",
         "catalog.view_product", "catalog.change_product", "catalog.view_pricetier", "catalog.view_supplier",
         "pricing.view_exchangerate", "pricing.view_shippingmethod",
     ],

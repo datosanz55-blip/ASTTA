@@ -58,10 +58,73 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
 
+class Payout(models.Model):
+    """Выплата поставщику в юанях за заказы, принятые складом TT. Сбор ASTTA платит покупатель,
+    поэтому поставщик получает свою цену полностью."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Готовится")
+        PAID = "paid", _("Выплачено")
+
+    supplier = models.ForeignKey("catalog.Supplier", verbose_name=_("поставщик"), on_delete=models.PROTECT,
+                                 related_name="payouts")
+    amount_cny = models.DecimalField(_("сумма, ¥"), max_digits=12, decimal_places=2)
+    status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    paid_at = models.DateTimeField(_("выплачено"), null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("выплата")
+        verbose_name_plural = _("выплаты")
+
+    def __str__(self):
+        return f"{self.supplier}: {self.amount_cny} ¥"
+
+
+class SupplierOrder(models.Model):
+    """Часть заказа у одного поставщика: что ему выкупить и отправить на склад TT.
+    Покупателя поставщик не видит, только товары, размеры и количество."""
+
+    class Status(models.TextChoices):
+        CONFIRM = "confirm", _("Ждёт подтверждения наличия")
+        SHIP = "ship", _("Нужно отправить на склад")
+        SHIPPED = "shipped", _("Отправлено на склад")
+        RECEIVED = "received", _("Принято складом")
+        CANCELLED = "cancelled", _("Отменено: нет в наличии")
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="supplier_orders")
+    supplier = models.ForeignKey("catalog.Supplier", verbose_name=_("поставщик"), on_delete=models.PROTECT,
+                                 related_name="supplier_orders")
+    status = models.CharField(_("статус у поставщика"), max_length=16, choices=Status.choices,
+                              default=Status.CONFIRM)
+    tracking = models.CharField(_("трек-номер до склада"), max_length=64, blank=True)
+    payout = models.ForeignKey(Payout, verbose_name=_("выплата"), null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="supplier_orders")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    received_at = models.DateTimeField(_("принято складом"), null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("заказ поставщику")
+        verbose_name_plural = _("заказы поставщикам")
+        constraints = [models.UniqueConstraint(fields=["order", "supplier"], name="one_supplier_order_per_order")]
+
+    def __str__(self):
+        return f"{self.order} · {self.supplier}"
+
+    @property
+    def amount_cny(self):
+        return sum((item.unit_cny * item.qty for item in self.items.all()), 0)
+
+
 class OrderItem(models.Model):
     """Строка заказа. Цена фиксируется в момент заказа и потом не пересчитывается."""
 
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
+    supplier_order = models.ForeignKey(SupplierOrder, on_delete=models.CASCADE, related_name="items", null=True,
+                                       blank=True)
     product = models.ForeignKey("catalog.Product", verbose_name=_("товар"), on_delete=models.PROTECT)
     title = models.CharField(_("название на момент заказа"), max_length=160)
     size = models.CharField(_("размер"), max_length=16, blank=True)

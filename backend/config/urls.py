@@ -4,11 +4,13 @@ from django.contrib import admin
 from django.urls import include, path
 
 from config.api import api
+from seller.views import seller_page
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
     path("i18n/", include("django.conf.urls.i18n")),
+    path("seller/", seller_page, name="seller"),
 ]
 
 if settings.DEBUG:

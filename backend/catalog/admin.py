@@ -4,10 +4,10 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils.translation import gettext_lazy as _
-from unfold.admin import ModelAdmin, TabularInline
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
 from catalog.importer import build_template, import_catalog, unique_slug
-from catalog.models import Category, PriceTier, Product, ProductImage, Supplier
+from catalog.models import Category, FactorySettings, PriceTier, Product, ProductImage, Supplier, SupplierPost
 
 
 def is_supplier(request):
@@ -21,11 +21,49 @@ class CategoryAdmin(ModelAdmin):
     prepopulated_fields = {"slug": ("name_ru",)}
 
 
+class FactoryInline(StackedInline):
+    model = FactorySettings
+    can_delete = False
+
+
 @admin.register(Supplier)
 class SupplierAdmin(ModelAdmin):
-    list_display = ("name", "code", "city", "fact_days_min", "fact_days_max", "is_active")
+    list_display = ("name", "name_zh", "code", "city", "wechat", "fact_days_min", "fact_days_max", "is_active")
     list_filter = ("is_active",)
-    search_fields = ("name", "code", "city")
+    search_fields = ("name", "name_zh", "code", "city", "wechat")
+    inlines = [FactoryInline]
+    actions = ["open_cabinet"]
+
+    @admin.action(description=_("Открыть кабинет поставщика"))
+    def open_cabinet(self, request, queryset):
+        supplier = queryset.first()
+        return redirect(f"/seller/?act={supplier.code}")
+
+
+@admin.register(SupplierPost)
+class SupplierPostAdmin(ModelAdmin):
+    """Посты поставщиков в ленту: модератор переводит текст на русский и публикует."""
+
+    list_display = ("supplier", "product", "kind", "status", "created_at")
+    list_filter = ("status", "kind", "supplier")
+    fields = ("supplier", "product", "kind", "text", "text_ru", "status")
+    readonly_fields = ("supplier", "product", "kind", "text")
+    actions = ["publish", "reject"]
+
+    @admin.action(description=_("Опубликовать"))
+    def publish(self, request, queryset):
+        missing = queryset.filter(text_ru="").count()
+        if missing:
+            self.message_user(request, _("Сначала впишите текст для покупателей: %(n)s") % {"n": missing},
+                              messages.WARNING)
+            return
+        n = queryset.update(status=SupplierPost.Status.PUBLISHED)
+        self.message_user(request, _("Опубликовано: %(n)s") % {"n": n})
+
+    @admin.action(description=_("Отклонить"))
+    def reject(self, request, queryset):
+        n = queryset.update(status=SupplierPost.Status.REJECTED)
+        self.message_user(request, _("Отклонено: %(n)s") % {"n": n}, messages.WARNING)
 
 
 class PriceTierInline(TabularInline):

@@ -6,7 +6,7 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (name) => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-  const imgSrc = (id) => (id && id.startsWith('data:') ? id : `assets/img/${id}.jpg`);
+  const imgSrc = (id) => (/^(data:|https?:|\/)/.test(id || '') ? id : `assets/img/${id}.jpg`);
   const nf = new Intl.NumberFormat('ru-RU');
   const cny = (n) => `${nf.format(Math.round(n))} ¥`;
   const rub = (n) => `${nf.format(Math.round(n))} ₽`;
@@ -164,6 +164,19 @@
     'pcs': ['件', 'шт.'],
     'kg': ['公斤', 'кг'],
     'from': ['{n} 件起', 'от {n} шт.'],
+    'login.title': ['登录卖家中心', 'Вход в кабинет поставщика'],
+    'login.user': ['用户名', 'Логин'],
+    'login.pass': ['密码', 'Пароль'],
+    'login.submit': ['登录', 'Войти'],
+    'login.hint': ['账号由 TT 经理提供。忘记密码请联系经理。', 'Логин и пароль выдаёт менеджер TT. Если забыли пароль, напишите ему.'],
+    'logout': ['退出', 'Выйти'],
+    'err.network': ['网络错误，请重试', 'Ошибка сети, попробуйте ещё раз'],
+    'err.save': ['保存失败：{e}', 'Не сохранилось: {e}'],
+    'import.errors': ['文件未上传，请修改以下错误：', 'Файл не загружен. Исправьте ошибки:'],
+    'import.uploading': ['正在上传…', 'Загружаю…'],
+    'shop.payout': ['收款信息（支付宝、银行卡）', 'Реквизиты для выплат (Alipay, карта)'],
+    'shop.nameNote': ['俄语店铺名称由审核员修改', 'Русское название меняет модератор'],
+    'loading': ['加载中…', 'Загрузка…'],
   };
   const MOD_REASONS = {
     watermark: ['图片带有其他店铺的水印', 'Фото с водяным знаком другого магазина'],
@@ -259,6 +272,9 @@
   };
 
   /* ---------- Состояние ---------- */
+  // Если страницу отдаёт сервер (/seller/), в body есть data-api: работаем с настоящими данными.
+  const API = document.body.dataset.api || '';
+  const LIVE = !!API;
   const KEY = 'astta-seller-v1';
   const clone = (x) => JSON.parse(JSON.stringify(x));
   function fresh() {
@@ -270,8 +286,13 @@
     };
   }
   let S;
-  try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = fresh(); }
+  if (LIVE) {
+    S = { ...fresh(), products: [], orders: [], suppliers: [], posts: [], factory: {}, me: null, live: {} };
+  } else {
+    try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = fresh(); }
+  }
   function save() {
+    if (LIVE) return;
     try {
       // Фото, загруженные в превью, не сохраняем: они большие и только для показа.
       const light = { ...S, products: S.products.map((p) => (p.img && p.img.startsWith('data:') ? { ...p, img: '' } : p)) };
@@ -281,7 +302,7 @@
 
   const DEFAULT_SUP = 'gz';
   const isMod = () => S.role === 'moderator';
-  const supCode = () => S.acting || DEFAULT_SUP;
+  const supCode = () => (LIVE ? S.acting || (S.me && S.me.supplier && S.me.supplier.code) : S.acting || DEFAULT_SUP);
   const supplier = (code = supCode()) => S.suppliers.find((s) => s.code === code);
   const product = (id) => S.products.find((p) => p.id === id);
   // Модератор, открывший кабинет поставщика, видит его по-русски.
@@ -313,7 +334,7 @@
     const fee = goods * (mode === 'wholesale' ? pr.optFee : pr.retailFee) / 100;
     return round10(goods + p.kg * method.perKg * qty + fee);
   }
-  const orderCny = (o) => o.items.reduce((sum, [id, , qty]) => sum + lineCny(product(id), qty, o.mode), 0);
+  const orderCny = (o) => o.items.reduce((sum, [id, , qty, unit]) => sum + (unit ?? lineCny(product(id), qty, o.mode) / qty) * qty, 0);
   const orderRub = (o) => o.items.reduce((sum, [id, , qty]) => sum + buyerRub(product(id), qty, o.mode), 0);
 
   /* ---------- Общие куски ---------- */
@@ -349,12 +370,18 @@
     for (const b of document.querySelectorAll('[data-role]')) b.setAttribute('aria-checked', String(b.dataset.role === (S.acting ? 'moderator' : S.role)));
     $('#langSwitch').hidden = S.role !== 'supplier' || !!S.acting;
     for (const b of document.querySelectorAll('[data-lang]')) b.setAttribute('aria-checked', String(b.dataset.lang === S.lang));
+    if (LIVE) renderLiveTop();
 
     const banner = $('#banner');
-    banner.hidden = !S.acting;
-    if (S.acting) {
+    banner.hidden = !S.acting || (LIVE && !supplier());
+    if (!banner.hidden) {
       banner.innerHTML = `<span>Вы в кабинете поставщика «${esc(supplier().ru)}» как модератор: видите и меняете всё, что видит он.</span>
-        <button class="btn btn--sm" type="button" data-act="stop-acting">Вернуться к модерации</button>`;
+        ${LIVE ? '<a class="btn btn--sm" href="/admin/">Вернуться в админку</a>' : '<button class="btn btn--sm" type="button" data-act="stop-acting">Вернуться к модерации</button>'}`;
+    }
+    if (LIVE && (!S.me || S.loading || !supplier())) {
+      $('#side').innerHTML = '';
+      $('#main').innerHTML = !S.me ? vLogin() : `<div class="empty">${S.loadError ? esc(S.loadError) : t('loading')}</div>`;
+      return;
     }
 
     const view = S.view[S.role];
@@ -383,8 +410,8 @@
       todo: orders.filter((o) => o.status === 'confirm' || o.status === 'ship').length,
       review: products.filter((p) => p.status === 'moderation').length,
       rejected: products.filter((p) => p.status === 'rejected').length,
-      today: orders.filter((o) => o.date.startsWith('27.10')).length,
-      pending: supplier(code).base + orders.filter((o) => o.status === 'received').reduce((s, o) => s + orderCny(o), 0),
+      today: LIVE ? S.live.today : orders.filter((o) => o.date.startsWith('27.10')).length,
+      pending: LIVE ? S.live.pending : supplier(code).base + orders.filter((o) => o.status === 'received').reduce((s, o) => s + orderCny(o), 0),
     };
   }
 
@@ -398,7 +425,7 @@
       c.rejected && `<button type="button" data-goto="products" data-pfilter="rejected"><span class="dot dot--bad"></span>${t('todo.rejected', { n: c.rejected })}${icon('arrow-ur')}</button>`,
     ].filter(Boolean);
     const max = Math.max(...s.week, 1);
-    const days = L() === 'zh' ? ['一', '二', '三', '四', '五', '六', '日'] : ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+    const days = LIVE ? S.live.weekLabels : (L() === 'zh' ? ['一', '二', '三', '四', '五', '六', '日'] : ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']);
     return `
       <div class="pagehead"><div><h1>${t('hello', { name: esc(supName(s)) })}</h1><p>${t('hello.sub')}</p></div>
         <div class="pagehead__actions"><button class="btn btn--lime" type="button" data-act="add-product">${icon('plus')}${t('products.add')}</button></div></div>
@@ -451,9 +478,11 @@
 
   /* ---------- Форма товара (поставщик и модератор) ---------- */
   let draft = null;
+  let draftFile = null;
   function openProductForm(id) {
     const p = id ? product(id) : null;
-    draft = p ? clone(p) : { id: '', sup: supCode(), cat: 'clothes', zh: '', ru: '', price: '', kg: '', tiers: [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
+    draftFile = null;
+    draft = p ? clone(p) : { id: '', sup: supCode(), cat: Object.keys(CATS)[0], zh: '', ru: '', price: '', kg: '', tiers: [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
     openDrawer(p ? t('form.edit') : t('form.add'), productFormHTML());
   }
   function productFormHTML(errors = {}) {
@@ -525,6 +554,7 @@
       $('#drawerBody').innerHTML = productFormHTML(errors);
       return;
     }
+    if (LIVE) { liveSaveProduct(n); return; }
     if (!mod) {
       n.status = 'moderation';
       n.reason = '';
@@ -541,6 +571,33 @@
     render();
   }
 
+  // Двойной клик по «Сохранить» не должен создавать два одинаковых товара.
+  let saving = false;
+  async function liveSaveProduct(n) {
+    if (saving) return;
+    saving = true;
+    try {
+      const body = { zh: n.zh, ru: n.ru, cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc };
+      const saved = await liveTry(() => api(n.id ? `/products/${n.id}` : '/products', { method: n.id ? 'PUT' : 'POST', body }));
+      if (!saved) return;
+      // Если фото не загрузится, шторка остаётся открытой, а повторное сохранение обновит этот же товар.
+      draft.id = String(saved.id);
+      upsert(S.products, mapProduct(supCode())(saved));
+      if (draftFile) {
+        const form = new FormData();
+        form.append('file', draftFile);
+        const withImage = await liveTry(() => api(`/products/${saved.id}/image`, { method: 'POST', form }));
+        if (!withImage) return;
+        upsert(S.products, mapProduct(supCode())(withImage));
+      }
+      closeDrawer();
+      toast(t('toast.submitted'));
+      render();
+    } finally {
+      saving = false;
+    }
+  }
+
   /* ---------- Загрузка из Excel ---------- */
   function openImport() {
     const cols = L() === 'zh'
@@ -551,10 +608,26 @@
       <div><p class="note">${t('import.cols')}</p><div class="cols">${cols.map((c) => `<span>${esc(c)}</span>`).join('')}</div></div>
       <button class="btn" type="button" data-act="template" style="align-self:flex-start">${icon('upload')}${t('import.template')}</button>
       <label class="drop">${icon('upload')}<b>${t('import.file')}</b><input type="file" id="importFile" accept=".xlsx,.xls"></label>
-      <p class="note">${t('import.demo')}</p>
+      ${LIVE ? '' : `<p class="note">${t('import.demo')}</p>`}
       <div id="importResult"></div>`);
   }
-  function doImport() {
+  async function doImport(file) {
+    if (LIVE) {
+      const out = $('#importResult');
+      out.innerHTML = `<p class="note">${t('import.uploading')}</p>`;
+      const form = new FormData();
+      form.append('file', file);
+      const res = await liveTry(() => api('/import', { method: 'POST', form }));
+      if (!res) { out.innerHTML = ''; return; }
+      if (!res.ok) {
+        out.innerHTML = `<div class="panel" style="border-color:var(--bad)"><b>${t('import.errors')}</b><ul class="tips">${res.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+        return;
+      }
+      S.products = (await api('/products')).map(mapProduct(supCode()));
+      out.innerHTML = `<div class="result">${t('import.done', { n: res.created + res.updated })}</div>`;
+      render();
+      return;
+    }
     const added = IMPORT_SAMPLES.map((s, i) => ({
       id: `imp${Date.now().toString(36)}${i}`, sup: supCode(), ru: '', sale: 0, bulky: false, views: 0, orders: 0, desc: '', status: 'moderation', reason: '', ...clone(s),
     }));
@@ -578,9 +651,10 @@
       <div class="orders">${list.map(orderCard).join('') || `<div class="empty">${t('order.empty')}</div>`}</div>`;
   }
   function orderCard(o) {
-    const items = o.items.map(([id, size, qty]) => {
-      const p = product(id);
-      const unit = o.mode === 'wholesale' ? tierFor(p, qty) : unitCny(p);
+    const items = o.items.map(([id, size, qty, fixedUnit, info]) => {
+      // В боевом режиме цена и название берутся из заказа: они зафиксированы в момент покупки.
+      const p = product(id) || info;
+      const unit = fixedUnit ?? (o.mode === 'wholesale' ? tierFor(p, qty) : unitCny(p));
       return `<div class="oitem">${thumb(p)}<div><b>${esc(pName(p))}</b><span>${size ? `${t('order.size')} ${esc(size)} · ` : ''}${qty} ${t('pcs')} × ${cny(unit)}</span></div><div class="num">${cny(unit * qty)}</div></div>`;
     }).join('');
     let actions = '';
@@ -613,14 +687,17 @@
   function vPayouts() {
     const c = supplierCounts();
     const k = supCode() === DEFAULT_SUP ? 1 : 0.6;
-    const rows = PAYOUTS.map(([date, period, n, amount]) => `<tr><td>${date}</td><td>${period}</td><td class="num">${Math.round(n * k)}</td><td class="num">${cny(amount * k)}</td><td><span class="st st--ok">${t('pay.paid')}</span></td></tr>`).join('');
+    const history = LIVE ? S.live.payouts : PAYOUTS.map(([date, period, n, amount]) => ({ date, period, orders: Math.round(n * k), amount: amount * k, status: 'paid' }));
+    const rows = history.map((p) => `<tr><td>${esc(p.date)}</td><td>${esc(p.period || '—')}</td><td class="num">${p.orders}</td><td class="num">${cny(p.amount)}</td><td><span class="st ${p.status === 'paid' ? 'st--ok' : 'st--wait'}">${p.status === 'paid' ? t('pay.paid') : t('pay.pending')}</span></td></tr>`).join('') || `<tr><td colspan="5" class="muted">—</td></tr>`;
+    const paidTotal = LIVE ? S.live.paidTotal : 38255 * k;
+    const method = LIVE ? (supplier().payout || '—') : t('pay.methodValue');
     return `
       <div class="pagehead"><div><h1>${t('nav.payouts')}</h1><p>${t('pay.rule')}</p></div></div>
       <div class="kpis">
         <div class="kpi kpi--hot"><span>${t('pay.pending')}</span><b>${cny(c.pending)}</b></div>
         <div class="kpi"><span>${t('pay.next')}</span><b>${t('pay.nextDate')}</b></div>
-        <div class="kpi"><span>${t('pay.total')}</span><b>${cny(38255 * k)}</b></div>
-        <div class="kpi"><span>${t('pay.method')}</span><b style="font-size:16px;line-height:1.3">${t('pay.methodValue')}</b></div>
+        <div class="kpi"><span>${t('pay.total')}</span><b>${cny(paidTotal)}</b></div>
+        <div class="kpi"><span>${t('pay.method')}</span><b style="font-size:16px;line-height:1.3">${esc(method)}</b></div>
       </div>
       <section class="panel"><h2>${t('pay.history')}</h2>
         <div class="tablewrap"><table class="tbl" style="min-width:520px"><thead><tr><th>${t('col.date')}</th><th>${t('col.period')}</th><th class="num">${t('col.orders')}</th><th class="num">${t('col.amount')}</th><th>${t('col.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -632,12 +709,13 @@
       <div class="pagehead"><div><h1>${t('nav.shop')}</h1></div></div>
       <section class="panel">
         <form class="form" id="shopForm" novalidate>
-          <label class="field"><span>${t('shop.name')}</span><input id="sName" value="${esc(L() === 'zh' ? s.zh : s.ru)}"></label>
+          <label class="field"><span>${t('shop.name')}</span><input id="sName" value="${esc(L() === 'zh' ? s.zh : s.ru)}" ${LIVE && L() !== 'zh' ? `readonly title="${t('shop.nameNote')}"` : ''}></label>
           <label class="field"><span>${t('shop.city')}</span><input id="sCity" value="${esc(L() === 'zh' ? s.cityZh : s.cityRu)}"></label>
           <label class="field field--full"><span>${t('shop.about')}</span><textarea id="sAbout">${esc(s.about)}</textarea></label>
           <label class="field"><span>${t('shop.wechat')}</span><input id="sWechat" value="${esc(s.wechat)}"></label>
           <label class="field"><span>${t('shop.phone')}</span><input id="sPhone" value="${esc(s.phone)}" inputmode="tel"></label>
-          <label class="field"><span>${t('shop.fact')}</span><input value="${s.fact[0]}–${s.fact[1]} ${t('days')}" readonly></label>
+          <label class="field field--full"><span>${t('shop.payout')}</span><input id="sPayout" value="${esc(s.payout || '')}"></label>
+          <label class="field"><span>${t('shop.fact')}</span><input value="${s.fact ? `${s.fact[0]}–${s.fact[1]} ${t('days')}` : '—'}" readonly></label>
           <label class="field"><span>${t('shop.lang')}</span><select id="sLang"><option value="zh" ${S.lang === 'zh' ? 'selected' : ''}>中文</option><option value="ru" ${S.lang === 'ru' ? 'selected' : ''}>Русский</option></select></label>
           <p class="note field--full">${t('shop.factNote')}</p>
           <div class="form__actions"><button class="btn btn--lime" type="submit">${t('shop.save')}</button></div>
@@ -673,7 +751,7 @@
             <div class="form__actions"><button class="btn btn--lime" type="submit">${t('fac.send')}</button></div>
           </form>
           <h2>${t('fac.mine')}</h2>
-          ${posts.length ? posts.map((x) => `<div class="preview">${thumb(product(x.pid))}<div><b>${t(`fac.kind.${x.kind}`)} · ${esc(pName(product(x.pid)))}</b><br><span class="muted">${esc(x.text)}</span></div><span class="st st--wait" style="margin-left:auto">${t('status.moderation')}</span></div>`).join('')
+          ${posts.length ? posts.map((x) => `<div class="preview">${thumb(product(x.pid))}<div><b>${t(`fac.kind.${x.kind}`)} · ${esc(pName(product(x.pid)))}</b><br><span class="muted">${esc(x.text)}</span></div><span class="st ${PST[x.status || 'moderation'] || ''}" style="margin-left:auto">${t(`status.${x.status || 'moderation'}`)}</span></div>`).join('')
             : `<p class="muted">${t('fac.none')}</p>`}
         </section>
       </div>`;
@@ -832,6 +910,125 @@
     }
   }
 
+  /* ---------- Боевой режим: данные с сервера ---------- */
+  function cookie(name) {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  async function api(path, { method = 'GET', body, form } = {}) {
+    const headers = { 'X-CSRFToken': cookie('csrftoken') };
+    if (S.acting) headers['X-Act-As'] = S.acting;
+    let payload;
+    if (form) payload = form;
+    else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
+    let res;
+    try {
+      res = await fetch(API + path, { method, headers, body: payload, credentials: 'same-origin' });
+    } catch (e) {
+      throw new Error(t('err.network'));
+    }
+    if (res.status === 401 && path !== '/login') { S.me = null; render(); throw new Error(t('login.title')); }
+    const isJson = (res.headers.get('content-type') || '').includes('json');
+    const data = isJson ? await res.json() : res;
+    if (!res.ok) {
+      const detail = isJson && data.detail;
+      throw new Error(typeof detail === 'string' ? detail : res.statusText || String(res.status));
+    }
+    return data;
+  }
+  const num = (v) => Number(v);
+  const mapProduct = (code) => (p) => ({
+    id: String(p.id), sup: code, cat: p.cat, zh: p.zh, ru: p.ru, price: num(p.price), kg: num(p.kg), sale: p.sale,
+    bulky: p.bulky, tiers: p.tiers.map(([q, c]) => [q, num(c)]), views: 0, orders: p.orders, img: p.img || '',
+    desc: p.desc, status: p.status, reason: p.reason,
+  });
+  const mapOrder = (code) => (o) => ({
+    id: o.id, num: o.num, sup: code, date: o.date, mode: o.mode, status: o.status, tracking: o.tracking,
+    items: o.items.map((i) => [String(i.product), i.size, i.qty, num(i.unit), { zh: i.zh, ru: i.ru, img: i.img || '' }]),
+  });
+  function upsert(list, item, key = 'id') {
+    const i = list.findIndex((x) => x[key] === item[key]);
+    if (i >= 0) list[i] = item; else list.unshift(item);
+  }
+  async function loadAll() {
+    const [products, orders, overview, payouts, shop, fac, posts] = await Promise.all(
+      ['/products', '/orders', '/overview', '/payouts', '/shop', '/factory', '/posts'].map((path) => api(path)));
+    // Категории берём с сервера: их список ведёт модератор.
+    const cats = await fetch(API.replace(/\/seller$/, '/categories'), { credentials: 'same-origin' }).then((r) => r.json());
+    for (const key of Object.keys(CATS)) delete CATS[key];
+    for (const c of cats) CATS[c.slug] = [c.name_zh || c.name_ru, c.name_ru];
+    const code = shop.code;
+    S.suppliers = [{
+      code, ru: shop.name, zh: shop.name_zh || shop.name, cityRu: shop.city, cityZh: shop.city, about: shop.about,
+      wechat: shop.wechat, phone: shop.phone, payout: shop.payout_details, fact: shop.fact, active: true, base: 0, week: overview.week,
+    }];
+    S.products = products.map(mapProduct(code));
+    S.orders = orders.map(mapOrder(code));
+    S.posts = posts.map((x) => ({ sup: code, pid: String(x.product), kind: x.kind, text: x.text, status: x.status }));
+    S.factory[code] = { newItems: fac.new_items, weekly: fac.weekly, restock: fac.restock, perDay: String(fac.per_day) };
+    S.live = {
+      pending: num(overview.pending_cny), today: overview.today, weekLabels: overview.week_labels,
+      paidTotal: num(payouts.paid_total_cny),
+      payouts: payouts.items.map((x) => ({ date: x.date, orders: x.orders, amount: num(x.amount), status: x.status })),
+    };
+  }
+  async function startSession() {
+    S.role = 'supplier';
+    S.lang = S.me.language === 'zh-hans' ? 'zh' : 'ru';
+    if (S.me.can_act) {
+      const wanted = new URLSearchParams(location.search).get('act');
+      const codes = S.me.suppliers.map((x) => x.code);
+      S.acting = codes.includes(wanted) ? wanted : (codes.includes(S.acting) ? S.acting : codes[0] || null);
+    } else {
+      S.acting = null;
+    }
+    S.loading = true;
+    S.loadError = '';
+    render();
+    try {
+      await loadAll();
+    } catch (e) {
+      S.loadError = e.message;
+    }
+    S.loading = false;
+    render();
+  }
+  function vLogin() {
+    return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%">
+      <h2>${t('login.title')}</h2>
+      <form class="form" id="loginForm" novalidate style="grid-template-columns:minmax(0,1fr)">
+        <label class="field"><span>${t('login.user')}</span><input id="lUser" autocomplete="username" required></label>
+        <label class="field"><span>${t('login.pass')}</span><input id="lPass" type="password" autocomplete="current-password" required></label>
+        <p class="reason" id="loginErr" hidden></p>
+        <button class="btn btn--lime" type="submit">${t('login.submit')}</button>
+        <p class="note">${t('login.hint')}</p>
+      </form></section>`;
+  }
+  function renderLiveTop() {
+    $('#roleSwitch').hidden = true;
+    $('#topDemo').hidden = true;
+    let tools = $('#liveTools');
+    if (!tools) {
+      tools = document.createElement('div');
+      tools.id = 'liveTools';
+      tools.className = 'top__right';
+      tools.style.marginLeft = '0';
+      $('.top__right').prepend(tools);
+    }
+    if (!S.me) { tools.innerHTML = ''; return; }
+    const picker = S.me.can_act ? `<label class="sr" for="actAs">Поставщик</label>
+      <select class="select" id="actAs" data-act-as>${S.me.suppliers.map((x) => `<option value="${esc(x.code)}" ${x.code === S.acting ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : '';
+    tools.innerHTML = `${picker}<button class="btn btn--sm" type="button" data-act="logout">${t('logout')}</button>`;
+  }
+  async function liveTry(fn) {
+    try {
+      return await fn();
+    } catch (e) {
+      toast(t('err.save', { e: e.message }));
+      return null;
+    }
+  }
+
   /* ---------- Шторка ---------- */
   let lastFocus = null;
   function openDrawer(title, html) {
@@ -859,7 +1056,11 @@
       render();
       return;
     }
-    if (d.lang) { S.lang = d.lang; save(); render(); return; }
+    if (d.lang) {
+      S.lang = d.lang; save(); render();
+      if (LIVE && S.me && !S.acting) liveTry(() => api('/me/language', { method: 'PUT', body: { language: d.lang === 'zh' ? 'zh-hans' : 'ru' } }));
+      return;
+    }
     if (d.nav) { S.view[S.role] = d.nav; save(); render(); $('#main').focus({ preventScroll: true }); window.scrollTo(0, 0); return; }
     if (d.goto) {
       S.view[S.role] = d.goto;
@@ -884,9 +1085,28 @@
         break;
       }
       case 'import': openImport(); break;
-      case 'template': toast(t('import.noDownload')); break;
-      case 'confirm-order': setOrder(d.num, 'ship'); toast(t('toast.confirmed')); break;
-      case 'out-of-stock': setOrder(d.num, 'cancelled'); toast(t('toast.cancelled')); break;
+      case 'template': {
+        if (!LIVE) { toast(t('import.noDownload')); break; }
+        const res = await liveTry(() => api('/template'));
+        if (!res) break;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(await res.blob());
+        a.download = 'astta-catalog-template.xlsx';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        break;
+      }
+      case 'confirm-order':
+        if (LIVE ? await liveOrder(d.num, 'confirm') : (setOrder(d.num, 'ship'), true)) toast(t('toast.confirmed'));
+        break;
+      case 'out-of-stock':
+        if (LIVE ? await liveOrder(d.num, 'cancel') : (setOrder(d.num, 'cancelled'), true)) toast(t('toast.cancelled'));
+        break;
+      case 'logout':
+        await liveTry(() => api('/logout', { method: 'POST' }));
+        S.me = null; S.acting = null;
+        render();
+        break;
       case 'translate': {
         const p = product(d.id);
         el.disabled = true;
@@ -931,6 +1151,15 @@
     }
   });
 
+  async function liveOrder(num, action, body) {
+    const o = S.orders.find((x) => x.num === num);
+    const res = await liveTry(() => api(`/orders/${o.id}/${action}`, { method: 'POST', body }));
+    if (!res) return false;
+    upsert(S.orders, mapOrder(supCode())(res));
+    render();
+    return true;
+  }
+
   function setOrder(num, status) {
     const o = S.orders.find((x) => x.num === num);
     o.status = status;
@@ -939,13 +1168,30 @@
     render();
   }
 
-  document.addEventListener('submit', (e) => {
+  document.addEventListener('submit', async (e) => {
     const form = e.target;
     e.preventDefault();
     if (form.id === 'productForm') { submitProduct(); return; }
+    if (form.id === 'loginForm') {
+      const err = $('#loginErr');
+      err.hidden = true;
+      try {
+        S.me = await api('/login', { method: 'POST', body: { username: $('#lUser').value, password: $('#lPass').value } });
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.hidden = false;
+        return;
+      }
+      await startSession();
+      return;
+    }
     if (form.dataset.shipForm) {
       const input = form.querySelector('input');
       if (!input.value.trim()) { toast(t('err.tracking')); input.focus(); return; }
+      if (LIVE) {
+        if (await liveOrder(form.dataset.shipForm, 'ship', { tracking: input.value.trim() })) toast(t('toast.shipped'));
+        return;
+      }
       const o = S.orders.find((x) => x.num === form.dataset.shipForm);
       o.tracking = input.value.trim();
       setOrder(o.num, 'shipped');
@@ -955,14 +1201,37 @@
     if (form.id === 'postForm') {
       const text = $('#poText').value.trim();
       if (!text) { toast(t('err.required')); $('#poText').focus(); return; }
+      if (LIVE) {
+        const res = await liveTry(() => api('/posts', { method: 'POST', body: { product: Number($('#poProduct').value), kind: $('#poKind').value, text } }));
+        if (!res) return;
+        S.posts.unshift({ sup: supCode(), pid: String(res.product), kind: res.kind, text: res.text, status: res.status });
+        render(); toast(t('fac.sent'));
+        return;
+      }
       S.posts.unshift({ sup: supCode(), pid: $('#poProduct').value, kind: $('#poKind').value, text });
       save(); render(); toast(t('fac.sent'));
       return;
     }
     if (form.id === 'shopForm') {
       const s = supplier();
+      if (LIVE) {
+        const body = {
+          name_zh: L() === 'zh' ? $('#sName').value.trim() : s.zh, city: $('#sCity').value.trim(), about: $('#sAbout').value.trim(),
+          wechat: $('#sWechat').value.trim(), phone: $('#sPhone').value.trim(), payout_details: $('#sPayout').value.trim(),
+        };
+        const res = await liveTry(() => api('/shop', { method: 'PUT', body }));
+        if (!res) return;
+        Object.assign(s, { zh: res.name_zh || res.name, cityRu: res.city, cityZh: res.city, about: res.about, wechat: res.wechat, phone: res.phone, payout: res.payout_details });
+        if (!S.acting && $('#sLang').value !== S.lang) {
+          S.lang = $('#sLang').value;
+          await liveTry(() => api('/me/language', { method: 'PUT', body: { language: S.lang === 'zh' ? 'zh-hans' : 'ru' } }));
+        }
+        render(); toast(t('toast.saved'));
+        return;
+      }
       if (L() === 'zh') { s.zh = $('#sName').value.trim() || s.zh; s.cityZh = $('#sCity').value.trim(); } else { s.ru = $('#sName').value.trim() || s.ru; s.cityRu = $('#sCity').value.trim(); }
       s.about = $('#sAbout').value.trim();
+      s.payout = $('#sPayout').value.trim();
       s.wechat = $('#sWechat').value.trim();
       s.phone = $('#sPhone').value.trim();
       if (!S.acting) S.lang = $('#sLang').value;
@@ -990,15 +1259,23 @@
     const el = e.target;
     if (el.id === 'fPhoto' && el.files[0]) {
       readForm();
+      draftFile = el.files[0];
       const reader = new FileReader();
       reader.onload = () => { draft.img = reader.result; $('#drawerBody').innerHTML = productFormHTML(); };
       reader.readAsDataURL(el.files[0]);
       return;
     }
-    if (el.id === 'importFile' && el.files[0]) { doImport(); return; }
+    if (el.id === 'importFile' && el.files[0]) { doImport(el.files[0]); el.value = ''; return; }
+    if (el.dataset.actAs !== undefined) { S.acting = el.value; startSession(); return; }
     if (el.dataset.tier !== undefined) { draft.tiers[Number(el.dataset.tier)][Number(el.dataset.k)] = el.value; return; }
     if (el.dataset.factory) {
-      factory()[el.dataset.factory] = el.type === 'checkbox' ? el.checked : el.value;
+      const f = factory();
+      f[el.dataset.factory] = el.type === 'checkbox' ? el.checked : el.value;
+      if (LIVE) {
+        liveTry(() => api('/factory', { method: 'PUT', body: { new_items: !!f.newItems, weekly: !!f.weekly, restock: !!f.restock, per_day: Number(f.perDay) } }))
+          .then((res) => res && toast(t('fac.saved')));
+        return;
+      }
       save(); toast(t('fac.saved'));
       return;
     }
@@ -1032,8 +1309,13 @@
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#drawer').hidden) closeDrawer(); });
 
-  // Ссылка вида seller.html#moderator сразу открывает панель модерации.
-  if (location.hash === '#moderator') { S.role = 'moderator'; S.acting = null; }
-  if (location.hash === '#supplier') { S.role = 'supplier'; S.acting = null; }
-  render();
+  if (LIVE) {
+    render();
+    api('/me').then((me) => { S.me = me; return startSession(); }).catch(() => { S.me = null; render(); });
+  } else {
+    // Ссылка вида seller.html#moderator сразу открывает панель модерации.
+    if (location.hash === '#moderator') { S.role = 'moderator'; S.acting = null; }
+    if (location.hash === '#supplier') { S.role = 'supplier'; S.acting = null; }
+    render();
+  }
 })();

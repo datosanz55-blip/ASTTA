@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "catalog",
     "pricing",
     "orders",
+    "seller",
 ]
 
 MIDDLEWARE = [
@@ -110,6 +111,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Фронтенд кабинета поставщика (seller.html и assets/) лежит в корне репозитория, в Docker — в /frontend.
+FRONTEND_DIR = Path(env("FRONTEND_DIR", BASE_DIR.parent))
+STATICFILES_DIRS = [FRONTEND_DIR / "assets"]
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", BASE_DIR / "media"))
 STORAGES = {
@@ -118,6 +122,10 @@ STORAGES = {
 }
 if env("PYTEST_VERSION"):
     STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
+
+# Общий кэш нужен, чтобы лимит попыток входа работал во всех процессах сервера.
+if env("REDIS_URL"):
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": env("REDIS_URL")}}
 
 CELERY_BROKER_URL = env("REDIS_URL", "redis://localhost:6379/0")
 CELERY_TIMEZONE = TIME_ZONE

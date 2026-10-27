@@ -11,3 +11,7 @@ extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.flake8-bugbear]
+# File(...) в параметрах — обычный способ Django Ninja объявить загрузку файла.
+extend-immutable-calls = ["ninja.File"]

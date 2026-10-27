@@ -23,8 +23,13 @@ class Category(models.Model):
 class Supplier(models.Model):
     code = models.SlugField(_("код"), unique=True)
     name = models.CharField(_("название"), max_length=120)
+    name_zh = models.CharField(_("название (кит.)"), max_length=120, blank=True)
     city = models.CharField(_("город"), max_length=80, blank=True)
     about = models.CharField(_("коротко о поставщике"), max_length=200, blank=True)
+    wechat = models.CharField(_("WeChat"), max_length=64, blank=True)
+    phone = models.CharField(_("телефон"), max_length=32, blank=True)
+    payout_details = models.CharField(_("реквизиты для выплат"), max_length=200, blank=True,
+                                      help_text=_("Alipay, карта или счёт: куда платёжный агент TT переводит юани"))
     # Фактический срок доставки по последним заказам: показываем покупателю вместо обещаний.
     fact_days_min = models.PositiveSmallIntegerField(_("факт. срок от, дн."), null=True, blank=True)
     fact_days_max = models.PositiveSmallIntegerField(_("факт. срок до, дн."), null=True, blank=True)
@@ -131,3 +136,51 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return f"{self.product} #{self.position}"
+
+
+class FactorySettings(models.Model):
+    """Контент-завод: какие посты в ленту поставщиков собирать из карточек автоматически."""
+
+    supplier = models.OneToOneField(Supplier, on_delete=models.CASCADE, related_name="factory")
+    new_items = models.BooleanField(_("посты о новых товарах"), default=True)
+    weekly = models.BooleanField(_("подборка недели"), default=True)
+    restock = models.BooleanField(_("поступления"), default=False)
+    per_day = models.PositiveSmallIntegerField(_("постов в день, не больше"), default=3,
+                                               validators=[MinValueValidator(1), MaxValueValidator(10)])
+
+    class Meta:
+        verbose_name = _("контент-завод")
+        verbose_name_plural = _("контент-завод")
+
+    def __str__(self):
+        return str(self.supplier)
+
+
+class SupplierPost(models.Model):
+    """Пост поставщика в ленту. Поставщик может писать по-китайски, модератор публикует перевод."""
+
+    class Kind(models.TextChoices):
+        NEW = "new", _("Новинка")
+        RESTOCK = "restock", _("Поступление")
+        OPT = "opt", _("Оптовое предложение")
+
+    class Status(models.TextChoices):
+        MODERATION = "moderation", _("На модерации")
+        PUBLISHED = "published", _("Опубликован")
+        REJECTED = "rejected", _("Отклонён")
+
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name="posts")
+    product = models.ForeignKey(Product, verbose_name=_("товар"), on_delete=models.CASCADE, related_name="posts")
+    kind = models.CharField(_("тип"), max_length=16, choices=Kind.choices, default=Kind.NEW)
+    text = models.TextField(_("текст поставщика"))
+    text_ru = models.TextField(_("текст для покупателей"), blank=True)
+    status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.MODERATION)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("пост поставщика")
+        verbose_name_plural = _("посты поставщиков")
+
+    def __str__(self):
+        return f"{self.supplier}: {self.get_kind_display()}"

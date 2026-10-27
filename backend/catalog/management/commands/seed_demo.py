@@ -2,16 +2,20 @@
 
 import datetime as dt
 import json
+import secrets
 from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.files import File
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from accounts.models import User
 from accounts.roles import setup_roles
 from catalog.models import Category, PriceTier, Product, ProductImage, Supplier
+from orders.services import CartLine, create_order
 from pricing.models import ExchangeRate, PricingConfig, ShippingMethod
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "demo.json"
@@ -19,6 +23,21 @@ PROTOTYPE_IMAGES = settings.BASE_DIR.parent / "assets" / "img"
 CATEGORY_ZH = {"clothes": "服装", "shoes": "鞋类", "furniture": "家具", "home": "家居", "tech": "电子产品",
                "acc": "配饰", "bags": "箱包"}
 SUPPLIER_CITY = {"gz": "Гуанчжоу", "jj": "Цзиньцзян", "fs": "Фошань", "sz": "Шэньчжэнь", "yw": "Иу"}
+SUPPLIER_ZH = {"gz": "TT · 广州", "jj": "TT · 晋江", "fs": "TT · 佛山", "sz": "TT · 深圳", "yw": "TT · 义乌"}
+TITLE_ZH = {
+    "runner": "轻便跑步鞋 Cloud", "loafers": "麂皮乐福鞋", "leather-jacket": "真皮机车夹克", "bomber": "宽松飞行员夹克",
+    "tee-white": "基础款纯棉T恤 240克", "sweatshirt": "三线毛圈卫衣", "tee-black": "印花T恤", "sofa": "三人位丝绒沙发",
+    "lounge-chair": "旋转休闲椅", "stool": "白蜡木吧台凳", "lamp": "可调灯头落地灯", "headphones": "头戴式蓝牙耳机 5.3",
+    "headphones-anc": "主动降噪耳机", "watch": "石英手表 40毫米表盘", "sunglasses": "太阳镜 UV400",
+    "bag": "环保皮革公文包", "backpack": "城市双肩包 20升", "armchair": "拉扣单人沙发椅",
+}
+# Демо-заказы, чтобы в кабинете поставщика было что подтверждать и отправлять.
+DEMO_ORDERS = [
+    ("@ivan_k", "retail", [("bomber", "L", 1)]),
+    ("+7 916 000-00-21", "wholesale", [("tee-white", "", 50), ("tee-black", "", 30)]),
+    ("@marina.shop", "retail", [("leather-jacket", "M", 1), ("runner", "42", 1)]),
+    ("@optika_msk", "wholesale", [("sunglasses", "", 20)]),
+]
 SHIPPING = [
     ("auto", "Авто", "420", 18, 25, False, True),
     ("air", "Авиа", "980", 8, 12, False, False),
@@ -28,6 +47,11 @@ SHIPPING = [
 
 class Command(BaseCommand):
     help = "Загрузить демо-каталог из прототипа (повторный запуск обновляет данные)"
+
+    def add_arguments(self, parser):
+        parser.add_argument("--orders", action="store_true", help="создать демо-заказы")
+        parser.add_argument("--users", action="store_true",
+                            help="создать вход в кабинет для каждого поставщика (пароли выводятся один раз)")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -49,13 +73,15 @@ class Command(BaseCommand):
         suppliers = {}
         for code, sup in data["suppliers"].items():
             suppliers[code], _ = Supplier.objects.update_or_create(code=code, defaults={
-                "name": sup["name"], "about": sup["about"], "city": SUPPLIER_CITY.get(code, ""),
+                "name": sup["name"], "name_zh": SUPPLIER_ZH.get(code, ""), "about": sup["about"],
+                "city": SUPPLIER_CITY.get(code, ""), "wechat": f"tt_{code}",
                 "fact_days_min": sup["fact"][0], "fact_days_max": sup["fact"][1]})
 
         for p in data["products"]:
             product, _ = Product.objects.update_or_create(slug=p["id"], defaults={
                 "supplier": suppliers[p["sup"]], "category": categories[p["cat"]], "sku": p["id"].upper(),
-                "title_ru": p["t"], "description_ru": p.get("desc", ""), "price_cny": Decimal(str(p["cny"])),
+                "title_ru": p["t"], "title_zh": TITLE_ZH.get(p["id"], ""), "description_ru": p.get("desc", ""),
+                "price_cny": Decimal(str(p["cny"])),
                 "sale_percent": p.get("sale", 0), "weight_kg": Decimal(str(p["kg"])), "bulky": bool(p.get("bulky")),
                 "size_grid": p.get("sizes") or "", "is_new": bool(p.get("isNew")),
                 "status": Product.Status.PUBLISHED, "rating": p.get("rating"),
@@ -67,5 +93,21 @@ class Command(BaseCommand):
             if source.exists() and not product.images.exists():
                 with source.open("rb") as fh:
                     ProductImage.objects.create(product=product, image=File(fh, name=source.name))
+
+        if options["orders"]:
+            for contact, mode, lines in DEMO_ORDERS:
+                create_order([CartLine(product=slug, qty=qty, size=size) for slug, size, qty in lines],
+                             contact=contact, mode=mode)
+        if options["users"]:
+            group = Group.objects.get(name="Поставщики")
+            for code, supplier in suppliers.items():
+                username = f"{code}_supplier"
+                password = secrets.token_urlsafe(9)
+                user, _ = User.objects.get_or_create(username=username, defaults={"role": User.Role.SUPPLIER})
+                user.role, user.supplier, user.language = User.Role.SUPPLIER, supplier, "zh-hans"
+                user.set_password(password)
+                user.save()
+                user.groups.add(group)
+                self.stdout.write(f"  {supplier.name}: логин {username}, пароль {password}")
 
         self.stdout.write(self.style.SUCCESS(f"Готово: {len(data['products'])} товаров"))
