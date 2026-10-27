@@ -184,6 +184,8 @@ main {
 .more .ic { width: 18px; height: 18px; color: var(--lime); }
 .more:hover { color: var(--lime); }
 .hint { flex-basis: 100%; font-size: 15px; color: var(--muted); }
+.block__title { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.block__lead { margin: 0; max-width: 44ch; font-size: 16px; color: var(--muted); }
 .pagehead { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
 .pagehead h1 { font-size: clamp(48px, 13vw, 96px); }
 .pagehead__sub { color: var(--muted); font-size: 16px; }
@@ -303,9 +305,14 @@ main {
   padding: 0; border: 0; border-radius: var(--r-md); background: var(--surface); color: var(--photo-text);
   text-align: left; text-decoration: none;
 }
+/* тонкая светящаяся рамка поверх фото */
+.tile::before {
+  content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(90, 220, 150, .35), inset 0 0 24px rgba(40, 200, 120, .12);
+}
 .tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .6s cubic-bezier(.2, .7, .2, 1); }
 .tile:hover img { transform: scale(1.06); }
-.tile::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, .78) 100%); }
+.tile::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(2, 8, 5, 0) 45%, rgba(2, 8, 5, .82) 100%); }
 .tile__body { position: absolute; z-index: 1; left: 14px; right: 14px; bottom: 14px; }
 .tile__text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tile__title { font: 600 clamp(20px, 5.4vw, 30px)/1.05 var(--font-display); text-transform: uppercase; }
@@ -313,7 +320,7 @@ main {
 .tile .roundbtn { position: absolute; z-index: 1; top: 12px; right: 12px; width: 40px; height: 40px; }
 .tile__badge {
   position: absolute; z-index: 1; top: 12px; left: 12px; padding: 6px 10px; border-radius: 999px;
-  background: var(--lime); color: var(--on-lime); font: 600 12px/1 var(--font-display); letter-spacing: .05em; text-transform: uppercase;
+  background: var(--lime); color: var(--on-lime); font: 700 14px/1 var(--font-display); letter-spacing: .02em; text-transform: uppercase;
 }
 
 /* ---------- Категории ---------- */
@@ -1012,7 +1019,10 @@ html[data-mode="supplier"] .pd__price b { color: var(--lime); }
     clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%);
   }
   .tiles { gap: 16px; }
-  .tile { aspect-ratio: 5 / 4; }
+  .tile { aspect-ratio: 3 / 2; border-radius: 18px; }
+  .tile__title { font-size: clamp(28px, 2.6vw, 40px); }
+  .tile__sub { font-size: 15px; }
+  .tile__badge { top: 18px; left: 18px; padding: 9px 14px; font-size: 18px; }
   .tile__body { left: 22px; right: 22px; bottom: 22px; }
   .tile .roundbtn { top: 18px; right: 18px; width: 48px; height: 48px; }
   .cats { grid-auto-flow: row; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0; gap: 16px; }
