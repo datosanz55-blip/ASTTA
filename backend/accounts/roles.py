@@ -1,8 +1,24 @@
-"""Группы прав для ролей. Поставщик работает только со своими товарами (это ограничение в админке каталога)."""
+"""Группы прав для ролей. Поставщик работает только со своими товарами (это ограничение в админке каталога).
+
+Основатели работают как суперпользователи (createsuperuser): им доступно всё, включая создание аккаунтов.
+"""
 
 from django.contrib.auth.models import Group, Permission
 
+
+def _all(app_label, *models):
+    return [f"{app_label}.{action}_{model}" for model in models for action in ("view", "add", "change", "delete")]
+
+
 ROLE_PERMISSIONS = {
+    # Модератор правит любые товары, поставщиков, заказы и цены. Пользователей только смотрит:
+    # право менять пользователей позволило бы выдать себе права суперпользователя.
+    "Модераторы": [
+        *_all("catalog", "category", "supplier", "product", "pricetier", "productimage"),
+        *_all("orders", "order", "orderitem", "orderevent"),
+        *_all("pricing", "exchangerate", "shippingmethod", "pricingconfig"),
+        "accounts.view_user",
+    ],
     "Поставщики": [
         "catalog.view_product", "catalog.add_product", "catalog.change_product",
         "catalog.view_pricetier", "catalog.add_pricetier", "catalog.change_pricetier", "catalog.delete_pricetier",

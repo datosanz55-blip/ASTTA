@@ -462,7 +462,7 @@
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
     const cab = $('#cabinetPreview');
-    cab.innerHTML = isSupplier() ? `<a class="cabcard" href="#profile">${icon('box')}<div><b>Кабинет поставщика</b><span>37 заказов за неделю · к выплате 18 240 ¥</span></div>${icon('arrow-ur')}</a>` : '';
+    cab.innerHTML = isSupplier() ? `<a class="cabcard" href="seller.html">${icon('box')}<div><b>Кабинет поставщика</b><span>37 заказов за неделю · к выплате 18 240 ¥</span></div>${icon('arrow-ur')}</a>` : '';
     cab.hidden = !isSupplier();
   }
 
@@ -711,6 +711,7 @@
         <div><b>${esc(p.t)}</b><span>${cny(p.tiers[0][1])} от ${p.tiers[0][0]} шт · ${nf.format(1200 + i * 830)} просмотров</span></div>
         <em>${[14, 9, 6, 5, 3][i] || 2} зак.</em></div>`).join('');
     return `<div class="cabinet">
+      <a class="btn btn--accent" href="seller.html" style="align-self:flex-start;max-width:100%;white-space:normal;text-align:left">${icon('box')}Кабинет поставщика · 卖家中心</a>
       <div class="stats">
         <div class="stat"><span>Просмотры за 7 дней</span><b>12 480</b><small>+18%</small></div>
         <div class="stat"><span>Заказы за 7 дней</span><b>37</b><small>+6</small></div>
