@@ -21,6 +21,32 @@
     'nav.orders': ['订单', 'Заказы'],
     'nav.payouts': ['结算', 'Выплаты'],
     'nav.shop': ['店铺设置', 'Магазин'],
+    'nav.factory': ['内容工厂', 'Контент-завод'],
+    'fac.sub': ['根据您的商品自动生成动态，买家在 ASTTA“供应商动态”中看到。您只需要上传商品。', 'Сам делает посты для ленты поставщиков на ASTTA из ваших карточек. Вам остаётся только добавлять товары.'],
+    'fac.auto': ['自动发帖', 'Автопосты'],
+    'fac.newItems': ['新品上架', 'Новые товары'],
+    'fac.newItemsHint': ['商品审核通过后立即发帖', 'Сразу после модерации карточки'],
+    'fac.weekly': ['每周精选', 'Подборка недели'],
+    'fac.weeklyHint': ['每周一，选浏览量最高的商品', 'По понедельникам, из самых просматриваемых'],
+    'fac.restock': ['到货通知', 'Поступления'],
+    'fac.restockHint': ['商品重新有货时', 'Когда товар снова в наличии'],
+    'fac.video': ['视频（即将推出）', 'Видео (скоро)'],
+    'fac.videoHint': ['用商品图片自动生成短视频', 'Короткие ролики из фото товара'],
+    'fac.perDay': ['每天最多发布', 'Постов в день, не больше'],
+    'fac.next': ['下一条自动动态：今天 18:00', 'Следующий автопост: сегодня в 18:00'],
+    'fac.ruNote': ['买家看到的是俄语动态，我们会自动翻译。', 'Покупатели видят пост на русском, переводим сами.'],
+    'fac.post': ['发布动态', 'Пост в ленту'],
+    'fac.product': ['商品', 'Товар'],
+    'fac.kind': ['类型', 'Тип'],
+    'fac.kind.new': ['新品', 'Новинка'],
+    'fac.kind.restock': ['到货', 'Поступление'],
+    'fac.kind.opt': ['批发优惠', 'Оптовое предложение'],
+    'fac.text': ['内容（可以用中文写，发布前会翻译成俄语）', 'Текст (можно по-китайски, переведём перед публикацией)'],
+    'fac.send': ['提交', 'Отправить'],
+    'fac.sent': ['已提交，审核后发布', 'Отправлено, опубликуем после проверки'],
+    'fac.mine': ['我的动态', 'Мои посты'],
+    'fac.none': ['还没有手动发布的动态', 'Своих постов пока нет'],
+    'fac.saved': ['设置已保存', 'Настройки сохранены'],
     'hello': ['您好，{name}', 'Здравствуйте, {name}'],
     'hello.sub': ['这里是您在 ASTTA 的店铺：上传商品、处理订单、查看结算。', 'Здесь ваш магазин на ASTTA: товары, заказы и выплаты.'],
     'kpi.new': ['今日新订单', 'Новых заказов сегодня'],
@@ -240,7 +266,7 @@
       role: 'supplier', lang: 'zh', acting: null, view: { supplier: 'overview', moderator: 'moderation' },
       pfilter: 'all', ofilter: 'confirm', mfilter: { sup: '', status: '', q: '' },
       products: clone(SEED_PRODUCTS), orders: clone(SEED_ORDERS), suppliers: clone(SEED_SUPPLIERS),
-      pricing: clone(SEED_PRICING), buyerStatus: {}, imported: 0,
+      pricing: clone(SEED_PRICING), buyerStatus: {}, imported: 0, factory: {}, posts: [],
     };
   }
   let S;
@@ -311,7 +337,7 @@
   }
 
   /* ---------- Каркас ---------- */
-  const SUP_NAV = [['overview', 'home'], ['products', 'box'], ['orders', 'truck'], ['payouts', 'tag'], ['shop', 'user']];
+  const SUP_NAV = [['overview', 'home'], ['products', 'box'], ['orders', 'truck'], ['factory', 'spark'], ['payouts', 'tag'], ['shop', 'user']];
   const MOD_NAV = [['moderation', 'check', 'Модерация'], ['catalog', 'grid', 'Все товары'], ['suppliers', 'users', 'Поставщики'],
     ['orders', 'truck', 'Заказы'], ['pricing', 'tag', 'Цены и доставка']];
 
@@ -342,7 +368,7 @@
     }
     $('#side').innerHTML = nav.join('');
     const views = S.role === 'supplier'
-      ? { overview: vOverview, products: vProducts, orders: vOrders, payouts: vPayouts, shop: vShop }
+      ? { overview: vOverview, products: vProducts, orders: vOrders, factory: vFactory, payouts: vPayouts, shop: vShop }
       : { moderation: vModeration, catalog: vCatalog, suppliers: vSuppliers, orders: vModOrders, pricing: vPricing };
     $('#main').innerHTML = (views[view] || Object.values(views)[0])();
   }
@@ -619,6 +645,40 @@
       </section>`;
   }
 
+  /* ---------- Поставщик: контент-завод ---------- */
+  const FACTORY_DEFAULT = { newItems: true, weekly: true, restock: false, perDay: '3' };
+  const factory = () => (S.factory[supCode()] = S.factory[supCode()] || { ...FACTORY_DEFAULT });
+  function vFactory() {
+    const f = factory();
+    const mine = S.products.filter((p) => p.sup === supCode() && p.status === 'published');
+    const next = mine[0];
+    const sw = (key, hint, disabled = false) => `<label class="switchrow"><div><b>${t(`fac.${key}`)}</b><span>${t(hint)}</span></div>
+      <input class="switch" type="checkbox" role="switch" data-factory="${key}" ${f[key] ? 'checked' : ''} ${disabled ? 'disabled' : ''}></label>`;
+    const posts = S.posts.filter((x) => x.sup === supCode());
+    return `
+      <div class="pagehead"><div><h1>${t('nav.factory')}</h1><p>${t('fac.sub')}</p></div></div>
+      <div class="grid2">
+        <section class="panel"><h2>${t('fac.auto')}</h2>
+          <div>${sw('newItems', 'fac.newItemsHint')}${sw('weekly', 'fac.weeklyHint')}${sw('restock', 'fac.restockHint')}${sw('video', 'fac.videoHint', true)}
+            <label class="switchrow"><div><b>${t('fac.perDay')}</b></div>
+              <select class="select" data-factory="perDay" aria-label="${t('fac.perDay')}">${['1', '3', '5'].map((v) => `<option ${f.perDay === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+          ${next ? `<div class="preview">${thumb(next)}<div><b>${t('fac.next')}</b><br><span class="muted">Новинка от ${esc(supplier().ru)}: ${esc(next.ru || next.zh)}. ${next.tiers[0][1]} ¥ за штуку при партии от ${next.tiers[0][0]} шт. Фото с проверки на складе пришлём в заказ.</span></div></div>
+            <p class="note">${t('fac.ruNote')}</p>` : ''}
+        </section>
+        <section class="panel"><h2>${t('fac.post')}</h2>
+          <form class="form" id="postForm" novalidate>
+            <label class="field field--full"><span>${t('fac.product')}</span><select id="poProduct">${mine.map((p) => `<option value="${p.id}">${esc(pName(p))}</option>`).join('')}</select></label>
+            <label class="field field--full"><span>${t('fac.kind')}</span><select id="poKind">${['new', 'restock', 'opt'].map((k) => `<option value="${k}">${t(`fac.kind.${k}`)}</option>`).join('')}</select></label>
+            <label class="field field--full"><span>${t('fac.text')}</span><textarea id="poText"></textarea></label>
+            <div class="form__actions"><button class="btn btn--lime" type="submit">${t('fac.send')}</button></div>
+          </form>
+          <h2>${t('fac.mine')}</h2>
+          ${posts.length ? posts.map((x) => `<div class="preview">${thumb(product(x.pid))}<div><b>${t(`fac.kind.${x.kind}`)} · ${esc(pName(product(x.pid)))}</b><br><span class="muted">${esc(x.text)}</span></div><span class="st st--wait" style="margin-left:auto">${t('status.moderation')}</span></div>`).join('')
+            : `<p class="muted">${t('fac.none')}</p>`}
+        </section>
+      </div>`;
+  }
+
   /* ---------- Модератор: очередь ---------- */
   function vModeration() {
     const queue = S.products.filter((p) => p.status === 'moderation');
@@ -892,6 +952,13 @@
       toast(t('toast.shipped'));
       return;
     }
+    if (form.id === 'postForm') {
+      const text = $('#poText').value.trim();
+      if (!text) { toast(t('err.required')); $('#poText').focus(); return; }
+      S.posts.unshift({ sup: supCode(), pid: $('#poProduct').value, kind: $('#poKind').value, text });
+      save(); render(); toast(t('fac.sent'));
+      return;
+    }
     if (form.id === 'shopForm') {
       const s = supplier();
       if (L() === 'zh') { s.zh = $('#sName').value.trim() || s.zh; s.cityZh = $('#sCity').value.trim(); } else { s.ru = $('#sName').value.trim() || s.ru; s.cityRu = $('#sCity').value.trim(); }
@@ -930,6 +997,11 @@
     }
     if (el.id === 'importFile' && el.files[0]) { doImport(); return; }
     if (el.dataset.tier !== undefined) { draft.tiers[Number(el.dataset.tier)][Number(el.dataset.k)] = el.value; return; }
+    if (el.dataset.factory) {
+      factory()[el.dataset.factory] = el.type === 'checkbox' ? el.checked : el.value;
+      save(); toast(t('fac.saved'));
+      return;
+    }
     if (el.dataset.mf) { S.mfilter[el.dataset.mf] = el.value; save(); render(); return; }
     if (el.dataset.bstatus) {
       S.buyerStatus[el.dataset.bstatus] = el.value;

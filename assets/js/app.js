@@ -241,8 +241,6 @@
     feed: 'all', feedSup: null,
     liked: new Set(), joined: new Set(),
     orders: [],
-    myProducts: [],
-    factory: { newItems: true, weekly: true, restock: false, perDay: '3' },
     ptab: 'orders',
     measures: null,
     family: {
@@ -461,9 +459,6 @@
     $('#saleRail').innerHTML = PRODUCTS.filter((p) => p.sale).map(cardHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
-    const cab = $('#cabinetPreview');
-    cab.innerHTML = isSupplier() ? `<a class="cabcard" href="seller.html">${icon('box')}<div><b>Кабинет поставщика</b><span>37 заказов за неделю · к выплате 18 240 ¥</span></div>${icon('arrow-ur')}</a>` : '';
-    cab.hidden = !isSupplier();
   }
 
   const PLATFORMS = [[/1688\./i, '1688'], [/taobao\.|tb\.cn/i, 'Taobao'], [/tmall\./i, 'Tmall'], [/poizon|dewu/i, 'Poizon'], [/pinduoduo|yangkeduo/i, 'Pinduoduo']];
@@ -701,55 +696,7 @@
     </article>`;
   }
 
-  function cabinetHTML() {
-    const mine = PRODUCTS.filter((p) => p.sup === 'gz');
-    const f = state.factory;
-    const next = state.myProducts[0] ? state.myProducts[0].t : 'Бомбер oversize';
-    const myRows = state.myProducts.map((p) => `<div class="prow">${p.photo ? `<img src="${esc(p.photo)}" alt="" width="48" height="48">` : '<span class="noimg"></span>'}
-        <div><b>${esc(p.t)}</b><span>${cny(p.cny)} · от ${p.moq} шт · на модерации</span></div><em>новый</em></div>`).join('');
-    const rows = mine.map((p, i) => `<div class="prow"><img src="${img(p.id)}" alt="" width="48" height="48" loading="lazy">
-        <div><b>${esc(p.t)}</b><span>${cny(p.tiers[0][1])} от ${p.tiers[0][0]} шт · ${nf.format(1200 + i * 830)} просмотров</span></div>
-        <em>${[14, 9, 6, 5, 3][i] || 2} зак.</em></div>`).join('');
-    return `<div class="cabinet">
-      <a class="btn btn--accent" href="seller.html" style="align-self:flex-start;max-width:100%;white-space:normal;text-align:left">${icon('box')}Кабинет поставщика · 卖家中心</a>
-      <div class="stats">
-        <div class="stat"><span>Просмотры за 7 дней</span><b>12 480</b><small>+18%</small></div>
-        <div class="stat"><span>Заказы за 7 дней</span><b>37</b><small>+6</small></div>
-        <div class="stat"><span>К выплате</span><b>18 240 ¥</b><small>≈ ${rub(18240 * RATE)}</small></div>
-        <div class="stat"><span>Подписчики</span><b>4 820</b><small>+212</small></div>
-      </div>
-      <div class="actions">
-        <button class="action" type="button" data-cab="add">${icon('plus')}<b>Добавить товар</b><span>Фото, цена в юанях, опт</span></button>
-        <button class="action" type="button" data-cab="import">${icon('upload')}<b>Загрузить каталог</b><span>Excel или ссылка на магазин 1688</span></button>
-        <button class="action" type="button" data-cab="post">${icon('feed')}<b>Пост в ленту</b><span>Новинка, поступление, подборка</span></button>
-      </div>
-      <div class="cabinet__grid">
-        <section class="panel" aria-labelledby="factoryTitle">
-          <h3 id="factoryTitle">Контент-завод</h3>
-          <p class="note">Сам собирает посты для ленты из ваших карточек: фото, цена, опт, сроки. Вам остаётся только добавлять товары.</p>
-          <div>
-            <label class="switchrow"><div><b>Посты о новых товарах</b><span>Сразу после модерации карточки</span></div><input class="switch" type="checkbox" role="switch" id="fNew" data-factory="newItems" ${f.newItems ? 'checked' : ''}></label>
-            <label class="switchrow"><div><b>Подборки недели</b><span>По понедельникам, из самых просматриваемых</span></div><input class="switch" type="checkbox" role="switch" id="fWeekly" data-factory="weekly" ${f.weekly ? 'checked' : ''}></label>
-            <label class="switchrow"><div><b>Поступления на склад</b><span>Когда товар снова в наличии</span></div><input class="switch" type="checkbox" role="switch" id="fRestock" data-factory="restock" ${f.restock ? 'checked' : ''}></label>
-            <label class="switchrow"><div><b>Видеообзоры</b><span>Скоро: ролики из фото товара</span></div><input class="switch" type="checkbox" role="switch" id="fVideo" disabled></label>
-            <label class="switchrow"><div><b>Постов в день</b><span>Не больше, чтобы не надоедать подписчикам</span></div>
-              <select class="minisel" id="fPerDay" data-factory="perDay">
-                ${['1', '3', '5'].map((v) => `<option ${f.perDay === v ? 'selected' : ''}>${v}</option>`).join('')}
-              </select></label>
-          </div>
-          <div class="nextpost">${icon('spark')}<div><b>Следующий автопост сегодня в 18:00</b><span>${esc(next)}</span></div><button class="btn btn--line btn--sm" type="button" data-cab="preview">Показать</button></div>
-        </section>
-        <section class="panel" aria-labelledby="myTitle">
-          <h3 id="myTitle">Мои товары</h3>
-          <div class="rows">${myRows}${rows}</div>
-          <p class="note">ASTTA удерживает 5% с розничной продажи и 3% с оптовой. Выплата раз в неделю, в юанях или рублях.</p>
-        </section>
-      </div>
-    </div>`;
-  }
-
   function renderProfile() {
-    if (isSupplier()) { $('#profileBody').innerHTML = cabinetHTML(); return; }
     const tabs = [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
     const body = {
       orders: () => `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`,
@@ -1689,52 +1636,6 @@ ${aiCatalogJSON()}
     roomRender();
   }
 
-  /* ---------- Действия кабинета ---------- */
-  function cabAction(kind) {
-    if (kind === 'add') {
-      openSheet(`<div class="stack">
-        <h2 class="sheet__title">Новый товар</h2>
-        <form class="form" id="addForm" novalidate>
-          <label class="field field--full"><span>Название</span><input id="apName" required placeholder="Худи oversize, футер 380 г/м²"></label>
-          <label class="field"><span>Категория</span><select id="apCat">${CATS.map((c) => `<option value="${c.id}">${c.name}</option>`).join('')}</select></label>
-          <label class="field"><span>Цена за шт, ¥</span><input id="apCny" type="number" min="1" required value="96"></label>
-          <label class="field"><span>Опт от, шт</span><input id="apMoq" type="number" min="1" required value="10"></label>
-          <label class="field"><span>Вес, кг</span><input id="apKg" type="number" min="0.1" step="0.1" value="0.8"></label>
-          <label class="field field--full"><span>Фото</span><input id="apPhoto" type="file" accept="image/*"></label>
-          <p class="note field--full">Контент-завод сам подготовит пост для ленты, когда карточку проверят.</p>
-          <button class="btn btn--accent btn--wide field--full" type="submit">Отправить на модерацию</button>
-        </form></div>`, { narrow: true });
-    } else if (kind === 'import') {
-      openSheet(`<div class="stack">
-        <h2 class="sheet__title">Загрузка каталога</h2>
-        <p class="note">Excel или CSV по шаблону, либо ссылка на ваш магазин на 1688. Контент-завод разберёт фото и описания и сделает карточки на русском.</p>
-        <form class="form" id="importForm" novalidate>
-          <label class="field field--full"><span>Файл каталога</span><input id="imFile" type="file" accept=".xlsx,.xls,.csv"></label>
-          <label class="field field--full"><span>Или ссылка на магазин</span><input id="imUrl" type="url" placeholder="https://shop123456.1688.com"></label>
-          <button class="btn btn--accent btn--wide field--full" type="submit">Загрузить</button>
-        </form></div>`, { narrow: true });
-    } else if (kind === 'post') {
-      const mine = PRODUCTS.filter((p) => p.sup === 'gz');
-      openSheet(`<div class="stack">
-        <h2 class="sheet__title">Пост в ленту</h2>
-        <form class="form" id="postForm" novalidate>
-          <label class="field field--full"><span>Товар</span><select id="poProduct">${mine.map((p) => `<option value="${p.id}">${esc(p.t)}</option>`).join('')}</select></label>
-          <label class="field field--full"><span>Тип</span><select id="poKind"><option value="new">Новинка</option><option value="restock">Поступление</option><option value="opt">Оптовое предложение</option></select></label>
-          <label class="field field--full"><span>Текст</span><textarea id="poText" required>Свежая партия уже на складе в Гуанчжоу. Опт от 5 штук, фото с проверки пришлём в заказ.</textarea></label>
-          <button class="btn btn--accent btn--wide field--full" type="submit">Опубликовать</button>
-        </form></div>`, { narrow: true });
-    } else if (kind === 'preview') {
-      const src = state.myProducts[0];
-      const p = byId.bomber;
-      const post = src
-        ? { id: 999, sup: 'gz', pid: 'bomber', time: 'сегодня в 18:00', auto: true, likes: 0, comments: 0, photo: src.photo || img('bomber'),
-            text: `Новинка от TT · Гуанчжоу: ${src.t}. ${src.cny} ¥ за штуку при партии от ${src.moq} шт. Фото с проверки на складе пришлём в заказ.` }
-        : { id: 999, sup: 'gz', pid: 'bomber', time: 'сегодня в 18:00', auto: true, likes: 0, comments: 0,
-            text: `Бомбер oversize из плотной плащёвки, утеплитель 80 г/м². Опт от ${p.tiers[0][0]} шт по ${p.tiers[0][1]} ¥, от ${p.tiers[1][0]} шт по ${p.tiers[1][1]} ¥. До Москвы ${daysText(SHIP.auto.days)}.` };
-      openSheet(`<div class="stack"><h2 class="sheet__title">Так увидят пост подписчики</h2>${postHTML(post)}</div>`, { narrow: true });
-    }
-  }
-
   /* ---------- Шторка, меню, уведомления ---------- */
   let lastFocus = null;
   function openSheet(html, opts = {}) {
@@ -1975,7 +1876,6 @@ ${aiCatalogJSON()}
       } else selectText(t.parentElement);
       return;
     }
-    if (d.cab) { cabAction(d.cab); return; }
     if (d.quick) { sendChat(d.quick); return; }
     if (d.proof !== undefined && pdState) { pdState.proof = !pdState.proof; rerenderProduct(); return; }
     if (d.room) { openRoom(d.room); return; }
@@ -2167,11 +2067,6 @@ ${aiCatalogJSON()}
       return;
     }
     if (t.id === 'famBudget') { state.family.budget = Number(t.value); store.save(); renderProfile(); return; }
-    if (t.dataset.factory) {
-      const key = t.dataset.factory;
-      state.factory[key] = t.type === 'checkbox' ? t.checked : t.value;
-      toast('Настройки контент-завода сохранены');
-    }
   }
 
   function onInput(e) {
@@ -2274,39 +2169,6 @@ ${aiCatalogJSON()}
     }
     if (f.id === 'checkoutForm') { submitCheckout(); return; }
     if (f.id === 'chatForm') { const i = $('#chatInput'); sendChat(i.value); i.value = ''; return; }
-    if (f.id === 'addForm') {
-      const name = $('#apName').value.trim();
-      if (!name) { $('#apName').closest('.field').classList.add('is-error'); $('#apName').focus(); return; }
-      const file = $('#apPhoto').files[0];
-      state.myProducts.unshift({
-        t: name, cny: Math.max(1, Number($('#apCny').value) || 1), moq: Math.max(1, Number($('#apMoq').value) || 1),
-        photo: file ? URL.createObjectURL(file) : null,
-      });
-      closeSheet();
-      renderProfile();
-      toast('Товар отправлен на модерацию. Пост выйдет в 18:00');
-      return;
-    }
-    if (f.id === 'importForm') {
-      const hasFile = $('#imFile').files.length > 0;
-      const url = $('#imUrl').value.trim();
-      if (!hasFile && !url) { toast('Выберите файл или вставьте ссылку на магазин'); return; }
-      openSheet(`<div class="success">
-        <span class="success__ic">${icon('upload')}</span>
-        <h2 class="sheet__title">Каталог в обработке</h2>
-        <p>Контент-завод переводит названия, чистит фото и раскладывает товары по категориям. Обычно это занимает до часа, мы пришлём уведомление.</p>
-        <button class="btn btn--dark" type="button" data-close>Понятно</button>
-      </div>`, { narrow: true });
-      return;
-    }
-    if (f.id === 'postForm') {
-      const text = $('#poText').value.trim();
-      if (!text) { $('#poText').closest('.field').classList.add('is-error'); return; }
-      POSTS.unshift({ id: Date.now(), sup: 'gz', pid: $('#poProduct').value, time: 'только что', auto: false, kind: $('#poKind').value, likes: 0, comments: 0, text });
-      closeSheet();
-      renderHome();
-      toast('Пост опубликован в ленте');
-    }
   }
 
   function onKey(e) {

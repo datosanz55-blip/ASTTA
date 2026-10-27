@@ -47,12 +47,15 @@ class ShippingMethod(models.Model):
 class PricingConfig(models.Model):
     """Одна запись с настройками цены. Меняется в админке без выкладки кода."""
 
+    # Сбор платит покупатель сверх цены товара, поставщик получает свою цену полностью.
     retail_fee = models.DecimalField(_("сервисный сбор, розница"), max_digits=5, decimal_places=4,
                                      default=Decimal("0.05"),
-                                     validators=[MinValueValidator(0), MaxValueValidator(1)])
+                                     validators=[MinValueValidator(0), MaxValueValidator(1)],
+                                     help_text=_("0.05 = 5% к стоимости товара сверху, платит покупатель"))
     wholesale_fee = models.DecimalField(_("сервисный сбор, опт"), max_digits=5, decimal_places=4,
                                         default=Decimal("0.03"),
-                                        validators=[MinValueValidator(0), MaxValueValidator(1)])
+                                        validators=[MinValueValidator(0), MaxValueValidator(1)],
+                                        help_text=_("0.03 = 3% к стоимости товара сверху, платит покупатель"))
     rate_markup = models.DecimalField(_("надбавка к курсу ЦБ"), max_digits=5, decimal_places=4,
                                       default=Decimal("0"),
                                       validators=[MinValueValidator(0), MaxValueValidator(1)],

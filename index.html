@@ -80,13 +80,13 @@
       <a href="#catalog" data-filter="sale">Акции</a>
       <a href="#trends" data-nav="trends">Тренды</a>
       <a href="#feed" data-nav="feed">Лента</a>
-      <a href="#profile" data-nav="profile" data-mode-text="Профиль|Кабинет"></a>
+      <a href="#profile" data-nav="profile">Профиль</a>
     </nav>
 
     <div class="mode mode--top" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
       <span class="mode__thumb" aria-hidden="true"></span>
       <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
-      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Поставщикам</button>
+      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
     </div>
 
     <div class="topbar__actions">
@@ -103,7 +103,7 @@
     <div class="mode" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
       <span class="mode__thumb" aria-hidden="true"></span>
       <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
-      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Поставщикам</button>
+      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
     </div>
     <p class="rate"><span class="mono">1 ¥ = <b data-rate>11,40</b> ₽</span></p>
   </div>
@@ -164,8 +164,6 @@
         </ul>
       </div>
     </div>
-
-    <div id="cabinetPreview" hidden></div>
 
     <section class="ai" id="ai" aria-labelledby="aiTitle">
       <img class="ai__art" src="assets/img/ai-art.webp" width="594" height="526" alt="" aria-hidden="true">
@@ -329,8 +327,8 @@
   <!-- ПРОФИЛЬ -->
   <section class="view" data-view="profile" aria-label="Профиль" hidden>
     <div class="pagehead">
-      <h1 data-mode-text="Профиль|Кабинет"></h1>
-      <p class="pagehead__sub" data-mode-text="Заказы, семья, подарки и мерки|TT · Гуанчжоу, одежда"></p>
+      <h1>Профиль</h1>
+      <p class="pagehead__sub">Заказы, семья, подарки и мерки</p>
     </div>
     <div id="profileBody"></div>
   </section>
@@ -352,7 +350,7 @@
   <a href="#catalog" data-nav="catalog"><svg class="ic"><use href="#i-grid"/></svg><span>Каталог</span></a>
   <a href="#trends" data-nav="trends"><svg class="ic"><use href="#i-play"/></svg><span>Тренды</span></a>
   <a href="#cart" data-nav="cart"><svg class="ic"><use href="#i-bag"/></svg><span>Корзина</span><b class="count" data-cart-count hidden>0</b></a>
-  <a href="#profile" data-nav="profile"><svg class="ic"><use href="#i-user"/></svg><span data-mode-text="Профиль|Кабинет"></span></a>
+  <a href="#profile" data-nav="profile"><svg class="ic"><use href="#i-user"/></svg><span>Профиль</span></a>
 </nav>
 
 <div class="sheet" id="sheet" hidden>
@@ -377,7 +375,7 @@
     <div class="drawer__links">
       <a href="#link" data-close-menu>Заказ по ссылке</a>
       <a href="#feed" data-close-menu>Лента поставщиков</a>
-      <a href="#profile" data-close-menu data-mode-text="Профиль|Кабинет поставщика"></a>
+      <a href="#profile" data-close-menu>Профиль</a>
       <button type="button" data-open-chat data-close-menu>Написать агенту</button>
       <a href="seller.html">Кабинет поставщика · 卖家中心</a>
       <a href="seller.html#moderator">Модерация</a>

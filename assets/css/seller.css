@@ -268,6 +268,17 @@ button.kpi:hover { border-color: var(--muted); }
   box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
 }
 
+/* ---------- Контент-завод ---------- */
+.switchrow { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.switchrow:first-child { border-top: 0; }
+.switchrow div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.switchrow span { font-size: 12px; color: var(--muted); }
+.switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 46px; height: 28px; margin: 0; border-radius: 999px; background: var(--line); cursor: pointer; transition: background-color .2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); transition: transform .2s, background-color .2s; }
+.switch:checked { background: var(--lime); }
+.switch:checked::after { transform: translateX(18px); background: var(--on-lime); }
+.switch:disabled { opacity: .4; cursor: not-allowed; }
+
 /* ---------- Цены ---------- */
 .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; }
 .kv span { color: var(--muted); }
