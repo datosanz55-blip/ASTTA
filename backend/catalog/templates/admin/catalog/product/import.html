@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="max-w-2xl flex flex-col gap-6">
+  <p>{% translate "Заполните шаблон: одна строка — один товар. Если в файле есть ошибка, не загрузится ничего, исправьте файл и загрузите снова. Новые и изменённые товары уходят на модерацию." %}</p>
+  <p><a class="underline font-medium" href="{% url 'admin:catalog_product_template' %}">{% translate "Скачать шаблон Excel" %}</a></p>
+
+  {% if result and result.errors %}
+    <div class="border border-red-300 bg-red-50 text-red-800 rounded-default p-4 dark:bg-red-950 dark:text-red-200">
+      <p class="font-semibold mb-2">{% translate "Файл не загружен. Исправьте ошибки:" %}</p>
+      <ul class="list-disc pl-5">{% for error in result.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4">
+    {% csrf_token %}
+    {% if suppliers %}
+      <label class="flex flex-col gap-1">{% translate "Поставщик" %}
+        <select name="supplier" required class="border border-base-200 rounded-default px-3 py-2">
+          {% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+    {% endif %}
+    <label class="flex flex-col gap-1">{% translate "Файл .xlsx" %}
+      <input type="file" name="file" accept=".xlsx" required>
+    </label>
+    <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default w-fit">{% translate "Загрузить" %}</button>
+  </form>
+</div>
+{% endblock %}

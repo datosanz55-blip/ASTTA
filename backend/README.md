@@ -1,0 +1,82 @@
+# ASTTA backend
+
+Сервер площадки: каталог, цена под ключ, заказы, админка для команды и кабинет поставщика на китайском.
+
+Стек: Python 3.12, Django 5.2, Django Ninja (API), PostgreSQL 16, Celery + Redis (фоновые задачи), Unfold (оформление админки).
+
+## Что уже есть
+
+- **Каталог.** Поставщики, категории, товары с названием и описанием на русском и китайском, оптовые ступени, фото, модерация (черновик → на модерации → опубликован или отклонён).
+- **Цена под ключ.** Формулы те же, что в прототипе: товар по курсу, доставка по весу, сервисный сбор 5% в рознице и 3% в опте, итог округляется до 10 ₽. Крупногабарит едет только сборным грузом. Тарифы, сборы и надбавка к курсу меняются в админке без выкладки кода.
+- **Курс юаня.** Фоновая задача раз в 3 часа берёт курс с сайта ЦБ РФ. Вручную: `python manage.py update_rate`.
+- **Заказы.** Цена фиксируется в момент заказа. Агент меняет статус и добавляет фото со склада и фактический вес, покупатель видит историю по ссылке с токеном.
+- **Кабинет поставщика.** Та же админка, но поставщик видит только свои товары, интерфейс на китайском, публикует модератор. Каталог загружается файлом Excel по двуязычному шаблону: если в файле есть ошибка, не загружается ничего, а поставщик получает список ошибок по строкам.
+- **Роли.** Группы прав «Поставщики» и «Агенты» создаёт `python manage.py setup_roles`.
+
+## API
+
+Документация с примерами открывается на `/api/docs`.
+
+| Метод | Адрес | Что делает |
+|---|---|---|
+| GET | `/api/categories` | категории |
+| GET | `/api/products?category=&q=&sale=&new=&sort=&page=` | каталог с ценой под ключ |
+| GET | `/api/products/{slug}` | карточка: оптовые ступени, фото, фактический срок поставщика |
+| GET | `/api/quote?product=&qty=&mode=retail\|wholesale&shipping=` | цена с расшифровкой |
+| GET | `/api/rate`, `/api/shipping` | курс и способы доставки |
+| POST | `/api/orders` | оформить заказ (оплата после подтверждения агентом) |
+| GET | `/api/orders/{token}` | заказ и трекинг |
+
+## Запуск на своём компьютере
+
+```bash
+cd backend
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+export DJANGO_DEBUG=1
+python manage.py migrate
+python manage.py seed_demo          # 18 товаров из прототипа, тарифы, курс 11,40 ₽
+python manage.py createsuperuser
+python manage.py runserver
+```
+
+Админка: http://localhost:8000/admin/, API: http://localhost:8000/api/docs.
+
+Без переменной `POSTGRES_DB` проект работает на SQLite. Для разработки этого хватает, но в SQLite поиск по русскому тексту чувствителен к регистру, поэтому тесты и сервер работают на PostgreSQL.
+
+## Тесты и проверки
+
+```bash
+POSTGRES_DB=astta POSTGRES_USER=astta POSTGRES_PASSWORD=... POSTGRES_HOST=localhost pytest
+ruff check .
+```
+
+Те же проверки запускает GitHub Actions на каждый PR (`.github/workflows/ci.yml`).
+
+## Сервер
+
+`infra/docker-compose.yml` поднимает базу, Redis, API с админкой и фоновые задачи на одном сервере. Сервер должен стоять в России: персональные данные покупателей по 152-ФЗ хранятся в России.
+
+```bash
+cp infra/.env.example infra/.env   # заполнить секреты
+docker compose -f infra/docker-compose.yml --env-file infra/.env up -d --build
+docker compose -f infra/docker-compose.yml exec backend python manage.py createsuperuser
+```
+
+HTTPS и домен настраиваются на обратном прокси (Caddy или nginx) перед портом 8000: он же включает редирект на HTTPS и HSTS.
+
+## Переводы
+
+Строки интерфейса на китайском лежат в `locale/zh_Hans/LC_MESSAGES/django.po`. После изменения текстов:
+
+```bash
+python manage.py makemessages -l zh_Hans --ignore=staticfiles
+# дописать переводы в django.po
+python manage.py compilemessages
+```
+
+## Чего пока нет
+
+- Сайт для покупателей на реальном API (следующий шаг, Next.js).
+- Вход по Telegram и СМС, оплата (ЮKassa), уведомления в Telegram, хранилище фото в S3, ASTTA AI.
+- Часть служебных надписей Unfold («Filters», поиск) остаётся на английском: у темы нет китайского перевода.

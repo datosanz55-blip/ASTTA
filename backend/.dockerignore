@@ -1,0 +1,7 @@
+db.sqlite3
+media/
+staticfiles/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc

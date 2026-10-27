@@ -1,0 +1,131 @@
+from django.contrib import admin, messages
+from django.http import HttpResponse
+from django.shortcuts import redirect
+from django.template.response import TemplateResponse
+from django.urls import path
+from django.utils.translation import gettext_lazy as _
+from unfold.admin import ModelAdmin, TabularInline
+
+from catalog.importer import build_template, import_catalog, unique_slug
+from catalog.models import Category, PriceTier, Product, ProductImage, Supplier
+
+
+def is_supplier(request):
+    return getattr(request.user, "is_supplier", False) and not request.user.is_superuser
+
+
+@admin.register(Category)
+class CategoryAdmin(ModelAdmin):
+    list_display = ("name_ru", "name_zh", "slug", "position")
+    list_editable = ("position",)
+    prepopulated_fields = {"slug": ("name_ru",)}
+
+
+@admin.register(Supplier)
+class SupplierAdmin(ModelAdmin):
+    list_display = ("name", "code", "city", "fact_days_min", "fact_days_max", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name", "code", "city")
+
+
+class PriceTierInline(TabularInline):
+    model = PriceTier
+    extra = 1
+
+
+class ProductImageInline(TabularInline):
+    model = ProductImage
+    extra = 1
+
+
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    list_display = ("title_ru", "title_zh", "supplier", "category", "price_cny", "status")
+    list_filter = ("status", "category", "supplier")
+    search_fields = ("title_ru", "title_zh", "sku", "slug")
+    inlines = [PriceTierInline, ProductImageInline]
+    actions = ["publish", "reject"]
+    change_list_template = "admin/catalog/product/change_list.html"
+    fieldsets = (
+        (None, {"fields": ("supplier", "category", "sku", "slug", "status", "moderation_note")}),
+        (_("Название и описание"), {"fields": ("title_zh", "title_ru", "description_zh", "description_ru")}),
+        (_("Цена и доставка"), {"fields": ("price_cny", "sale_percent", "weight_kg", "bulky", "size_grid",
+                                           "is_new")}),
+    )
+    supplier_readonly = ("supplier", "slug", "status", "moderation_note")
+
+    # Поставщик видит и меняет только свои товары, а публикует их модератор.
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("supplier", "category")
+        return qs.filter(supplier=request.user.supplier) if is_supplier(request) else qs
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.supplier_readonly if is_supplier(request) else ()
+
+    def get_prepopulated_fields(self, request, obj=None):
+        return {} if is_supplier(request) else {"slug": ("title_ru",)}
+
+    def get_list_filter(self, request):
+        return ("status", "category") if is_supplier(request) else self.list_filter
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if is_supplier(request):
+            actions.pop("publish", None)
+            actions.pop("reject", None)
+        return actions
+
+    def save_model(self, request, obj, form, change):
+        if is_supplier(request):
+            obj.supplier = request.user.supplier
+            obj.status = Product.Status.MODERATION
+            if not obj.slug:
+                obj.slug = unique_slug(obj.supplier, obj.sku or obj.title_zh or "item")
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description=_("Опубликовать"))
+    def publish(self, request, queryset):
+        updated = queryset.update(status=Product.Status.PUBLISHED, moderation_note="")
+        self.message_user(request, _("Опубликовано: %(n)s") % {"n": updated})
+
+    @admin.action(description=_("Отклонить"))
+    def reject(self, request, queryset):
+        updated = queryset.update(status=Product.Status.REJECTED)
+        self.message_user(request, _("Отклонено: %(n)s") % {"n": updated}, messages.WARNING)
+
+    def get_urls(self):
+        return [
+            path("import/", self.admin_site.admin_view(self.import_view), name="catalog_product_import"),
+            path("template/", self.admin_site.admin_view(self.template_view), name="catalog_product_template"),
+        ] + super().get_urls()
+
+    def template_view(self, request):
+        response = HttpResponse(build_template(),
+                                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = 'attachment; filename="astta-catalog-template.xlsx"'
+        return response
+
+    def import_view(self, request):
+        if not self.has_add_permission(request):
+            return redirect("admin:catalog_product_changelist")
+        supplier = request.user.supplier if is_supplier(request) else None
+        if not supplier and request.POST.get("supplier"):
+            supplier = Supplier.objects.filter(pk=request.POST["supplier"]).first()
+        result = None
+        if request.method == "POST" and request.FILES.get("file"):
+            if supplier is None:
+                messages.error(request, _("Выберите поставщика"))
+            else:
+                result = import_catalog(request.FILES["file"], supplier)
+                if result.ok:
+                    messages.success(request, _("Загружено: новых %(c)s, обновлено %(u)s. Товары ушли на модерацию.")
+                                     % {"c": result.created, "u": result.updated})
+                    return redirect("admin:catalog_product_changelist")
+        context = {
+            **self.admin_site.each_context(request),
+            "title": _("Загрузка каталога из Excel"),
+            "opts": self.model._meta,
+            "result": result,
+            "suppliers": None if is_supplier(request) else Supplier.objects.filter(is_active=True),
+        }
+        return TemplateResponse(request, "admin/catalog/product/import.html", context)

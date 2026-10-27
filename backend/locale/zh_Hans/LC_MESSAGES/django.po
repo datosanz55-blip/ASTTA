@@ -1,0 +1,540 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: ASTTA\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-27 18:56+0300\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: accounts/apps.py:7
+msgid "Пользователи"
+msgstr "用户"
+
+#: accounts/models.py:8
+msgid "Покупатель"
+msgstr "买家"
+
+#: accounts/models.py:9 catalog/templates/admin/catalog/product/import.html:19
+msgid "Поставщик"
+msgstr "供应商"
+
+#: accounts/models.py:10
+msgid "Агент TT"
+msgstr "TT 代理"
+
+#: accounts/models.py:11
+msgid "Администратор"
+msgstr "管理员"
+
+#: accounts/models.py:13
+msgid "роль"
+msgstr "角色"
+
+#: accounts/models.py:14
+msgid "телефон"
+msgstr "电话"
+
+#: accounts/models.py:17
+msgid "язык интерфейса"
+msgstr "界面语言"
+
+#: accounts/models.py:23
+msgid "пользователь"
+msgstr "用户"
+
+#: accounts/models.py:24
+msgid "пользователи"
+msgstr "用户"
+
+#: catalog/admin.py:51
+msgid "Название и описание"
+msgstr "名称和描述"
+
+#: catalog/admin.py:52
+msgid "Цена и доставка"
+msgstr "价格和运输"
+
+#: catalog/admin.py:86
+msgid "Опубликовать"
+msgstr "发布"
+
+#: catalog/admin.py:89
+#, python-format
+msgid "Опубликовано: %(n)s"
+msgstr "已发布：%(n)s"
+
+#: catalog/admin.py:91
+msgid "Отклонить"
+msgstr "驳回"
+
+#: catalog/admin.py:94
+#, python-format
+msgid "Отклонено: %(n)s"
+msgstr "已驳回：%(n)s"
+
+#: catalog/admin.py:117
+msgid "Выберите поставщика"
+msgstr "请选择供应商"
+
+#: catalog/admin.py:121
+#, python-format
+msgid "Загружено: новых %(c)s, обновлено %(u)s. Товары ушли на модерацию."
+msgstr "上传成功：新增 %(c)s，更新 %(u)s。商品已提交审核。"
+
+#: catalog/admin.py:126
+msgid "Загрузка каталога из Excel"
+msgstr "通过 Excel 上传商品"
+
+#: catalog/apps.py:7
+msgid "Каталог"
+msgstr "商品目录"
+
+#: catalog/models.py:10 catalog/models.py:61
+msgid "название (рус.)"
+msgstr "名称（俄语）"
+
+#: catalog/models.py:11 catalog/models.py:62
+msgid "название (кит.)"
+msgstr "名称（中文）"
+
+#: catalog/models.py:12 catalog/models.py:125
+msgid "порядок"
+msgstr "排序"
+
+#: catalog/models.py:16 catalog/models.py:57
+msgid "категория"
+msgstr "类目"
+
+#: catalog/models.py:17
+msgid "категории"
+msgstr "类目"
+
+#: catalog/models.py:24 pricing/models.py:28
+msgid "код"
+msgstr "代码"
+
+#: catalog/models.py:25 pricing/models.py:29
+msgid "название"
+msgstr "名称"
+
+#: catalog/models.py:26
+msgid "город"
+msgstr "城市"
+
+#: catalog/models.py:27
+msgid "коротко о поставщике"
+msgstr "供应商简介"
+
+#: catalog/models.py:29
+msgid "факт. срок от, дн."
+msgstr "实际时效（最短，天）"
+
+#: catalog/models.py:30
+msgid "факт. срок до, дн."
+msgstr "实际时效（最长，天）"
+
+#: catalog/models.py:31
+msgid "активен"
+msgstr "启用"
+
+#: catalog/models.py:36 catalog/models.py:55
+msgid "поставщик"
+msgstr "供应商"
+
+#: catalog/models.py:37
+msgid "поставщики"
+msgstr "供应商"
+
+#: catalog/models.py:45
+msgid "Черновик"
+msgstr "草稿"
+
+#: catalog/models.py:46
+msgid "На модерации"
+msgstr "审核中"
+
+#: catalog/models.py:47
+msgid "Опубликован"
+msgstr "已发布"
+
+#: catalog/models.py:48
+msgid "Отклонён"
+msgstr "已驳回"
+
+#: catalog/models.py:51
+msgid "Без размеров"
+msgstr "无尺码"
+
+#: catalog/models.py:52
+msgid "Одежда"
+msgstr "服装"
+
+#: catalog/models.py:53
+msgid "Обувь"
+msgstr "鞋类"
+
+#: catalog/models.py:60
+msgid "артикул поставщика"
+msgstr "供应商货号"
+
+#: catalog/models.py:63
+msgid "описание (рус.)"
+msgstr "描述（俄语）"
+
+#: catalog/models.py:64
+msgid "описание (кит.)"
+msgstr "描述（中文）"
+
+#: catalog/models.py:65
+msgid "розничная цена, ¥"
+msgstr "零售价（元）"
+
+#: catalog/models.py:67
+msgid "скидка, %"
+msgstr "折扣（%）"
+
+#: catalog/models.py:69
+msgid "вес в упаковке, кг"
+msgstr "包装后重量（公斤）"
+
+#: catalog/models.py:72
+msgid "крупногабарит"
+msgstr "大件"
+
+#: catalog/models.py:73
+msgid "размерная сетка"
+msgstr "尺码表"
+
+#: catalog/models.py:74
+msgid "новинка"
+msgstr "新品"
+
+#: catalog/models.py:75 orders/models.py:37 orders/models.py:88
+msgid "статус"
+msgstr "状态"
+
+#: catalog/models.py:76
+msgid "комментарий модератора"
+msgstr "审核意见"
+
+#: catalog/models.py:85 orders/models.py:65
+msgid "товар"
+msgstr "商品"
+
+#: catalog/models.py:86
+msgid "товары"
+msgstr "商品"
+
+#: catalog/models.py:108
+msgid "от, шт."
+msgstr "起批量（件）"
+
+#: catalog/models.py:109 orders/models.py:69
+msgid "цена за шт., ¥"
+msgstr "单价（元）"
+
+#: catalog/models.py:114
+msgid "оптовая ступень"
+msgstr "批发价格档"
+
+#: catalog/models.py:115
+msgid "оптовые ступени"
+msgstr "批发价格档"
+
+#: catalog/models.py:124 catalog/models.py:129 catalog/models.py:130
+msgid "фото"
+msgstr "图片"
+
+#: catalog/templates/admin/catalog/product/change_list.html:6
+msgid "Загрузить из Excel"
+msgstr "通过 Excel 上传"
+
+#: catalog/templates/admin/catalog/product/change_list.html:9
+msgid "Шаблон Excel"
+msgstr "Excel 模板"
+
+#: catalog/templates/admin/catalog/product/import.html:6
+msgid ""
+"Заполните шаблон: одна строка — один товар. Если в файле есть ошибка, не "
+"загрузится ничего, исправьте файл и загрузите снова. Новые и изменённые "
+"товары уходят на модерацию."
+msgstr "请按模板填写：每行一个商品。如果文件中有错误，将不会上传任何商品，请修改后重新上传。新增和修改的商品会提交审核。"
+
+#: catalog/templates/admin/catalog/product/import.html:7
+msgid "Скачать шаблон Excel"
+msgstr "下载 Excel 模板"
+
+#: catalog/templates/admin/catalog/product/import.html:11
+msgid "Файл не загружен. Исправьте ошибки:"
+msgstr "文件未上传，请修改以下错误："
+
+#: catalog/templates/admin/catalog/product/import.html:25
+msgid "Файл .xlsx"
+msgstr ".xlsx 文件"
+
+#: catalog/templates/admin/catalog/product/import.html:28
+msgid "Загрузить"
+msgstr "上传"
+
+#: config/settings.py:105
+msgid "Русский"
+msgstr "Русский"
+
+#: config/settings.py:105
+msgid "中文"
+msgstr "中文"
+
+#: config/settings.py:105
+msgid "English"
+msgstr "English"
+
+#: orders/apps.py:7
+msgid "Заказы"
+msgstr "订单"
+
+#: orders/models.py:10
+msgid "Розница"
+msgstr "零售"
+
+#: orders/models.py:11
+msgid "Опт"
+msgstr "批发"
+
+#: orders/models.py:14
+msgid "Новый: агент проверяет наличие"
+msgstr "新订单：代理确认库存"
+
+#: orders/models.py:15
+msgid "Подтверждён: ждёт оплаты"
+msgstr "已确认：等待付款"
+
+#: orders/models.py:16
+msgid "Оплачен"
+msgstr "已付款"
+
+#: orders/models.py:17
+msgid "Выкуплен у поставщика"
+msgstr "已向供应商采购"
+
+#: orders/models.py:18
+msgid "На складе в Китае"
+msgstr "已到中国仓库"
+
+#: orders/models.py:19
+msgid "Отправлен в Россию"
+msgstr "已发往俄罗斯"
+
+#: orders/models.py:20
+msgid "На границе"
+msgstr "清关中"
+
+#: orders/models.py:21
+msgid "В России"
+msgstr "已到俄罗斯"
+
+#: orders/models.py:22
+msgid "В пункте выдачи"
+msgstr "已到自提点"
+
+#: orders/models.py:23
+msgid "Получен"
+msgstr "已签收"
+
+#: orders/models.py:24
+msgid "Отменён"
+msgstr "已取消"
+
+#: orders/models.py:26
+msgid "номер"
+msgstr "编号"
+
+#: orders/models.py:29
+msgid "покупатель"
+msgstr "买家"
+
+#: orders/models.py:31
+msgid "агент"
+msgstr "代理"
+
+#: orders/models.py:33
+msgid "телефон или Telegram"
+msgstr "电话或 Telegram"
+
+#: orders/models.py:34
+msgid "имя"
+msgstr "姓名"
+
+#: orders/models.py:35
+msgid "комментарий покупателя"
+msgstr "买家备注"
+
+#: orders/models.py:36
+msgid "режим"
+msgstr "模式"
+
+#: orders/models.py:38
+msgid "курс ¥ на момент заказа"
+msgstr "下单时汇率"
+
+#: orders/models.py:39 orders/models.py:74
+msgid "итого, ₽"
+msgstr "合计（卢布）"
+
+#: orders/models.py:45
+msgid "заказ"
+msgstr "订单"
+
+#: orders/models.py:46
+msgid "заказы"
+msgstr "订单"
+
+#: orders/models.py:66
+msgid "название на момент заказа"
+msgstr "下单时名称"
+
+#: orders/models.py:67
+msgid "размер"
+msgstr "尺码"
+
+#: orders/models.py:68
+msgid "кол-во"
+msgstr "数量"
+
+#: orders/models.py:70
+msgid "доставка"
+msgstr "运输"
+
+#: orders/models.py:71
+msgid "товар, ₽"
+msgstr "货款（卢布）"
+
+#: orders/models.py:72
+msgid "доставка, ₽"
+msgstr "运费（卢布）"
+
+#: orders/models.py:73
+msgid "сбор ASTTA, ₽"
+msgstr "ASTTA 服务费（卢布）"
+
+#: orders/models.py:77
+msgid "позиция"
+msgstr "商品行"
+
+#: orders/models.py:78
+msgid "позиции"
+msgstr "商品行"
+
+#: orders/models.py:89
+msgid "комментарий"
+msgstr "备注"
+
+#: orders/models.py:90
+msgid "фото со склада"
+msgstr "仓库照片"
+
+#: orders/models.py:91
+msgid "фактический вес, кг"
+msgstr "实际重量（公斤）"
+
+#: orders/models.py:98
+msgid "событие"
+msgstr "事件"
+
+#: orders/models.py:99
+msgid "история заказа"
+msgstr "订单记录"
+
+#: pricing/apps.py:7
+msgid "Цены и доставка"
+msgstr "价格和运输"
+
+#: pricing/models.py:11
+msgid "валюта"
+msgstr "币种"
+
+#: pricing/models.py:12
+msgid "дата"
+msgstr "日期"
+
+#: pricing/models.py:13
+msgid "₽ за 1 единицу"
+msgstr "1 单位兑卢布"
+
+#: pricing/models.py:14
+msgid "источник"
+msgstr "来源"
+
+#: pricing/models.py:19
+msgid "курс валюты"
+msgstr "汇率"
+
+#: pricing/models.py:20
+msgid "курсы валют"
+msgstr "汇率"
+
+#: pricing/models.py:30
+msgid "тариф, ₽/кг"
+msgstr "运费（卢布/公斤）"
+
+#: pricing/models.py:31
+msgid "срок от, дн."
+msgstr "时效最短（天）"
+
+#: pricing/models.py:32
+msgid "срок до, дн."
+msgstr "时效最长（天）"
+
+#: pricing/models.py:34
+msgid "только для крупногабарита"
+msgstr "仅限大件"
+
+#: pricing/models.py:35
+msgid "по умолчанию"
+msgstr "默认"
+
+#: pricing/models.py:36
+msgid "доступен"
+msgstr "可用"
+
+#: pricing/models.py:40
+msgid "способ доставки"
+msgstr "运输方式"
+
+#: pricing/models.py:41
+msgid "способы доставки"
+msgstr "运输方式"
+
+#: pricing/models.py:50
+msgid "сервисный сбор, розница"
+msgstr "服务费（零售）"
+
+#: pricing/models.py:53
+msgid "сервисный сбор, опт"
+msgstr "服务费（批发）"
+
+#: pricing/models.py:56
+msgid "надбавка к курсу ЦБ"
+msgstr "汇率加成"
+
+#: pricing/models.py:59
+msgid "0.02 = курс ЦБ + 2% на колебания между оплатой и выкупом"
+msgstr "0.02 = 央行汇率 + 2%，用于付款与采购之间的汇率波动"
+
+#: pricing/models.py:62 pricing/models.py:63
+msgid "настройки цены"
+msgstr "价格设置"
+
+#: pricing/models.py:66
+msgid "Настройки цены"
+msgstr "价格设置"

@@ -1,0 +1,12 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools-items %}
+  <a href="{% url 'admin:catalog_product_import' %}" class="font-medium flex items-center gap-2 px-3 py-2 rounded-default border border-base-200 dark:border-base-700">
+    {% translate "Загрузить из Excel" %}
+  </a>
+  <a href="{% url 'admin:catalog_product_template' %}" class="font-medium flex items-center gap-2 px-3 py-2 rounded-default border border-base-200 dark:border-base-700">
+    {% translate "Шаблон Excel" %}
+  </a>
+  {{ block.super }}
+{% endblock %}
