@@ -31,13 +31,16 @@ COLUMNS = [
     ("price_cny", "Цена у поставщика, ¥", True),
     ("weight_kg", "Вес в упаковке, кг", True),
     ("tiers", "Опт: от шт.:цена ¥; … (можно пусто)", False),
+    ("sizes", "Размеры через запятую (S, M, L или 36-45)", False),
+    ("colors", "Цвета через запятую", False),
     ("bulky", "Крупногабарит (да/нет)", False),
     ("description_ru", "Описание", False),
     ("source_url", "Ссылка у поставщика", False),
     ("title_zh", "Название на китайском (можно пусто)", False),
 ]
-EXAMPLE_ROW = ["RUN-001", "Кроссовки беговые, сетка", "Обувь", 268, 1.1, "6:198; 30:176", "нет",
-               "Лёгкие, верх из сетки, подошва EVA", "https://detail.1688.com/offer/000000000.html", "轻便跑步鞋"]
+EXAMPLE_ROW = ["RUN-001", "Кроссовки беговые, сетка", "Обувь", 268, 1.1, "6:198; 30:176", "36-45", "чёрный, белый",
+               "нет", "Лёгкие, верх из сетки, подошва EVA", "https://detail.1688.com/offer/000000000.html",
+               "轻便跑步鞋"]
 YES = {"да", "yes", "y", "1", "true", "是"}
 
 PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -71,7 +74,7 @@ def build_template() -> bytes:
         cell.fill = header_fill
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     ws.row_dimensions[1].height = 36
-    for col, width in zip("ABCDEFGHIJ", [14, 36, 16, 14, 14, 24, 14, 40, 36, 24], strict=True):
+    for col, width in zip("ABCDEFGHIJKL", [14, 36, 16, 14, 14, 24, 22, 22, 14, 40, 36, 24], strict=True):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
 
@@ -124,6 +127,14 @@ def _category(value, row, errors, categories):
     return category
 
 
+def _text(value, label, limit, row, errors):
+    text = str(value or "").strip()
+    if len(text) > limit:
+        errors.append(f"Строка {row}: {label} длиннее {limit} символов")
+        return ""
+    return text
+
+
 def _url(value, row, errors):
     url = str(value or "").strip()
     if not url:
@@ -173,6 +184,8 @@ def _read_rows(file, result):
             "price_cny": _decimal(data["price_cny"], "цена", index, result.errors),
             "weight_kg": _decimal(data["weight_kg"], "вес", index, result.errors),
             "tiers": _tiers(data.get("tiers"), index, result.errors),
+            "sizes": _text(data.get("sizes"), "размеры", 300, index, result.errors),
+            "colors": _text(data.get("colors"), "цвета", 300, index, result.errors),
             "bulky": str(data.get("bulky") or "").strip().lower() in YES,
             "description_ru": str(data.get("description_ru") or "").strip(),
             "source_url": _url(data.get("source_url"), index, result.errors),
@@ -299,6 +312,8 @@ def import_catalog(file, supplier: Supplier, photos=None, publish: bool = False)
             product.title_zh = r["title_zh"]
             product.description_ru = r["description_ru"]
             product.source_url = r["source_url"]
+            product.sizes = r["sizes"]
+            product.colors = r["colors"]
             product.price_cny = r["price_cny"]
             product.weight_kg = r["weight_kg"]
             product.bulky = r["bulky"]

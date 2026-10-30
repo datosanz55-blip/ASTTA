@@ -112,8 +112,8 @@ class ProductAdmin(ModelAdmin):
         (None, {"fields": ("supplier", "category", "sku", "slug", "status", "moderation_note")}),
         (_("Название и описание"), {"fields": ("title_ru", "description_ru", "title_zh", "description_zh",
                                                 "source_url")}),
-        (_("Цена и доставка"), {"fields": ("price_cny", "sale_percent", "weight_kg", "bulky", "size_grid",
-                                           "is_new")}),
+        (_("Цена и доставка"), {"fields": ("price_cny", "sale_percent", "weight_kg", "bulky", "is_new")}),
+        (_("Размеры и цвета"), {"fields": ("sizes", "colors", "size_grid")}),
     )
     supplier_readonly = ("supplier", "slug", "status", "moderation_note")
 

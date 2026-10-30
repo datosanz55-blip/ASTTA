@@ -34,7 +34,7 @@ from catalog.models import (
     SupplierPost,
 )
 from orders.models import OrderItem, Payout, SupplierOrder
-from orders.services import SupplierOrderError, supplier_action, unpaid_received
+from orders.services import SupplierOrderError, mark_ordered, purchase_for, supplier_action, unpaid_received
 
 router = Router(tags=["Кабинет поставщика"], auth=django_auth)
 
@@ -181,6 +181,8 @@ class ProductIn(Schema):
     tiers: list[tuple[int, Decimal]] = []
     desc: str = ""
     src: str = ""
+    sizes: str = ""
+    colors: str = ""
 
 
 def product_out(request, p, orders_count=0):
@@ -193,6 +195,7 @@ def product_out(request, p, orders_count=0):
         "tiers": [[t.min_qty, t.price_cny] for t in sorted(p.tiers.all(), key=lambda t: t.min_qty)],
         "status": p.status, "reason": p.moderation_note,
         "desc": p.description_ru if team else p.description_zh, "src": p.source_url,
+        "sizes": p.sizes, "colors": p.colors,
         "img": image_url(request, p), "photos": len(p.images.all()), "orders": orders_count,
     }
 
@@ -248,6 +251,8 @@ def _save_product(request, supplier, product, payload: ProductIn):
             product.description_ru = payload.desc.strip()
             product.sku = sku
             product.source_url = payload.src.strip()
+            product.sizes = payload.sizes.strip()
+            product.colors = payload.colors.strip()
             product.status = Product.Status.PUBLISHED
         else:
             # Без русского названия в карточке пока китайское, модератор переведёт перед публикацией.
@@ -333,14 +338,15 @@ def supplier_order_out(request, so):
         "items": [{
             "product": item.product_id, "zh": item.product.title_zh, "ru": item.title,
             "img": image_url(request, item.product),
-            "size": item.size, "qty": item.qty, "unit": item.unit_cny,
+            "size": item.size, "color": item.color, "qty": item.qty, "unit": item.unit_cny,
         } for item in so.items.all()],
     }
 
 
 def _my_orders(supplier):
-    return (SupplierOrder.objects.filter(supplier=supplier).select_related("order")
-            .prefetch_related("items__product__images"))
+    # Неоплаченные заказы не показываем: заказывать у поставщика можно только после оплаты.
+    return (SupplierOrder.objects.filter(supplier=supplier).exclude(status=SupplierOrder.Status.PENDING)
+            .select_related("order").prefetch_related("items__product__images"))
 
 
 @router.get("/orders", summary="Заказы поставщику (последние 200)")
@@ -353,20 +359,40 @@ def _act(request, order_id, action, tracking=""):
     supplier = current_supplier(request)
     so = get_object_or_404(_my_orders(supplier), pk=order_id)
     try:
-        supplier_action(so, action, tracking)
+        supplier_action(so, action, tracking, author=request.user)
     except SupplierOrderError as exc:
         raise HttpError(409, str(exc)) from exc
     return supplier_order_out(request, _my_orders(supplier).get(pk=so.pk))
 
 
-@router.post("/orders/{order_id}/confirm", summary="Товар в наличии")
+@router.post("/orders/{order_id}/confirm", summary="Заказано у поставщика")
 def confirm_order(request, order_id: int):
     return _act(request, order_id, "confirm")
 
 
-@router.post("/orders/{order_id}/cancel", summary="Нет в наличии")
+@router.post("/orders/{order_id}/cancel", summary="Нет в наличии: отменить и вернуть деньги покупателю")
 def cancel_order(request, order_id: int):
     return _act(request, order_id, "cancel")
+
+
+class OrderIdsIn(Schema):
+    orders: list[int]
+
+
+@router.get("/purchase", summary="Что заказать у поставщика: сводка и сообщение на китайском")
+def purchase(request):
+    p = purchase_for(current_supplier(request))
+    return {
+        "text_zh": p.text_zh if p.lines else "", "total_qty": p.total_qty, "total_cny": p.total_cny,
+        "orders": [so.pk for so in p.orders],
+        "lines": [{"title": line.title, "sku": line.sku, "size": line.size, "color": line.color, "qty": line.qty,
+                   "unit": line.unit_cny, "src": line.source_url} for line in p.lines],
+    }
+
+
+@router.post("/purchase/ordered", summary="Сводный заказ отправлен поставщику")
+def purchase_ordered(request, payload: OrderIdsIn):
+    return {"ordered": mark_ordered(current_supplier(request), payload.orders, author=request.user)}
 
 
 @router.post("/orders/{order_id}/ship", summary="Отправлено на склад TT")

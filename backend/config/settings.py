@@ -132,6 +132,8 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
     # ЦБ публикует курс на следующий день во второй половине дня по Москве.
     "update-cny-rate": {"task": "pricing.tasks.update_cny_rate", "schedule": 60 * 60 * 3},
+    # Неоплаченные за сутки заказы снимаем: цена и наличие у поставщика уже могли измениться.
+    "cancel-unpaid-orders": {"task": "orders.tasks.cancel_unpaid_orders", "schedule": 60 * 60},
 }
 
 if not DEBUG:

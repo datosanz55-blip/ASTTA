@@ -16,6 +16,7 @@ class LineIn(Schema):
     product: str
     qty: int = 1
     size: str = ""
+    color: str = ""
 
 
 class OrderIn(Schema):
@@ -30,6 +31,7 @@ class OrderIn(Schema):
 class ItemOut(Schema):
     title: str
     size: str
+    color: str
     qty: int
     unit_cny: Decimal
     shipping_code: str
@@ -53,6 +55,8 @@ class OrderOut(Schema):
     mode: str
     rate: Decimal
     total_rub: Decimal
+    paid_at: dt.datetime | None
+    refund_rub: Decimal
     items: list[ItemOut]
     events: list[EventOut]
 
@@ -61,7 +65,8 @@ def order_out(request, order: Order) -> dict:
     return {
         "number": order.number, "token": order.token, "status": order.status,
         "status_label": order.get_status_display(), "mode": order.mode, "rate": order.rate,
-        "total_rub": order.total_rub, "items": list(order.items.all()),
+        "total_rub": order.total_rub, "paid_at": order.paid_at, "refund_rub": order.refund_rub,
+        "items": list(order.items.all()),
         "events": [{
             "status": e.status, "status_label": e.get_status_display(), "note": e.note,
             "photo": request.build_absolute_uri(e.photo.url) if e.photo else None,
@@ -70,13 +75,13 @@ def order_out(request, order: Order) -> dict:
     }
 
 
-@router.post("", response={201: OrderOut}, summary="Оформить заказ (оплата после подтверждения агентом)")
+@router.post("", response={201: OrderOut}, summary="Оформить заказ (оплата сразу, потом выкуп у поставщика)")
 def place_order(request, payload: OrderIn):
     if payload.mode not in Order.Mode.values:
         raise HttpError(400, "mode: retail или wholesale")
     try:
         order = create_order(
-            [CartLine(product=i.product, qty=i.qty, size=i.size) for i in payload.items],
+            [CartLine(product=i.product, qty=i.qty, size=i.size, color=i.color) for i in payload.items],
             contact=payload.contact, name=payload.name, comment=payload.comment, mode=payload.mode,
             shipping=payload.shipping,
             buyer=request.user if request.user.is_authenticated else None,

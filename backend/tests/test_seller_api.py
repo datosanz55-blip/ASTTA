@@ -15,7 +15,7 @@ from accounts.roles import setup_roles
 from catalog.importer import build_template
 from catalog.models import Product, SupplierPost
 from orders.models import Payout, SupplierOrder
-from orders.services import CartLine, create_order, create_payouts, mark_received, supplier_action
+from orders.services import CartLine, create_order, create_payouts, mark_paid, mark_received, supplier_action
 from tests.conftest import make_product
 
 API = "/api/seller"
@@ -137,6 +137,8 @@ def test_image_upload(client, setup):
 
 def test_orders_flow_without_buyer_contacts(client, setup):
     order = create_order([CartLine("mine", 1, "42"), CartLine("theirs", 1)], contact="@secret_buyer")
+    assert client.get(f"{API}/orders").json() == []  # до оплаты заказывать у поставщика нечего
+    mark_paid(order)
     data = client.get(f"{API}/orders").json()
     assert len(data) == 1  # только своя часть заказа
     so = data[0]
@@ -146,7 +148,7 @@ def test_orders_flow_without_buyer_contacts(client, setup):
 
     assert client.post(f"{API}/orders/{so['id']}/ship", data="{}", content_type="application/json").status_code == 422
     assert as_json(client, "post", f"/orders/{so['id']}/ship", {"tracking": "YT1"}).status_code == 409
-    assert client.post(f"{API}/orders/{so['id']}/confirm").json()["status"] == "ship"
+    assert client.post(f"{API}/orders/{so['id']}/confirm").json()["status"] == "ordered"
     assert as_json(client, "post", f"/orders/{so['id']}/ship", {"tracking": " "}).status_code == 409
     shipped = as_json(client, "post", f"/orders/{so['id']}/ship", {"tracking": "YT1"}).json()
     assert (shipped["status"], shipped["tracking"]) == ("shipped", "YT1")
@@ -160,6 +162,7 @@ def test_payouts_from_received_orders(client, setup):
     order = create_order([CartLine("mine", 2)], contact="@b")
     so = order.supplier_orders.get()
     assert client.get(f"{API}/overview").json()["pending_cny"] == "0"
+    mark_paid(order)
     supplier_action(so, "confirm")
     mark_received(so)
     assert Decimal(client.get(f"{API}/overview").json()["pending_cny"]) == Decimal("200")  # 100 ¥ × 2, без сбора
@@ -174,7 +177,7 @@ def test_payouts_from_received_orders(client, setup):
 
 def test_import_from_cabinet(client):
     wb = load_workbook(BytesIO(build_template()))
-    wb.worksheets[0].append(["S-9", "Шлёпанцы", "shoes", 30, 0.4, "10:25", "", "", "", "拖鞋"])
+    wb.worksheets[0].append(["S-9", "Шлёпанцы", "shoes", 30, 0.4, "10:25", "", "", "", "", "", "拖鞋"])
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -264,7 +267,7 @@ def test_team_creates_product_in_russian_and_publishes(team, setup):
 
 def test_team_import_publishes_with_photos(team, setup):
     wb = load_workbook(BytesIO(build_template()))
-    wb.worksheets[0].append(["S-9", "Шлёпанцы", "shoes", 30, 0.4, "", "", "", "", ""])
+    wb.worksheets[0].append(["S-9", "Шлёпанцы", "shoes", 30, 0.4, "", "", "", "", "", "", ""])
     sheet = BytesIO()
     wb.save(sheet)
     sheet.seek(0)

@@ -15,7 +15,7 @@ from django.db import transaction
 from accounts.models import User
 from accounts.roles import setup_roles
 from catalog.models import Category, PriceTier, Product, ProductImage, Supplier
-from orders.services import CartLine, create_order
+from orders.services import CartLine, create_order, mark_paid
 from pricing.models import ExchangeRate, PricingConfig, ShippingMethod
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "demo.json"
@@ -95,9 +95,12 @@ class Command(BaseCommand):
                     ProductImage.objects.create(product=product, image=File(fh, name=source.name))
 
         if options["orders"]:
-            for contact, mode, lines in DEMO_ORDERS:
-                create_order([CartLine(product=slug, qty=qty, size=size) for slug, size, qty in lines],
-                             contact=contact, mode=mode)
+            for n, (contact, mode, lines) in enumerate(DEMO_ORDERS):
+                order = create_order([CartLine(product=slug, qty=qty, size=size) for slug, size, qty in lines],
+                                     contact=contact, mode=mode)
+                # Последний заказ оставляем неоплаченным, остальные уже ждут выкупа у поставщика.
+                if n < len(DEMO_ORDERS) - 1:
+                    mark_paid(order, note="Демо: оплата получена")
         if options["users"]:
             group = Group.objects.get(name="Поставщики")
             for code, supplier in suppliers.items():

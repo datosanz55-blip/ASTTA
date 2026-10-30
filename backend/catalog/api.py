@@ -46,6 +46,8 @@ class ProductDetail(ProductCard):
     weight_kg: Decimal
     bulky: bool
     size_grid: str
+    sizes: list[str]
+    colors: list[str]
     images: list[str]
     tiers: list[TierOut]
     supplier_fact_days: list[int] | None
@@ -157,6 +159,8 @@ def product_detail(request, slug: str):
         "weight_kg": product.weight_kg,
         "bulky": product.bulky,
         "size_grid": product.size_grid,
+        "sizes": product.size_list,
+        "colors": product.color_list,
         "images": _image_urls(request, product),
         "tiers": sorted(product.tiers.all(), key=lambda t: t.min_qty),
         "supplier_fact_days": ([supplier.fact_days_min, supplier.fact_days_max]

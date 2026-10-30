@@ -45,7 +45,7 @@ def test_place_order_snapshots_price_and_tracks(client, runner):
     assert resp.status_code == 201
     data = resp.json()
     assert data["total_rub"] == "3670.00"
-    assert data["status"] == "new"
+    assert data["status"] == "awaiting_payment" and data["paid_at"] is None
     assert data["number"].startswith("A-")
 
     # Цена в заказе не меняется, даже если поставщик потом поднял цену.
@@ -53,7 +53,7 @@ def test_place_order_snapshots_price_and_tracks(client, runner):
     runner.save()
     tracked = client.get(f"/api/orders/{data['token']}").json()
     assert tracked["total_rub"] == "3670.00"
-    assert tracked["events"][0]["status"] == "new"
+    assert tracked["events"][0]["status"] == "awaiting_payment"
     assert Order.objects.get().items.get().size == "42"
 
 

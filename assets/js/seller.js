@@ -488,7 +488,7 @@
   function openProductForm(id) {
     const p = id ? product(id) : null;
     draftFile = null;
-    draft = p ? clone(p) : { id: '', sup: supCode(), cat: Object.keys(CATS)[0], zh: '', ru: '', sku: '', src: '', price: '', kg: '', tiers: team() ? [] : [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
+    draft = p ? clone(p) : { id: '', sup: supCode(), cat: Object.keys(CATS)[0], zh: '', ru: '', sku: '', src: '', sizes: '', colors: '', price: '', kg: '', tiers: team() ? [] : [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
     openDrawer(p ? t('form.edit') : t('form.add'), productFormHTML());
   }
   function productFormHTML(errors = {}) {
@@ -541,6 +541,9 @@
       <label class="${cls('kg')}"><span>Вес в упаковке, кг</span><input id="fKg" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.kg)}">${err('kg')}</label>
       <div class="field field--full"><span>Опт: от скольки штук и цена за штуку. Можно не заполнять, тогда товар только в розницу</span><div class="tiers">${tiers}</div>
         <button class="linkbtn" type="button" data-act="add-tier" style="align-self:flex-start">+ Оптовая ступень</button></div>
+      <label class="field"><span>Размеры через запятую (S, M, L или 36-45)</span><input id="fSizes" value="${esc(d.sizes)}" maxlength="300"></label>
+      <label class="field"><span>Цвета через запятую</span><input id="fColors" value="${esc(d.colors)}" maxlength="300"></label>
+      <p class="note field--full">Покупатель выберет размер и цвет только из этих списков, поставщик получит заказ без ошибок. Пусто — без выбора.</p>
       <label class="check field--full"><input id="fBulky" type="checkbox" ${d.bulky ? 'checked' : ''}>Крупногабарит (мебель, едет сборным грузом)</label>
       <label class="field field--full"><span>Главное фото</span><input id="fPhoto" type="file" accept="image/*"></label>
       ${d.img ? `<div class="preview field--full"><img src="${esc(imgSrc(d.img))}" alt=""><span class="muted">${esc(d.ru)}</span></div>` : ''}
@@ -570,6 +573,8 @@
     if ($('#fSku')) {
       draft.sku = $('#fSku').value.trim();
       draft.src = $('#fSrc').value.trim();
+      draft.sizes = $('#fSizes').value.trim();
+      draft.colors = $('#fColors').value.trim();
     }
     if ($('#fSup')) {
       draft.sup = $('#fSup').value;
@@ -619,7 +624,7 @@
     if (saving) return;
     saving = true;
     try {
-      const body = { zh: n.zh, ru: n.ru, sku: n.sku || '', src: n.src || '', cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc };
+      const body = { zh: n.zh, ru: n.ru, sku: n.sku || '', src: n.src || '', sizes: n.sizes || '', colors: n.colors || '', cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc };
       let saved;
       try {
         saved = await api(n.id ? `/products/${n.id}` : '/products', { method: n.id ? 'PUT' : 'POST', body });
@@ -651,7 +656,7 @@
   function openImport() {
     const tm = team();
     const cols = tm
-      ? ['Артикул', 'Название', 'Категория', 'Цена у поставщика, ¥', 'Вес, кг', 'Опт (можно пусто)', 'Крупногабарит', 'Описание', 'Ссылка у поставщика', 'Название на китайском']
+      ? ['Артикул', 'Название', 'Категория', 'Цена у поставщика, ¥', 'Вес, кг', 'Опт (можно пусто)', 'Размеры', 'Цвета', 'Крупногабарит', 'Описание', 'Ссылка у поставщика', 'Название на китайском']
       : L() === 'zh'
         ? ['货号', '商品名称（中文）', '俄语名称', '类目', '零售价（元）', '包装后重量（公斤）', '批发价 起批量:单价', '大件', '描述']
         : ['Артикул', 'Название (кит.)', 'Название (рус.)', 'Категория', 'Цена, ¥', 'Вес, кг', 'Опт от шт.:цена', 'Крупногабарит', 'Описание'];
@@ -719,16 +724,33 @@
   }
 
   /* ---------- Поставщик: заказы ---------- */
+  // Для команды те же вкладки называются по шагам выкупа: заказывает у поставщика она сама.
+  const TEAM_OST = { confirm: 'Заказать', ship: 'Заказано', shipped: 'Едет на склад', received: 'На складе', cancelled: 'Нет в наличии' };
+  const ostLabel = (st) => (team() ? TEAM_OST[st] : t(`ost.${st}`));
+  function purchasePanel() {
+    const pu = S.live.purchase;
+    if (!team() || S.ofilter !== 'confirm' || !pu || !pu.lines.length) return '';
+    const rows = pu.lines.map((l) => `<li>${esc(l.title)}${l.color ? ` · ${esc(l.color)}` : ''}${l.size ? ` · ${esc(l.size)}` : ''} — <b>${l.qty} шт.</b> × ${cny(l.unit)}</li>`).join('');
+    return `<section class="panel purchase"><h2>Сводный заказ поставщику</h2>
+      <p class="muted">Покупатели оплатили, одинаковые товары сложены. Отправьте сообщение поставщику в WeChat${supplier().wechat ? ` (${esc(supplier().wechat)})` : ''}, потом отметьте заказанным.</p>
+      <ul class="tips">${rows}</ul>
+      <p><b>Итого: ${pu.total_qty} шт., ${cny(pu.total_cny)}</b></p>
+      <label class="field"><span>Сообщение на китайском</span><textarea id="puText" readonly rows="${Math.min(12, pu.lines.length * 2 + 3)}">${esc(pu.text_zh)}</textarea></label>
+      <div class="form__actions"><button class="btn" type="button" data-act="copy-purchase">Скопировать для WeChat</button>
+        <button class="btn btn--lime" type="button" data-act="purchase-ordered">${icon('check')}Отметить всё заказанным</button></div>
+    </section>`;
+  }
   function vOrders() {
     const mine = S.orders.filter((o) => o.sup === supCode());
     const chips = ['confirm', 'ship', 'shipped', 'received', 'cancelled'].map((st) => {
       const n = mine.filter((o) => o.status === st).length;
-      return `<button class="chip" type="button" data-ofilter="${st}" aria-pressed="${S.ofilter === st}">${t(`ost.${st}`)}<em>${n}</em></button>`;
+      return `<button class="chip" type="button" data-ofilter="${st}" aria-pressed="${S.ofilter === st}">${ostLabel(st)}<em>${n}</em></button>`;
     }).join('');
     const list = mine.filter((o) => o.status === S.ofilter);
     return `
-      <div class="pagehead"><div><h1>${t('nav.orders')}</h1></div></div>
+      <div class="pagehead"><div><h1>${t('nav.orders')}</h1>${team() ? '<p>Здесь только оплаченные заказы: их можно сразу заказывать у поставщика.</p>' : ''}</div></div>
       <div class="filters">${chips}</div>
+      ${purchasePanel()}
       <div class="orders">${list.map(orderCard).join('') || `<div class="empty">${t('order.empty')}</div>`}</div>`;
   }
   function orderCard(o) {
@@ -736,14 +758,22 @@
       // В боевом режиме цена и название берутся из заказа: они зафиксированы в момент покупки.
       const p = product(id) || info;
       const unit = fixedUnit ?? (o.mode === 'wholesale' ? tierFor(p, qty) : unitCny(p));
-      return `<div class="oitem">${thumb(p)}<div><b>${esc(pName(p))}</b><span>${size ? `${t('order.size')} ${esc(size)} · ` : ''}${qty} ${t('pcs')} × ${cny(unit)}</span></div><div class="num">${cny(unit * qty)}</div></div>`;
+      const color = info && info.color ? `${esc(info.color)} · ` : '';
+      return `<div class="oitem">${thumb(p)}<div><b>${esc(pName(p))}</b><span>${color}${size ? `${t('order.size')} ${esc(size)} · ` : ''}${qty} ${t('pcs')} × ${cny(unit)}</span></div><div class="num">${cny(unit * qty)}</div></div>`;
     }).join('');
     let actions = '';
     let extra = '';
+    const tm = team();
     if (o.status === 'confirm') {
-      actions = `<span class="deadline">${t('order.deadline')}</span>
-        <button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-num="${o.num}">${t('order.outOfStock')}</button>
-        <button class="btn btn--sm btn--lime" type="button" data-act="confirm-order" data-num="${o.num}">${icon('check')}${t('order.inStock')}</button>`;
+      actions = `<span class="deadline">${tm ? 'Оплачен. Закажите у поставщика' : t('order.deadline')}</span>
+        <button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-num="${o.num}">${tm ? 'Нет в наличии: вернуть деньги' : t('order.outOfStock')}</button>
+        <button class="btn btn--sm btn--lime" type="button" data-act="confirm-order" data-num="${o.num}">${icon('check')}${tm ? 'Заказано у поставщика' : t('order.inStock')}</button>`;
+    } else if (o.status === 'ship' && tm) {
+      extra = `<div class="ocard__wh"><b>Ждём, когда поставщик отправит на склад TT</b><span class="muted">Впишите трек-номер, который пришлёт поставщик. Если товара не оказалось, отмените часть заказа: деньги вернём покупателю.</span>
+        <form data-ship-form="${o.num}" novalidate><label class="sr" for="tr-${o.num}">Трек-номер</label>
+          <input id="tr-${o.num}" placeholder="Трек-номер" autocomplete="off">
+          <button class="btn btn--lime" type="submit">${icon('truck')}Отправлено на склад</button></form></div>`;
+      actions = `<button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-num="${o.num}">Нет в наличии: вернуть деньги</button>`;
     } else if (o.status === 'ship') {
       extra = `<div class="ocard__wh"><b>${t('order.whTitle')}</b><span class="muted">${t('order.whAddr')}</span>
         <form data-ship-form="${o.num}" novalidate><label class="sr" for="tr-${o.num}">${t('order.tracking')}</label>
@@ -758,7 +788,7 @@
     }
     return `<article class="ocard">
       <div class="ocard__head"><span class="ocard__num">${o.num}</span><span class="muted">${esc(o.date)} · ${t(`order.${o.mode}`)}</span>
-        <span class="st ${OST[o.status]}">${t(`ost.${o.status}`)}</span></div>
+        <span class="st ${OST[o.status]}">${ostLabel(o.status)}</span></div>
       <div class="oitems">${items}</div>${extra}
       <div class="ocard__foot"><span class="ocard__total">${t('order.total')}: ${cny(orderCny(o))}</span><div class="ocard__actions">${actions}</div></div>
     </article>`;
@@ -1082,7 +1112,7 @@
   }
   const num = (v) => Number(v);
   const mapProduct = (code) => (p) => ({
-    id: String(p.id), sup: code, cat: p.cat, zh: p.zh, ru: p.ru, sku: p.sku || '', src: p.src || '', price: num(p.price), kg: num(p.kg), sale: p.sale,
+    id: String(p.id), sup: code, cat: p.cat, zh: p.zh, ru: p.ru, sku: p.sku || '', src: p.src || '', sizes: p.sizes || '', colors: p.colors || '', price: num(p.price), kg: num(p.kg), sale: p.sale,
     bulky: p.bulky, tiers: p.tiers.map(([q, c]) => [q, num(c)]), views: 0, orders: p.orders, img: p.img || '', photos: p.photos || 0,
     desc: p.desc, status: p.status, reason: p.reason,
   });
@@ -1090,17 +1120,20 @@
     id: x.id, sup: code, pid: x.product ? String(x.product) : '', kind: x.kind, text: x.text, status: x.status,
     images: x.images || [], date: x.date || '',
   });
+  // На сервере часть заказа у поставщика: «заказать» → «заказано» → «отправлено» → «принято складом».
+  // В интерфейсе это те же вкладки, что у поставщика: «подтвердить» и «отправить».
+  const UI_STATUS = { to_order: 'confirm', ordered: 'ship' };
   const mapOrder = (code) => (o) => ({
-    id: o.id, num: o.num, sup: code, date: o.date, mode: o.mode, status: o.status, tracking: o.tracking,
-    items: o.items.map((i) => [String(i.product), i.size, i.qty, num(i.unit), { zh: i.zh, ru: i.ru, img: i.img || '' }]),
+    id: o.id, num: o.num, sup: code, date: o.date, mode: o.mode, status: UI_STATUS[o.status] || o.status, tracking: o.tracking,
+    items: o.items.map((i) => [String(i.product), i.size, i.qty, num(i.unit), { zh: i.zh, ru: i.ru, img: i.img || '', color: i.color || '' }]),
   });
   function upsert(list, item, key = 'id') {
     const i = list.findIndex((x) => x[key] === item[key]);
     if (i >= 0) list[i] = item; else list.unshift(item);
   }
   async function loadAll() {
-    const [products, orders, overview, payouts, shop, fac, posts] = await Promise.all(
-      ['/products', '/orders', '/overview', '/payouts', '/shop', '/factory', '/posts'].map((path) => api(path)));
+    const [products, orders, overview, payouts, shop, fac, posts, purchase] = await Promise.all(
+      ['/products', '/orders', '/overview', '/payouts', '/shop', '/factory', '/posts', '/purchase'].map((path) => api(path)));
     // Категории берём с сервера: их список ведёт модератор.
     const cats = await fetch(API.replace(/\/seller$/, '/categories'), { credentials: 'same-origin' }).then((r) => r.json());
     for (const key of Object.keys(CATS)) delete CATS[key];
@@ -1118,6 +1151,7 @@
       pending: num(overview.pending_cny), today: overview.today, weekLabels: overview.week_labels,
       paidTotal: num(payouts.paid_total_cny),
       payouts: payouts.items.map((x) => ({ date: x.date, orders: x.orders, amount: num(x.amount), status: x.status })),
+      purchase: mapPurchase(purchase),
     };
   }
   async function startSession() {
@@ -1252,11 +1286,27 @@
         setTimeout(() => URL.revokeObjectURL(a.href), 2000);
         break;
       }
+      case 'copy-purchase': {
+        const text = $('#puText').value;
+        try { await navigator.clipboard.writeText(text); toast('Скопировано, вставьте в WeChat поставщику'); } catch (e) { $('#puText').select(); toast('Выделено: нажмите Ctrl+C'); }
+        break;
+      }
+      case 'purchase-ordered': {
+        const pu = S.live.purchase;
+        const res = await liveTry(() => api('/purchase/ordered', { method: 'POST', body: { orders: pu.orders } }));
+        if (!res) break;
+        S.orders = (await api('/orders')).map(mapOrder(supCode()));
+        await refreshPurchase();
+        render(); toast(`Заказано частей заказов: ${res.ordered}`);
+        break;
+      }
       case 'confirm-order':
-        if (LIVE ? await liveOrder(d.num, 'confirm') : (setOrder(d.num, 'ship'), true)) toast(t('toast.confirmed'));
+        if (LIVE ? await liveOrder(d.num, 'confirm') : (setOrder(d.num, 'ship'), true)) toast(team() ? 'Отмечено: заказано у поставщика' : t('toast.confirmed'));
         break;
       case 'out-of-stock':
-        if (LIVE ? await liveOrder(d.num, 'cancel') : (setOrder(d.num, 'cancelled'), true)) toast(t('toast.cancelled'));
+        // Для команды это возврат денег покупателю: переспрашиваем.
+        if (team() && !window.confirm('Товара нет у поставщика? Эта часть заказа отменится, деньги за неё вернём покупателю.')) break;
+        if (LIVE ? await liveOrder(d.num, 'cancel') : (setOrder(d.num, 'cancelled'), true)) toast(team() ? 'Часть заказа отменена, деньги вернём покупателю' : t('toast.cancelled'));
         break;
       case 'logout':
         await liveTry(() => api('/logout', { method: 'POST' }));
@@ -1307,11 +1357,17 @@
     }
   });
 
+  const mapPurchase = (p) => ({ ...p, total_cny: num(p.total_cny), lines: p.lines.map((l) => ({ ...l, unit: num(l.unit) })) });
+  async function refreshPurchase() {
+    const p = await liveTry(() => api('/purchase'));
+    if (p) S.live.purchase = mapPurchase(p);
+  }
   async function liveOrder(num, action, body) {
     const o = S.orders.find((x) => x.num === num);
     const res = await liveTry(() => api(`/orders/${o.id}/${action}`, { method: 'POST', body }));
     if (!res) return false;
     upsert(S.orders, mapOrder(supCode())(res));
+    await refreshPurchase();
     render();
     return true;
   }

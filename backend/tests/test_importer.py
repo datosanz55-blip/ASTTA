@@ -36,14 +36,15 @@ def archive(files):
     return buffer
 
 
-ROW = ["S-1", "Кроссовки беговые", "shoes", 120, 0.9, "5:100", "", "Лёгкие", "https://detail.1688.com/offer/1.html", ""]
+ROW = ["S-1", "Кроссовки беговые", "shoes", 120, 0.9, "5:100", "", "", "", "Лёгкие",
+       "https://detail.1688.com/offer/1.html", ""]
 
 
 def test_import_publishes_for_team(supplier, shoes):
     result = import_catalog(filled_template([
-        ["S-1", "Кроссовки беговые", "Обувь", 120, "0,9", "5:100；20:90", "нет", "Сетка, EVA",
-         "https://detail.1688.com/offer/1.html", "跑步鞋"],
-        ["S-2", "Шлёпанцы", "鞋类", 30, 0.4, "", "", "", "", ""],
+        ["S-1", "Кроссовки беговые", "Обувь", 120, "0,9", "5:100；20:90", "40-42", "чёрный, белый", "нет",
+         "Сетка, EVA", "https://detail.1688.com/offer/1.html", "跑步鞋"],
+        ["S-2", "Шлёпанцы", "鞋类", 30, 0.4, "", "", "", "", "", "", ""],
     ]), supplier, publish=True)
     assert result.ok, result.errors
     assert result.created == 2
@@ -51,6 +52,7 @@ def test_import_publishes_for_team(supplier, shoes):
     assert first.status == Product.Status.PUBLISHED
     assert (first.title_ru, first.title_zh, first.description_ru) == ("Кроссовки беговые", "跑步鞋", "Сетка, EVA")
     assert first.source_url == "https://detail.1688.com/offer/1.html"
+    assert (first.size_list, first.color_list) == (["40", "41", "42"], ["чёрный", "белый"])
     assert [(t.min_qty, int(t.price_cny)) for t in first.tiers.all()] == [(5, 100), (20, 90)]
     assert not Product.objects.get(sku="S-2").tiers.exists()  # без опта: только розница
 
@@ -63,7 +65,7 @@ def test_import_without_publish_goes_to_moderation(supplier, shoes):
 def test_import_with_error_loads_nothing(supplier, shoes):
     result = import_catalog(filled_template([
         ROW,
-        ["S-2", "Шлёпанцы", "unknown", "abc", 0.4, "10-25", "", "", "ftp://x", ""],
+        ["S-2", "Шлёпанцы", "unknown", "abc", 0.4, "10-25", "", "", "", "", "ftp://x", ""],
     ]), supplier)
     assert not result.ok
     assert any("категория" in e for e in result.errors)
@@ -94,7 +96,7 @@ def test_photos_matched_by_sku_and_converted(supplier, shoes):
         "notes.txt": b"hello",
         "__MACOSX/._S-1.jpg": b"junk",
     })
-    result = import_catalog(filled_template([ROW, ["S-10", "Тапки", "shoes", 20, 0.3, "", "", "", "", ""]]),
+    result = import_catalog(filled_template([ROW, ["S-10", "Тапки", "shoes", 20, 0.3, "", "", "", "", "", "", ""]]),
                             supplier, photos=photos, publish=True)
     assert result.ok, result.errors
     assert result.photos == 3

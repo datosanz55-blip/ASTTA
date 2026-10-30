@@ -11,9 +11,9 @@ class Order(models.Model):
         WHOLESALE = "wholesale", _("Опт")
 
     class Status(models.TextChoices):
-        NEW = "new", _("Новый: агент проверяет наличие")
-        CONFIRMED = "confirmed", _("Подтверждён: ждёт оплаты")
-        PAID = "paid", _("Оплачен")
+        # Покупатель платит сразу при заказе, после оплаты заказ сразу уходит на выкуп у поставщика.
+        AWAITING_PAYMENT = "awaiting_payment", _("Ждёт оплаты")
+        PAID = "paid", _("Оплачен: заказываем у поставщика")
         PURCHASED = "purchased", _("Выкуплен у поставщика")
         AT_WAREHOUSE = "at_warehouse", _("На складе в Китае")
         SHIPPED = "shipped", _("Отправлен в Россию")
@@ -34,9 +34,12 @@ class Order(models.Model):
     name = models.CharField(_("имя"), max_length=80, blank=True)
     comment = models.TextField(_("комментарий покупателя"), blank=True)
     mode = models.CharField(_("режим"), max_length=16, choices=Mode.choices, default=Mode.RETAIL)
-    status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.NEW)
+    status = models.CharField(_("статус"), max_length=20, choices=Status.choices, default=Status.AWAITING_PAYMENT)
     rate = models.DecimalField(_("курс ¥ на момент заказа"), max_digits=10, decimal_places=4)
     total_rub = models.DecimalField(_("итого, ₽"), max_digits=12, decimal_places=2)
+    paid_at = models.DateTimeField(_("оплачен"), null=True, blank=True)
+    # Если у поставщика не оказалось товара, деньги за эту часть заказа возвращаем.
+    refund_rub = models.DecimalField(_("к возврату, ₽"), max_digits=12, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -83,12 +86,13 @@ class Payout(models.Model):
 
 
 class SupplierOrder(models.Model):
-    """Часть заказа у одного поставщика: что ему выкупить и отправить на склад TT.
-    Покупателя поставщик не видит, только товары, размеры и количество."""
+    """Часть заказа у одного поставщика: что выкупить у него и получить на склад TT.
+    Заказывает команда TT (поставщик в систему не заходит), покупателя поставщик не видит."""
 
     class Status(models.TextChoices):
-        CONFIRM = "confirm", _("Ждёт подтверждения наличия")
-        SHIP = "ship", _("Нужно отправить на склад")
+        PENDING = "pending", _("Ждёт оплаты покупателем")
+        TO_ORDER = "to_order", _("Заказать у поставщика")
+        ORDERED = "ordered", _("Заказано у поставщика")
         SHIPPED = "shipped", _("Отправлено на склад")
         RECEIVED = "received", _("Принято складом")
         CANCELLED = "cancelled", _("Отменено: нет в наличии")
@@ -97,7 +101,7 @@ class SupplierOrder(models.Model):
     supplier = models.ForeignKey("catalog.Supplier", verbose_name=_("поставщик"), on_delete=models.PROTECT,
                                  related_name="supplier_orders")
     status = models.CharField(_("статус у поставщика"), max_length=16, choices=Status.choices,
-                              default=Status.CONFIRM)
+                              default=Status.PENDING)
     tracking = models.CharField(_("трек-номер до склада"), max_length=64, blank=True)
     payout = models.ForeignKey(Payout, verbose_name=_("выплата"), null=True, blank=True, on_delete=models.SET_NULL,
                                related_name="supplier_orders")
@@ -127,7 +131,8 @@ class OrderItem(models.Model):
                                        blank=True)
     product = models.ForeignKey("catalog.Product", verbose_name=_("товар"), on_delete=models.PROTECT)
     title = models.CharField(_("название на момент заказа"), max_length=160)
-    size = models.CharField(_("размер"), max_length=16, blank=True)
+    size = models.CharField(_("размер"), max_length=32, blank=True)
+    color = models.CharField(_("цвет"), max_length=40, blank=True)
     qty = models.PositiveIntegerField(_("кол-во"))
     unit_cny = models.DecimalField(_("цена за шт., ¥"), max_digits=10, decimal_places=2)
     shipping_code = models.CharField(_("доставка"), max_length=32)
@@ -148,7 +153,7 @@ class OrderEvent(models.Model):
     """История заказа: смена статуса, фото со склада, вес. Покупатель видит её как трекинг."""
 
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="events")
-    status = models.CharField(_("статус"), max_length=16, choices=Order.Status.choices)
+    status = models.CharField(_("статус"), max_length=20, choices=Order.Status.choices)
     note = models.CharField(_("комментарий"), max_length=300, blank=True)
     photo = models.ImageField(_("фото со склада"), upload_to="orders/%Y/%m/", blank=True)
     weight_kg = models.DecimalField(_("фактический вес, кг"), max_digits=7, decimal_places=3, null=True,

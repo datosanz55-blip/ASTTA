@@ -1,9 +1,29 @@
+import re
 from decimal import Decimal
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+
+def parse_sizes(value: str) -> list[str]:
+    """«S, M L/XL» → [S, M, L, XL]; «36-45» → 36…45 (диапазон размеров обуви)."""
+    sizes = []
+    for part in re.split(r"[,;/\s]+", value or ""):
+        part = part.strip()
+        if not part:
+            continue
+        span = re.fullmatch(r"(\d{1,3})[-–](\d{1,3})", part)
+        if span and int(span[1]) < int(span[2]) <= int(span[1]) + 30:
+            sizes.extend(str(n) for n in range(int(span[1]), int(span[2]) + 1))
+        else:
+            sizes.append(part)
+    return list(dict.fromkeys(sizes))
+
+
+def parse_colors(value: str) -> list[str]:
+    return list(dict.fromkeys(c.strip() for c in re.split(r"[,;\n]+", value or "") if c.strip()))
 
 
 class Category(models.Model):
@@ -77,6 +97,11 @@ class Product(models.Model):
     # Крупногабарит (мебель) едет только сборным грузом.
     bulky = models.BooleanField(_("крупногабарит"), default=False)
     size_grid = models.CharField(_("размерная сетка"), max_length=16, choices=SizeGrid.choices, blank=True)
+    # Покупатель выбирает размер и цвет только из этих списков, поставщик получает заказ без ошибок.
+    sizes = models.CharField(_("размеры"), max_length=300, blank=True,
+                             help_text=_("Через запятую или пробел: S, M, L, XL. Диапазон обуви: 36-45"))
+    colors = models.CharField(_("цвета"), max_length=300, blank=True,
+                              help_text=_("Через запятую: чёрный, белый, тёмно-синий"))
     is_new = models.BooleanField(_("новинка"), default=False)
     # По ссылке агент перезаказывает товар у поставщика, а покупатель находит его, вставив ту же ссылку.
     source_url = models.URLField(_("ссылка у поставщика"), max_length=500, blank=True,
@@ -101,6 +126,14 @@ class Product(models.Model):
 
     def __str__(self):
         return self.title_ru
+
+    @property
+    def size_list(self) -> list[str]:
+        return parse_sizes(self.sizes)
+
+    @property
+    def color_list(self) -> list[str]:
+        return parse_colors(self.colors)
 
     @property
     def unit_price_cny(self):

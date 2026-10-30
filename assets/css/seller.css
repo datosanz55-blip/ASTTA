@@ -253,6 +253,9 @@ button.kpi:hover { border-color: var(--muted); }
 .cols span { font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--surface-2); }
 .drop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; border: 1px dashed var(--muted); border-radius: var(--r); text-align: center; cursor: pointer; }
 .drop input { max-width: 100%; }
+/* Сводный заказ поставщику: что заказать по оплаченным заказам */
+.purchase { margin-bottom: 16px; }
+.purchase textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 /* Посты в ленту: превью фото и карточки постов */
 .postthumbs { display: flex; flex-wrap: wrap; gap: 8px; }
 .postthumbs:empty { display: none; }

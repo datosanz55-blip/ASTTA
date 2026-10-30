@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="max-w-4xl flex flex-col gap-8">
+  <p>{% translate "Здесь всё, что покупатели уже оплатили и что нужно заказать у поставщиков. Одинаковые товары сложены в одну строку. Скопируйте сообщение на китайском в WeChat поставщику, а после отправки нажмите «Отметить заказанным»." %}</p>
+
+  {% for p in purchases %}
+    <section class="border border-base-200 dark:border-base-700 rounded-default p-4 flex flex-col gap-4">
+      <h2 class="text-lg font-semibold">{{ p.supplier.name }}{% if p.supplier.wechat %} · WeChat {{ p.supplier.wechat }}{% endif %}</h2>
+      <table class="w-full text-sm">
+        <thead><tr class="text-left"><th>{% translate "Товар" %}</th><th>{% translate "Артикул" %}</th><th>{% translate "Цвет" %}</th><th>{% translate "Размер" %}</th><th class="text-right">{% translate "Шт." %}</th><th class="text-right">¥</th></tr></thead>
+        <tbody>
+          {% for line in p.lines %}
+            <tr class="border-t border-base-200 dark:border-base-700">
+              <td>{% if line.source_url %}<a class="underline" href="{{ line.source_url }}" target="_blank" rel="noopener">{{ line.title }}</a>{% else %}{{ line.title }}{% endif %}</td>
+              <td>{{ line.sku }}</td><td>{{ line.color }}</td><td>{{ line.size }}</td>
+              <td class="text-right">{{ line.qty }}</td><td class="text-right">{{ line.sum_cny|floatformat:"-2" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr class="border-t border-base-200 dark:border-base-700 font-semibold"><td colspan="4">{% translate "Итого" %}</td><td class="text-right">{{ p.total_qty }}</td><td class="text-right">{{ p.total_cny|floatformat:"-2" }}</td></tr></tfoot>
+      </table>
+      <label class="flex flex-col gap-1">{% translate "Сообщение поставщику (китайский)" %}
+        <textarea readonly rows="{{ p.lines|length|add:4 }}" class="border border-base-200 dark:border-base-700 rounded-default p-3 font-mono text-sm" onclick="this.select()">{{ p.text_zh }}</textarea>
+      </label>
+      <form method="post" class="flex flex-wrap items-center gap-3">
+        {% csrf_token %}
+        <input type="hidden" name="supplier" value="{{ p.supplier.pk }}">
+        {% for so in p.orders %}<input type="hidden" name="orders" value="{{ so.pk }}">{% endfor %}
+        <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default">{% translate "Отметить заказанным" %}</button>
+        <span class="text-sm text-base-500">{% translate "Заказы:" %} {% for so in p.orders %}{{ so.order.number }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+      </form>
+    </section>
+  {% empty %}
+    <p class="font-medium">{% translate "Сейчас заказывать нечего: все оплаченные заказы уже переданы поставщикам." %}</p>
+  {% endfor %}
+</div>
+{% endblock %}
