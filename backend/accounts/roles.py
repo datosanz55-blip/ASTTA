@@ -19,6 +19,8 @@ ROLE_PERMISSIONS = {
         *_all("orders", "order", "orderitem", "orderevent", "supplierorder", "payout"),
         *_all("pricing", "exchangerate", "shippingmethod", "pricingconfig", "commissionrule"),
         *_all("links", "marketplace", "linkrequest"),
+        *_all("assistant", "knowledgearticle"),
+        "assistant.view_ailog",
         "accounts.view_user",
     ],
     "Поставщики": [

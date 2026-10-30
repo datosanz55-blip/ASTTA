@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.test import Client
 from PIL import Image
 
+from accounts.models import User
 from links.models import LinkRequest, Marketplace
 from links.services import estimate, find_in_catalog, parse_link
 from pricing.models import CommissionRule
@@ -99,3 +100,24 @@ def test_request_with_photo_creates_ticket(supplier, shoes, pricing_setup):
     assert ticket.photo.name.endswith(".webp") and ticket.estimate_rub
     assert client.post("/api/link/requests", {"contact": "@b"}).status_code == 422
     assert client.post("/api/link/requests", {"text": "https://x.com/a", "contact": " "}).status_code == 422
+
+
+def test_rate_limits_do_not_share_counter(supplier, shoes, pricing_setup):
+    client = Client()
+    for _ in range(15):
+        client.post("/api/link/lookup", {"text": "https://item.taobao.com/item.htm?id=1"},
+                    content_type="application/json")
+    # Пятнадцать поисков по ссылке не должны закрывать вход в кабинет (лимит 10 в минуту у входа свой).
+    login = client.post("/api/seller/login", {"username": "nobody", "password": "x"},
+                        content_type="application/json")
+    assert login.status_code == 401
+
+
+def test_link_request_admin_page(supplier, shoes, pricing_setup):
+    Client().post("/api/link/requests", {"text": "https://detail.1688.com/offer/9.html", "contact": "@b"})
+    admin = User.objects.create_superuser("founder", password="pw-123456!")
+    client = Client()
+    client.force_login(admin)
+    ticket = LinkRequest.objects.get()
+    page = client.get(f"/admin/links/linkrequest/{ticket.pk}/change/")
+    assert page.status_code == 200 and "1688" in page.content.decode()

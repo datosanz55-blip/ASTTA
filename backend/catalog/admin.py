@@ -182,8 +182,9 @@ class ProductAdmin(ModelAdmin):
             else:
                 # Сразу на сайт выкладывает только команда, у поставщика товары идут на модерацию.
                 publish = bool(request.POST.get("publish")) and not is_supplier(request)
+                translate = bool(request.POST.get("translate")) and not is_supplier(request)
                 result = import_catalog(request.FILES.get("file"), supplier, photos=request.FILES.get("photos"),
-                                        publish=publish)
+                                        publish=publish, translate=translate)
                 if result.ok:
                     where = _("Товары уже на сайте.") if publish else _("Товары ушли на модерацию.")
                     messages.success(request, _("Загружено: новых %(c)s, обновлено %(u)s, фото %(p)s. %(where)s")

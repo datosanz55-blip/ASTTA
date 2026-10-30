@@ -551,6 +551,7 @@
       <label class="field field--full"><span>Описание</span><textarea id="fDesc">${esc(d.desc)}</textarea></label>
       <label class="${cls('src')} field--full"><span>Ссылка у поставщика (1688, Taobao, Poizon)</span><input id="fSrc" type="url" inputmode="url" value="${esc(d.src)}" placeholder="https://">${err('src')}</label>
       <label class="field field--full"><span>Название на китайском (для заказа у поставщика, можно пусто)</span><input id="fZh" value="${esc(d.zh)}"></label>
+      ${S.me && S.me.ai ? '<div class="field--full"><button class="linkbtn" type="button" data-act="team-translate">Перевести название и описание с китайского (YandexGPT)</button></div>' : ''}
       ${priceOk ? `<div class="price-hint field--full">Цена для покупателя под ключ: <b>${rub(buyerRub(normalize(d)))}</b></div>` : ''}
       <p class="note field--full">После сохранения товар сразу появится на сайте.</p>
       <div class="form__actions">
@@ -672,7 +673,8 @@
       <form class="form" id="importForm" novalidate style="grid-template-columns:minmax(0,1fr)">
         <label class="drop">${icon('upload')}<b>${t('import.file')}</b><input type="file" id="importFile" accept=".xlsx"></label>
         ${tm ? `<label class="drop">${icon('upload')}<b>Архив с фото .zip (необязательно)</b><input type="file" id="importPhotos" accept=".zip,application/zip"></label>
-        <label class="check"><input id="importPublish" type="checkbox" checked>Сразу опубликовать на сайте</label>` : ''}
+        <label class="check"><input id="importPublish" type="checkbox" checked>Сразу опубликовать на сайте</label>
+        ${S.me && S.me.ai ? '<label class="check"><input id="importTranslate" type="checkbox">Перевести с китайского, где нет русского названия (YandexGPT)</label>' : ''}` : ''}
         <div class="form__actions"><button class="btn btn--lime" type="submit">${icon('upload')}${t('import.upload')}</button></div>
       </form>
       ${LIVE ? '' : `<p class="note">${t('import.demo')}</p>`}
@@ -693,6 +695,7 @@
       if (photos) form.append('photos', photos);
       const publish = !!($('#importPublish') && $('#importPublish').checked);
       if ($('#importPublish')) form.append('publish', publish ? 'true' : 'false');
+      if ($('#importTranslate') && $('#importTranslate').checked) form.append('translate', 'true');
       let res;
       try {
         res = await liveTry(() => api('/import', { method: 'POST', form }));
@@ -708,7 +711,7 @@
       }
       S.products = (await api('/products')).map(mapProduct(supCode()));
       const done = team()
-        ? `Готово: новых ${res.created}, обновлено ${res.updated}, фото ${res.photos}. ${publish ? 'Товары уже на сайте.' : 'Товары ушли на модерацию.'}`
+        ? `Готово: новых ${res.created}, обновлено ${res.updated}, фото ${res.photos}${res.translated ? `, переведено названий ${res.translated}` : ''}. ${publish ? 'Товары уже на сайте.' : 'Товары ушли на модерацию.'}`
         : t('import.done', { n: res.created + res.updated });
       out.innerHTML = `<div class="result">${done}</div>${warnings}`;
       render();
@@ -1267,6 +1270,20 @@
         break;
       }
       case 'import': openImport(); break;
+      case 'team-translate': {
+        readForm();
+        if (!draft.zh) { toast('Сначала впишите название на китайском'); $('#fZh').focus(); break; }
+        // Описание переводим, только если в нём есть иероглифы: русское не трогаем.
+        const desc = /[\u4e00-\u9fff]/.test(draft.desc) ? draft.desc : '';
+        toast('Перевожу…');
+        const res = await liveTry(() => api('/translate', { method: 'POST', body: { items: [{ zh: draft.zh, desc }] } }));
+        if (!res) break;
+        draft.ru = res.items[0].ru || draft.ru;
+        if (desc && res.items[0].desc) draft.desc = res.items[0].desc;
+        $('#drawerBody').innerHTML = productFormHTML();
+        toast('Переведено, проверьте перед сохранением');
+        break;
+      }
       case 'del-post': {
         if (!window.confirm('Удалить пост из ленты?')) break;
         if (await liveTry(() => api(`/posts/${d.id}`, { method: 'DELETE' }))) {

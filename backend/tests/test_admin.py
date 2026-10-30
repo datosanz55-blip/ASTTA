@@ -61,3 +61,16 @@ def test_moderator_edits_any_supplier_product(supplier, other_supplier, shoes, p
     # Пользователей модератор только смотрит, менять права себе не может.
     assert client.get(f"/admin/accounts/user/{moderator.pk}/change/").status_code == 200
     assert client.post(f"/admin/accounts/user/{moderator.pk}/change/", {"is_superuser": "on"}).status_code == 403
+
+
+@pytest.mark.parametrize("url", [
+    "/admin/assistant/knowledgearticle/", "/admin/assistant/knowledgearticle/1/change/", "/admin/assistant/ailog/",
+    "/admin/links/linkrequest/", "/admin/links/marketplace/", "/admin/pricing/commissionrule/",
+    "/admin/catalog/supplierpost/add/", "/admin/orders/supplierorder/", "/admin/orders/supplierorder/purchase/",
+    "/admin/catalog/product/import/",
+])
+def test_new_admin_pages_open(db, url):
+    admin = User.objects.create_superuser("founder", password="pw-123456!")
+    client = Client()
+    client.force_login(admin)
+    assert client.get(url).status_code == 200

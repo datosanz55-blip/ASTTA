@@ -36,6 +36,8 @@
     {% if suppliers %}
       <label class="flex items-center gap-2"><input type="checkbox" name="publish" value="1" checked>
         {% translate "Сразу опубликовать на сайте" %}</label>
+      <label class="flex items-center gap-2"><input type="checkbox" name="translate" value="1">
+        {% translate "Перевести с китайского, где нет русского названия (YandexGPT)" %}</label>
     {% endif %}
     <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default w-fit">{% translate "Загрузить" %}</button>
   </form>

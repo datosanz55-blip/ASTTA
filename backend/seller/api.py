@@ -19,8 +19,9 @@ from ninja import File, Form, Router, Schema
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 from ninja.security import django_auth
-from ninja.throttling import AnonRateThrottle
 
+from assistant import yandex
+from assistant.services import translate_cards
 from catalog.images import ImageError, prepare_image
 from catalog.importer import build_template, import_catalog, unique_slug
 from catalog.models import (
@@ -33,6 +34,7 @@ from catalog.models import (
     Supplier,
     SupplierPost,
 )
+from config.throttles import per_ip
 from orders.models import OrderItem, Payout, SupplierOrder
 from orders.services import SupplierOrderError, mark_ordered, purchase_for, supplier_action, unpaid_received
 
@@ -91,6 +93,7 @@ class MeOut(Schema):
     can_act: bool
     supplier: SupplierBrief | None
     suppliers: list[SupplierBrief]
+    ai: bool
 
 
 def me_out(user):
@@ -102,10 +105,11 @@ def me_out(user):
         "can_act": acting,
         "supplier": user.supplier if user.is_supplier else None,
         "suppliers": list(Supplier.objects.all()) if acting else [],
+        "ai": yandex.enabled(),
     }
 
 
-@router.post("/login", auth=None, response=MeOut, throttle=[AnonRateThrottle("10/m")],
+@router.post("/login", auth=None, response=MeOut, throttle=[per_ip("seller_login", "10/m")],
              summary="Вход поставщика или модератора")
 def login_view(request, payload: LoginIn):
     user = authenticate(request, username=payload.username.strip(), password=payload.password)
@@ -307,14 +311,40 @@ def upload_image(request, product_id: int, file: UploadedFile = File(...)):
     return product_out(request, _my_products(supplier).get(pk=product.pk))
 
 
+class TranslateItem(Schema):
+    zh: str
+    desc: str = ""
+
+
+class TranslateIn(Schema):
+    items: list[TranslateItem]
+
+
+@router.post("/translate", summary="Перевести китайские названия и описания на русский (YandexGPT)")
+def translate(request, payload: TranslateIn):
+    current_supplier(request)
+    if not is_team(request):
+        raise HttpError(403, "Переводит команда ASTTA")
+    if not payload.items or len(payload.items) > 50:
+        raise HttpError(422, "От 1 до 50 товаров за раз")
+    try:
+        result = translate_cards([{"title_zh": i.zh, "description_zh": i.desc} for i in payload.items])
+    except yandex.AIUnavailable as exc:
+        raise HttpError(503, "ИИ пока не подключён: впишите название по-русски") from exc
+    except yandex.AIError as exc:
+        raise HttpError(502, f"Перевод не получился: {exc}") from exc
+    return {"items": [{"ru": r["title"], "desc": r["description"]} for r in result]}
+
+
 @router.post("/import", summary="Загрузить каталог: Excel и/или ZIP с фото по артикулам")
 def import_view(request, file: UploadedFile | None = File(None), photos: UploadedFile | None = File(None),
-                publish: Form[bool] = False):
+                publish: Form[bool] = False, translate: Form[bool] = False):
     supplier = current_supplier(request)
     # Сразу на сайт может выложить только команда, у поставщика товары идут на модерацию.
-    result = import_catalog(file, supplier, photos=photos, publish=publish and is_team(request))
+    result = import_catalog(file, supplier, photos=photos, publish=publish and is_team(request),
+                            translate=translate and is_team(request))
     return {"ok": result.ok, "created": result.created, "updated": result.updated, "photos": result.photos,
-            "errors": result.errors, "warnings": result.warnings}
+            "translated": result.translated, "errors": result.errors, "warnings": result.warnings}
 
 
 @router.get("/template", summary="Шаблон Excel")

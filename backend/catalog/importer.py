@@ -54,6 +54,7 @@ class ImportResult:
     created: int = 0
     updated: int = 0
     photos: int = 0
+    translated: int = 0
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -150,7 +151,7 @@ def _url(value, row, errors):
     return url
 
 
-def _read_rows(file, result):
+def _read_rows(file, result, translate=False):
     try:
         ws = load_workbook(file, read_only=True, data_only=True).worksheets[0]
     except Exception:
@@ -172,14 +173,17 @@ def _read_rows(file, result):
         data = dict(zip(names, values, strict=False))
         if data == example:
             continue  # строку-пример из шаблона пропускаем
-        missing = [title for name, title, required in COLUMNS if required and data.get(name) in (None, "")]
+        # С переводом можно оставить пустым русское название, если есть китайское: переведёт YandexGPT.
+        optional = {"title_ru"} if translate and data.get("title_zh") not in (None, "") else set()
+        missing = [title for name, title, required in COLUMNS
+                   if required and name not in optional and data.get(name) in (None, "")]
         if missing:
             result.errors.append(f"Строка {index}: не заполнено: {', '.join(missing)}")
             continue
         rows.append({
             "row": index,
             "sku": str(data["sku"]).strip(),
-            "title_ru": str(data["title_ru"]).strip(),
+            "title_ru": str(data.get("title_ru") or "").strip(),
             "category": _category(data["category"], index, result.errors, categories),
             "price_cny": _decimal(data["price_cny"], "цена", index, result.errors),
             "weight_kg": _decimal(data["weight_kg"], "вес", index, result.errors),
@@ -285,11 +289,36 @@ def read_photos(archive, skus: set[str], result: ImportResult) -> dict[str, list
     return {} if result.errors else photos
 
 
-def import_catalog(file, supplier: Supplier, photos=None, publish: bool = False) -> ImportResult:
+def _translate_titles(rows, result):
+    """Пустые русские названия переводим с китайского одним пакетом запросов к YandexGPT."""
+    from assistant import yandex
+    from assistant.services import translate_cards
+
+    todo = [r for r in rows if not r["title_ru"] and r["title_zh"]]
+    if not todo:
+        return
+    try:
+        translated = translate_cards([{"title_zh": r["title_zh"]} for r in todo])
+    except yandex.AIUnavailable:
+        result.errors.append("ИИ не подключён: впишите русские названия или подключите YandexGPT")
+        return
+    except yandex.AIError as exc:
+        result.errors.append(f"Перевод не получился ({exc}), попробуйте ещё раз или впишите названия")
+        return
+    for r, item in zip(todo, translated, strict=True):
+        if not item["title"]:
+            result.errors.append(f"Строка {r['row']}: не удалось перевести название «{r['title_zh']}»")
+        r["title_ru"] = item["title"]
+        result.translated += 1
+
+
+def import_catalog(file, supplier: Supplier, photos=None, publish: bool = False,
+                   translate: bool = False) -> ImportResult:
     """file — Excel (можно без него, если грузят только фото к уже заведённым товарам), photos — ZIP.
-    publish=True — товары сразу видны покупателям, иначе уходят на модерацию."""
+    publish=True — товары сразу видны покупателям, иначе уходят на модерацию.
+    translate=True — пустые русские названия переводим с китайского через YandexGPT."""
     result = ImportResult()
-    rows = _read_rows(file, result) if file else []
+    rows = _read_rows(file, result, translate) if file else []
     if file is None and photos is None:
         result.errors.append("Выберите файл Excel или архив с фото")
     elif file is not None and not rows and not result.errors:
@@ -299,6 +328,10 @@ def import_catalog(file, supplier: Supplier, photos=None, publish: bool = False)
     images = read_photos(photos, existing | {r["sku"] for r in rows}, result) if photos is not None else {}
     if result.errors:
         return result
+    if translate:
+        _translate_titles(rows, result)
+        if result.errors:
+            return result
 
     status = Product.Status.PUBLISHED if publish else Product.Status.MODERATION
     with transaction.atomic():

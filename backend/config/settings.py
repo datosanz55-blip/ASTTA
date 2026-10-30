@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "orders",
     "seller",
     "links",
+    "assistant",
 ]
 
 MIDDLEWARE = [
@@ -123,6 +124,11 @@ STORAGES = {
 }
 if env("PYTEST_VERSION"):
     STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
+
+# ASTTA AI на YandexGPT и Yandex Vision OCR. Без ключей ИИ выключен, остальной сайт работает.
+YANDEX_API_KEY = env("YANDEX_API_KEY", "")
+YANDEX_FOLDER_ID = env("YANDEX_FOLDER_ID", "")
+YANDEX_GPT_MODEL = env("YANDEX_GPT_MODEL", "yandexgpt/latest")
 
 # Общий кэш нужен, чтобы лимит попыток входа работал во всех процессах сервера.
 if env("REDIS_URL"):
