@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -77,6 +78,9 @@ class Product(models.Model):
     bulky = models.BooleanField(_("крупногабарит"), default=False)
     size_grid = models.CharField(_("размерная сетка"), max_length=16, choices=SizeGrid.choices, blank=True)
     is_new = models.BooleanField(_("новинка"), default=False)
+    # По ссылке агент перезаказывает товар у поставщика, а покупатель находит его, вставив ту же ссылку.
+    source_url = models.URLField(_("ссылка у поставщика"), max_length=500, blank=True,
+                                 help_text=_("1688, Taobao, Poizon или сайт поставщика"))
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.MODERATION)
     moderation_note = models.CharField(_("комментарий модератора"), max_length=300, blank=True)
     rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
@@ -157,7 +161,7 @@ class FactorySettings(models.Model):
 
 
 class SupplierPost(models.Model):
-    """Пост поставщика в ленту. Поставщик может писать по-китайски, модератор публикует перевод."""
+    """Пост в ленту от имени поставщика. Пишет и публикует команда ASTTA: фото и текст на русском."""
 
     class Kind(models.TextChoices):
         NEW = "new", _("Новинка")
@@ -170,10 +174,13 @@ class SupplierPost(models.Model):
         REJECTED = "rejected", _("Отклонён")
 
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name="posts")
-    product = models.ForeignKey(Product, verbose_name=_("товар"), on_delete=models.CASCADE, related_name="posts")
+    product = models.ForeignKey(Product, verbose_name=_("товар"), on_delete=models.CASCADE, related_name="posts",
+                                null=True, blank=True)
     kind = models.CharField(_("тип"), max_length=16, choices=Kind.choices, default=Kind.NEW)
-    text = models.TextField(_("текст поставщика"))
+    text = models.TextField(_("текст поставщика (кит.)"), blank=True)
     text_ru = models.TextField(_("текст для покупателей"), blank=True)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("автор"), null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.MODERATION)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -184,3 +191,17 @@ class SupplierPost(models.Model):
 
     def __str__(self):
         return f"{self.supplier}: {self.get_kind_display()}"
+
+
+class PostImage(models.Model):
+    post = models.ForeignKey(SupplierPost, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(_("фото"), upload_to="posts/%Y/%m/")
+    position = models.PositiveSmallIntegerField(_("порядок"), default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+        verbose_name = _("фото поста")
+        verbose_name_plural = _("фото поста")
+
+    def __str__(self):
+        return f"{self.post} #{self.position}"

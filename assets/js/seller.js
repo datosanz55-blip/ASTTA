@@ -174,6 +174,7 @@
     'err.save': ['保存失败：{e}', 'Не сохранилось: {e}'],
     'import.errors': ['文件未上传，请修改以下错误：', 'Файл не загружен. Исправьте ошибки:'],
     'import.uploading': ['正在上传…', 'Загружаю…'],
+    'import.upload': ['上传', 'Загрузить'],
     'shop.payout': ['收款信息（支付宝、银行卡）', 'Реквизиты для выплат (Alipay, карта)'],
     'shop.nameNote': ['俄语店铺名称由审核员修改', 'Русское название меняет модератор'],
     'loading': ['加载中…', 'Загрузка…'],
@@ -291,6 +292,9 @@
   } else {
     try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = fresh(); }
   }
+  // Каталоги поставщиков загружает команда ASTTA: на сервере она работает в кабинете за поставщика,
+  // пишет по-русски и публикует сразу, без модерации.
+  const team = () => LIVE && !!(S.me && S.me.can_act);
   function save() {
     if (LIVE) return;
     try {
@@ -316,7 +320,7 @@
   }
   const catName = (c) => (CATS[c] ? CATS[c][li()] : c);
   const supName = (s) => (L() === 'zh' ? s.zh : s.ru);
-  const pName = (p) => (L() === 'zh' ? p.zh : (p.ru || p.zh));
+  const pName = (p) => (L() === 'zh' && p.zh ? p.zh : (p.ru || p.zh));
 
   /* ---------- Цена (как на сервере: backend/pricing/services.py) ---------- */
   const unitCny = (p) => (p.sale ? Math.round(p.price * (1 - p.sale / 100)) : p.price);
@@ -455,7 +459,9 @@
     const chips = [['all', mine.length], ['published', count('published')], ['moderation', count('moderation')], ['rejected', count('rejected')]]
       .map(([id, n]) => `<button class="chip" type="button" data-pfilter="${id}" aria-pressed="${S.pfilter === id}">${id === 'all' ? t('filter.all') : t(`status.${id}`)}<em>${n}</em></button>`).join('');
     const rows = list.map((p) => `<tr>
-        <td><div class="pcell">${thumb(p)}<div><b>${esc(p.zh)}</b><span>${esc(p.ru || '—')} · ${esc(catName(p.cat))}</span></div></div></td>
+        <td><div class="pcell">${thumb(p)}${team()
+          ? `<div><b>${esc(p.ru)}</b><span>${esc([p.sku, catName(p.cat)].filter(Boolean).join(' · '))}</span></div>`
+          : `<div><b>${esc(p.zh)}</b><span>${esc(p.ru || '—')} · ${esc(catName(p.cat))}</span></div>`}</div></td>
         <td class="num">${cny(p.price)}${p.sale ? `<br><span class="muted">−${p.sale}%</span>` : ''}</td>
         <td class="num">${tiersText(p)}</td>
         <td class="num">${p.kg} ${t('kg')}</td>
@@ -464,9 +470,9 @@
         <td><button class="btn btn--sm" type="button" data-act="edit-product" data-id="${p.id}">${t('act.edit')}</button></td>
       </tr>`).join('');
     return `
-      <div class="pagehead"><div><h1>${t('nav.products')}</h1><p>${t('products.sub')}</p></div>
+      <div class="pagehead"><div><h1>${t('nav.products')}</h1><p>${team() ? 'Каталог поставщика на сайте. Что вы сохраняете здесь, сразу видят покупатели.' : t('products.sub')}</p></div>
         <div class="pagehead__actions">
-          <button class="btn" type="button" data-act="import">${icon('upload')}${t('products.import')}</button>
+          <button class="btn" type="button" data-act="import">${icon('upload')}${team() ? 'Загрузить каталог' : t('products.import')}</button>
           <button class="btn btn--lime" type="button" data-act="add-product">${icon('plus')}${t('products.add')}</button>
         </div></div>
       <div class="filters">${chips}</div>
@@ -482,7 +488,7 @@
   function openProductForm(id) {
     const p = id ? product(id) : null;
     draftFile = null;
-    draft = p ? clone(p) : { id: '', sup: supCode(), cat: Object.keys(CATS)[0], zh: '', ru: '', price: '', kg: '', tiers: [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
+    draft = p ? clone(p) : { id: '', sup: supCode(), cat: Object.keys(CATS)[0], zh: '', ru: '', sku: '', src: '', price: '', kg: '', tiers: team() ? [] : [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
     openDrawer(p ? t('form.edit') : t('form.add'), productFormHTML());
   }
   function productFormHTML(errors = {}) {
@@ -492,7 +498,8 @@
     const tiers = d.tiers.map(([q, c], i) => `<div class="tier">
         <input type="number" min="1" step="1" inputmode="numeric" aria-label="${t('form.tierQty')}" placeholder="${t('form.tierQty')}" value="${esc(q)}" data-tier="${i}" data-k="0">
         <input type="number" min="0.01" step="0.01" inputmode="decimal" aria-label="${t('form.tierPrice')}" placeholder="${t('form.tierPrice')}" value="${esc(c)}" data-tier="${i}" data-k="1">
-        <button class="iconbtn" type="button" data-act="del-tier" data-i="${i}" aria-label="×" ${d.tiers.length < 2 ? 'disabled' : ''}>${icon('close')}</button></div>`).join('');
+        <button class="iconbtn" type="button" data-act="del-tier" data-i="${i}" aria-label="×" ${d.tiers.length < 2 && !team() ? 'disabled' : ''}>${icon('close')}</button></div>`).join('');
+    if (team()) return teamFormHTML(d, errors, err, cls, tiers);
     const mod = isMod() && !S.acting;
     const modFields = mod ? `
       <label class="field"><span>Поставщик</span><select id="fSup">${S.suppliers.map((s) => `<option value="${s.code}" ${s.code === d.sup ? 'selected' : ''}>${esc(s.ru)}</option>`).join('')}</select></label>
@@ -522,6 +529,32 @@
         <button class="btn btn--lime" type="submit">${mod ? 'Сохранить' : t('form.submit')}</button>
       </div></form>`;
   }
+  function teamFormHTML(d, errors, err, cls, tiers) {
+    const priceOk = Number(d.price) > 0 && Number(d.kg) > 0;
+    const more = d.photos > 1 ? `<p class="note field--full">У товара фото: ${d.photos}. Остальные фото загружайте архивом в «Загрузке каталога».</p>` : '';
+    return `<form class="form" id="productForm" novalidate>
+      <label class="${cls('ru')} field--full"><span>Название для покупателей</span><input id="fRu" value="${esc(d.ru)}" required>${err('ru')}</label>
+      <label class="${cls('sku')}"><span>Артикул поставщика</span><input id="fSku" value="${esc(d.sku)}" maxlength="64">${err('sku')}</label>
+      <label class="field"><span>Категория</span><select id="fCat">${Object.keys(CATS).map((c) => `<option value="${c}" ${c === d.cat ? 'selected' : ''}>${esc(CATS[c][1])}</option>`).join('')}</select></label>
+      <label class="${cls('price')}"><span>Цена у поставщика, ¥</span><input id="fPrice" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.price)}">${err('price')}</label>
+      <label class="field"><span>Скидка, %</span><input id="fSale" type="number" min="0" max="90" step="1" inputmode="numeric" value="${esc(d.sale)}"></label>
+      <label class="${cls('kg')}"><span>Вес в упаковке, кг</span><input id="fKg" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.kg)}">${err('kg')}</label>
+      <div class="field field--full"><span>Опт: от скольки штук и цена за штуку. Можно не заполнять, тогда товар только в розницу</span><div class="tiers">${tiers}</div>
+        <button class="linkbtn" type="button" data-act="add-tier" style="align-self:flex-start">+ Оптовая ступень</button></div>
+      <label class="check field--full"><input id="fBulky" type="checkbox" ${d.bulky ? 'checked' : ''}>Крупногабарит (мебель, едет сборным грузом)</label>
+      <label class="field field--full"><span>Главное фото</span><input id="fPhoto" type="file" accept="image/*"></label>
+      ${d.img ? `<div class="preview field--full"><img src="${esc(imgSrc(d.img))}" alt=""><span class="muted">${esc(d.ru)}</span></div>` : ''}
+      ${more}
+      <label class="field field--full"><span>Описание</span><textarea id="fDesc">${esc(d.desc)}</textarea></label>
+      <label class="${cls('src')} field--full"><span>Ссылка у поставщика (1688, Taobao, Poizon)</span><input id="fSrc" type="url" inputmode="url" value="${esc(d.src)}" placeholder="https://">${err('src')}</label>
+      <label class="field field--full"><span>Название на китайском (для заказа у поставщика, можно пусто)</span><input id="fZh" value="${esc(d.zh)}"></label>
+      ${priceOk ? `<div class="price-hint field--full">Цена для покупателя под ключ: <b>${rub(buyerRub(normalize(d)))}</b></div>` : ''}
+      <p class="note field--full">После сохранения товар сразу появится на сайте.</p>
+      <div class="form__actions">
+        <button class="btn" type="button" data-act="close-drawer">Отмена</button>
+        <button class="btn btn--lime" type="submit">Сохранить и опубликовать</button>
+      </div></form>`;
+  }
   function normalize(d) {
     return { ...d, price: Number(d.price), kg: Number(d.kg), sale: Number(d.sale) || 0, tiers: d.tiers.map(([q, c]) => [Number(q), Number(c)]).filter(([q, c]) => q > 0 && c > 0).sort((a, b) => a[0] - b[0]) };
   }
@@ -534,6 +567,10 @@
     draft.kg = $('#fKg').value;
     draft.bulky = $('#fBulky').checked;
     draft.desc = $('#fDesc').value.trim();
+    if ($('#fSku')) {
+      draft.sku = $('#fSku').value.trim();
+      draft.src = $('#fSrc').value.trim();
+    }
     if ($('#fSup')) {
       draft.sup = $('#fSup').value;
       draft.status = $('#fStatus').value;
@@ -545,10 +582,15 @@
     const mod = isMod() && !S.acting;
     const n = normalize(draft);
     const errors = {};
-    if (!n.zh) errors.zh = t('err.required');
+    if (team()) {
+      if (!n.ru) errors.ru = 'Обязательно';
+      if (n.src && !/^https?:\/\/\S+$/i.test(n.src)) errors.src = 'Нужна ссылка вида https://…';
+    } else {
+      if (!n.zh) errors.zh = t('err.required');
+      if (!n.tiers.length) errors.tiers = t('err.tiers');
+    }
     if (!(n.price > 0)) errors.price = t('err.positive');
     if (!(n.kg > 0)) errors.kg = t('err.positive');
-    if (!n.tiers.length) errors.tiers = t('err.tiers');
     if (mod && n.status === 'published' && !n.ru) errors.ru = 'Для публикации нужно русское название';
     if (Object.keys(errors).length) {
       $('#drawerBody').innerHTML = productFormHTML(errors);
@@ -577,9 +619,16 @@
     if (saving) return;
     saving = true;
     try {
-      const body = { zh: n.zh, ru: n.ru, cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc };
-      const saved = await liveTry(() => api(n.id ? `/products/${n.id}` : '/products', { method: n.id ? 'PUT' : 'POST', body }));
-      if (!saved) return;
+      const body = { zh: n.zh, ru: n.ru, sku: n.sku || '', src: n.src || '', cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc };
+      let saved;
+      try {
+        saved = await api(n.id ? `/products/${n.id}` : '/products', { method: n.id ? 'PUT' : 'POST', body });
+      } catch (e) {
+        // Повтор артикула показываем у поля, остальные ошибки сервера — всплывающим сообщением.
+        if (/'sku': 'duplicate'/.test(e.message)) { $('#drawerBody').innerHTML = productFormHTML({ sku: 'Такой артикул уже есть у этого поставщика' }); return; }
+        toast(t('err.save', { e: e.message }));
+        return;
+      }
       // Если фото не загрузится, шторка остаётся открытой, а повторное сохранение обновит этот же товар.
       draft.id = String(saved.id);
       upsert(S.products, mapProduct(supCode())(saved));
@@ -591,7 +640,7 @@
         upsert(S.products, mapProduct(supCode())(withImage));
       }
       closeDrawer();
-      toast(t('toast.submitted'));
+      toast(team() ? 'Сохранено, товар на сайте' : t('toast.submitted'));
       render();
     } finally {
       saving = false;
@@ -600,31 +649,63 @@
 
   /* ---------- Загрузка из Excel ---------- */
   function openImport() {
-    const cols = L() === 'zh'
-      ? ['货号', '商品名称（中文）', '俄语名称', '类目', '零售价（元）', '包装后重量（公斤）', '批发价 起批量:单价', '大件', '描述']
-      : ['Артикул', 'Название (кит.)', 'Название (рус.)', 'Категория', 'Цена, ¥', 'Вес, кг', 'Опт от шт.:цена', 'Крупногабарит', 'Описание'];
-    openDrawer(t('import.title'), `
-      <ol class="steps"><li>${t('import.s1')}</li><li>${t('import.s2')}</li><li>${t('import.s3')}</li></ol>
+    const tm = team();
+    const cols = tm
+      ? ['Артикул', 'Название', 'Категория', 'Цена у поставщика, ¥', 'Вес, кг', 'Опт (можно пусто)', 'Крупногабарит', 'Описание', 'Ссылка у поставщика', 'Название на китайском']
+      : L() === 'zh'
+        ? ['货号', '商品名称（中文）', '俄语名称', '类目', '零售价（元）', '包装后重量（公斤）', '批发价 起批量:单价', '大件', '描述']
+        : ['Артикул', 'Название (кит.)', 'Название (рус.)', 'Категория', 'Цена, ¥', 'Вес, кг', 'Опт от шт.:цена', 'Крупногабарит', 'Описание'];
+    const steps = tm
+      ? ['Скачайте шаблон и перенесите туда каталог поставщика: одна строка — один товар.',
+        'Фото сложите в ZIP: имя файла начинается с артикула (A-101.jpg, A-101_2.jpg) или фото лежат в папке с артикулом. Новые фото заменяют старые. Если товары уже есть, можно загрузить только архив.',
+        'Если в файле или архиве ошибка, не загрузится ничего, и вы увидите, что исправить.']
+      : [t('import.s1'), t('import.s2'), t('import.s3')];
+    openDrawer(tm ? 'Загрузка каталога' : t('import.title'), `
+      <ol class="steps">${steps.map((s) => `<li>${s}</li>`).join('')}</ol>
       <div><p class="note">${t('import.cols')}</p><div class="cols">${cols.map((c) => `<span>${esc(c)}</span>`).join('')}</div></div>
       <button class="btn" type="button" data-act="template" style="align-self:flex-start">${icon('upload')}${t('import.template')}</button>
-      <label class="drop">${icon('upload')}<b>${t('import.file')}</b><input type="file" id="importFile" accept=".xlsx,.xls"></label>
+      <form class="form" id="importForm" novalidate style="grid-template-columns:minmax(0,1fr)">
+        <label class="drop">${icon('upload')}<b>${t('import.file')}</b><input type="file" id="importFile" accept=".xlsx"></label>
+        ${tm ? `<label class="drop">${icon('upload')}<b>Архив с фото .zip (необязательно)</b><input type="file" id="importPhotos" accept=".zip,application/zip"></label>
+        <label class="check"><input id="importPublish" type="checkbox" checked>Сразу опубликовать на сайте</label>` : ''}
+        <div class="form__actions"><button class="btn btn--lime" type="submit">${icon('upload')}${t('import.upload')}</button></div>
+      </form>
       ${LIVE ? '' : `<p class="note">${t('import.demo')}</p>`}
       <div id="importResult"></div>`);
   }
-  async function doImport(file) {
+  let importing = false;
+  async function doImport() {
+    const file = $('#importFile').files[0];
+    const photos = $('#importPhotos') ? $('#importPhotos').files[0] : null;
+    if (!file && !photos) { toast(team() ? 'Выберите файл Excel или архив с фото' : t('import.file')); return; }
     if (LIVE) {
+      if (importing) return;
+      importing = true;
       const out = $('#importResult');
-      out.innerHTML = `<p class="note">${t('import.uploading')}</p>`;
+      out.innerHTML = `<p class="note">${t('import.uploading')}${photos ? ' Фото уменьшаем и сохраняем, на большой архив уходит пара минут.' : ''}</p>`;
       const form = new FormData();
-      form.append('file', file);
-      const res = await liveTry(() => api('/import', { method: 'POST', form }));
+      if (file) form.append('file', file);
+      if (photos) form.append('photos', photos);
+      const publish = !!($('#importPublish') && $('#importPublish').checked);
+      if ($('#importPublish')) form.append('publish', publish ? 'true' : 'false');
+      let res;
+      try {
+        res = await liveTry(() => api('/import', { method: 'POST', form }));
+      } finally {
+        importing = false;
+      }
       if (!res) { out.innerHTML = ''; return; }
+      const warnings = (res.warnings || []).length
+        ? `<div class="panel" style="border-color:var(--warn)"><ul class="tips">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : '';
       if (!res.ok) {
-        out.innerHTML = `<div class="panel" style="border-color:var(--bad)"><b>${t('import.errors')}</b><ul class="tips">${res.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+        out.innerHTML = `<div class="panel" style="border-color:var(--bad)"><b>${t('import.errors')}</b><ul class="tips">${res.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>${warnings}`;
         return;
       }
       S.products = (await api('/products')).map(mapProduct(supCode()));
-      out.innerHTML = `<div class="result">${t('import.done', { n: res.created + res.updated })}</div>`;
+      const done = team()
+        ? `Готово: новых ${res.created}, обновлено ${res.updated}, фото ${res.photos}. ${publish ? 'Товары уже на сайте.' : 'Товары ушли на модерацию.'}`
+        : t('import.done', { n: res.created + res.updated });
+      out.innerHTML = `<div class="result">${done}</div>${warnings}`;
       render();
       return;
     }
@@ -726,7 +807,70 @@
   /* ---------- Поставщик: контент-завод ---------- */
   const FACTORY_DEFAULT = { newItems: true, weekly: true, restock: false, perDay: '3' };
   const factory = () => (S.factory[supCode()] = S.factory[supCode()] || { ...FACTORY_DEFAULT });
+  function vTeamPosts() {
+    const mine = S.products.filter((p) => p.status === 'published');
+    const posts = S.posts.filter((x) => x.sup === supCode());
+    const card = (x) => {
+      const p = x.pid ? product(x.pid) : null;
+      return `<article class="postcard">
+        ${x.images.length ? `<div class="postthumbs">${x.images.slice(0, 4).map((src) => `<img src="${esc(src)}" alt="" loading="lazy">`).join('')}${x.images.length > 4 ? `<span class="more">+${x.images.length - 4}</span>` : ''}</div>` : ''}
+        ${x.text ? `<p>${esc(x.text)}</p>` : ''}
+        <div class="postcard__meta"><span class="muted">${esc(x.date || '')}${p ? ` · ${esc(pName(p))}` : ''} · ${t(`fac.kind.${x.kind}`)}</span>
+          <span class="st ${PST[x.status] || ''}">${t(`status.${x.status}`)}</span>
+          <button class="btn btn--sm btn--bad" type="button" data-act="del-post" data-id="${x.id}">Удалить</button></div>
+      </article>`;
+    };
+    return `
+      <div class="pagehead"><div><h1>Посты в ленту</h1><p>Пост с фото сразу появляется в ленте поставщиков на сайте. Видео сделаем следующим этапом контент-завода.</p></div></div>
+      <div class="grid2">
+        <section class="panel"><h2>Новый пост</h2>
+          <form class="form" id="postForm" novalidate>
+            <label class="field field--full"><span>Текст для покупателей</span><textarea id="poText" placeholder="Например: новая партия худи, плотный хлопок, 6 цветов"></textarea></label>
+            <label class="field field--full"><span>Фото, до 10 штук</span><input id="poImages" type="file" accept="image/*" multiple></label>
+            <div class="postthumbs field--full" id="poPreview"></div>
+            <label class="field"><span>Товар (можно без него)</span><select id="poProduct"><option value="">Без товара</option>${mine.map((p) => `<option value="${p.id}">${esc(pName(p))}</option>`).join('')}</select></label>
+            <label class="field"><span>Тип</span><select id="poKind">${['new', 'restock', 'opt'].map((k) => `<option value="${k}">${t(`fac.kind.${k}`)}</option>`).join('')}</select></label>
+            <div class="form__actions"><button class="btn btn--lime" type="submit">Опубликовать</button></div>
+          </form>
+        </section>
+        <section class="panel"><h2>Посты поставщика</h2>
+          ${posts.length ? `<div class="postlist">${posts.map(card).join('')}</div>` : '<p class="muted">Постов пока нет</p>'}
+        </section>
+      </div>`;
+  }
+  let postFiles = [];
+  function postPreview(files) {
+    postFiles = [...files];
+    const box = $('#poPreview');
+    if (!box) return;
+    box.innerHTML = postFiles.slice(0, 10).map((f) => `<img src="${URL.createObjectURL(f)}" alt="">`).join('')
+      + (postFiles.length > 10 ? '<span class="err">Больше 10 фото: оставьте до 10</span>' : '');
+  }
+  let posting = false;
+  async function teamPost() {
+    const text = $('#poText').value.trim();
+    if (!text && !postFiles.length) { toast('Добавьте текст или фото'); $('#poText').focus(); return; }
+    if (postFiles.length > 10) { toast('Не больше 10 фото в посте'); return; }
+    if (posting) return;
+    posting = true;
+    const form = new FormData();
+    form.append('text', text);
+    form.append('kind', $('#poKind').value);
+    if ($('#poProduct').value) form.append('product', $('#poProduct').value);
+    for (const f of postFiles) form.append('images', f);
+    let res;
+    try {
+      res = await liveTry(() => api('/posts', { method: 'POST', form }));
+    } finally {
+      posting = false;
+    }
+    if (!res) return;
+    postFiles = [];
+    S.posts.unshift(mapPost(supCode())(res));
+    render(); toast('Опубликовано');
+  }
   function vFactory() {
+    if (team()) return vTeamPosts();
     const f = factory();
     const mine = S.products.filter((p) => p.sup === supCode() && p.status === 'published');
     const next = mine[0];
@@ -740,7 +884,7 @@
           <div>${sw('newItems', 'fac.newItemsHint')}${sw('weekly', 'fac.weeklyHint')}${sw('restock', 'fac.restockHint')}${sw('video', 'fac.videoHint', true)}
             <label class="switchrow"><div><b>${t('fac.perDay')}</b></div>
               <select class="select" data-factory="perDay" aria-label="${t('fac.perDay')}">${['1', '3', '5'].map((v) => `<option ${f.perDay === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
-          ${next ? `<div class="preview">${thumb(next)}<div><b>${t('fac.next')}</b><br><span class="muted">Новинка от ${esc(supplier().ru)}: ${esc(next.ru || next.zh)}. ${next.tiers[0][1]} ¥ за штуку при партии от ${next.tiers[0][0]} шт. Фото с проверки на складе пришлём в заказ.</span></div></div>
+          ${next ? `<div class="preview">${thumb(next)}<div><b>${t('fac.next')}</b><br><span class="muted">Новинка от ${esc(supplier().ru)}: ${esc(next.ru || next.zh)}. ${next.tiers[0] ? `${next.tiers[0][1]} ¥ за штуку при партии от ${next.tiers[0][0]} шт.` : `${next.price} ¥ за штуку.`} Фото с проверки на складе пришлём в заказ.</span></div></div>
             <p class="note">${t('fac.ruNote')}</p>` : ''}
         </section>
         <section class="panel"><h2>${t('fac.post')}</h2>
@@ -751,7 +895,7 @@
             <div class="form__actions"><button class="btn btn--lime" type="submit">${t('fac.send')}</button></div>
           </form>
           <h2>${t('fac.mine')}</h2>
-          ${posts.length ? posts.map((x) => `<div class="preview">${thumb(product(x.pid))}<div><b>${t(`fac.kind.${x.kind}`)} · ${esc(pName(product(x.pid)))}</b><br><span class="muted">${esc(x.text)}</span></div><span class="st ${PST[x.status || 'moderation'] || ''}" style="margin-left:auto">${t(`status.${x.status || 'moderation'}`)}</span></div>`).join('')
+          ${posts.length ? posts.filter((x) => product(x.pid)).map((x) => `<div class="preview">${thumb(product(x.pid))}<div><b>${t(`fac.kind.${x.kind}`)} · ${esc(pName(product(x.pid)))}</b><br><span class="muted">${esc(x.text)}</span></div><span class="st ${PST[x.status || 'moderation'] || ''}" style="margin-left:auto">${t(`status.${x.status || 'moderation'}`)}</span></div>`).join('')
             : `<p class="muted">${t('fac.none')}</p>`}
         </section>
       </div>`;
@@ -938,9 +1082,13 @@
   }
   const num = (v) => Number(v);
   const mapProduct = (code) => (p) => ({
-    id: String(p.id), sup: code, cat: p.cat, zh: p.zh, ru: p.ru, price: num(p.price), kg: num(p.kg), sale: p.sale,
-    bulky: p.bulky, tiers: p.tiers.map(([q, c]) => [q, num(c)]), views: 0, orders: p.orders, img: p.img || '',
+    id: String(p.id), sup: code, cat: p.cat, zh: p.zh, ru: p.ru, sku: p.sku || '', src: p.src || '', price: num(p.price), kg: num(p.kg), sale: p.sale,
+    bulky: p.bulky, tiers: p.tiers.map(([q, c]) => [q, num(c)]), views: 0, orders: p.orders, img: p.img || '', photos: p.photos || 0,
     desc: p.desc, status: p.status, reason: p.reason,
+  });
+  const mapPost = (code) => (x) => ({
+    id: x.id, sup: code, pid: x.product ? String(x.product) : '', kind: x.kind, text: x.text, status: x.status,
+    images: x.images || [], date: x.date || '',
   });
   const mapOrder = (code) => (o) => ({
     id: o.id, num: o.num, sup: code, date: o.date, mode: o.mode, status: o.status, tracking: o.tracking,
@@ -964,7 +1112,7 @@
     }];
     S.products = products.map(mapProduct(code));
     S.orders = orders.map(mapOrder(code));
-    S.posts = posts.map((x) => ({ sup: code, pid: String(x.product), kind: x.kind, text: x.text, status: x.status }));
+    S.posts = posts.map(mapPost(code));
     S.factory[code] = { newItems: fac.new_items, weekly: fac.weekly, restock: fac.restock, perDay: String(fac.per_day) };
     S.live = {
       pending: num(overview.pending_cny), today: overview.today, weekLabels: overview.week_labels,
@@ -1085,6 +1233,14 @@
         break;
       }
       case 'import': openImport(); break;
+      case 'del-post': {
+        if (!window.confirm('Удалить пост из ленты?')) break;
+        if (await liveTry(() => api(`/posts/${d.id}`, { method: 'DELETE' }))) {
+          S.posts = S.posts.filter((x) => String(x.id) !== d.id);
+          render(); toast('Пост удалён');
+        }
+        break;
+      }
       case 'template': {
         if (!LIVE) { toast(t('import.noDownload')); break; }
         const res = await liveTry(() => api('/template'));
@@ -1172,6 +1328,7 @@
     const form = e.target;
     e.preventDefault();
     if (form.id === 'productForm') { submitProduct(); return; }
+    if (form.id === 'importForm') { doImport(); return; }
     if (form.id === 'loginForm') {
       const err = $('#loginErr');
       err.hidden = true;
@@ -1199,12 +1356,17 @@
       return;
     }
     if (form.id === 'postForm') {
+      if (team()) { teamPost(); return; }
       const text = $('#poText').value.trim();
       if (!text) { toast(t('err.required')); $('#poText').focus(); return; }
       if (LIVE) {
-        const res = await liveTry(() => api('/posts', { method: 'POST', body: { product: Number($('#poProduct').value), kind: $('#poKind').value, text } }));
+        const fd = new FormData();
+        fd.append('product', $('#poProduct').value);
+        fd.append('kind', $('#poKind').value);
+        fd.append('text', text);
+        const res = await liveTry(() => api('/posts', { method: 'POST', form: fd }));
         if (!res) return;
-        S.posts.unshift({ sup: supCode(), pid: String(res.product), kind: res.kind, text: res.text, status: res.status });
+        S.posts.unshift(mapPost(supCode())(res));
         render(); toast(t('fac.sent'));
         return;
       }
@@ -1265,7 +1427,8 @@
       reader.readAsDataURL(el.files[0]);
       return;
     }
-    if (el.id === 'importFile' && el.files[0]) { doImport(el.files[0]); el.value = ''; return; }
+    if ((el.id === 'importFile' || el.id === 'importPhotos') && el.files[0]) { el.closest('.drop').querySelector('b').textContent = el.files[0].name; return; }
+    if (el.id === 'poImages') { postPreview(el.files); return; }
     if (el.dataset.actAs !== undefined) { S.acting = el.value; startSession(); return; }
     if (el.dataset.tier !== undefined) { draft.tiers[Number(el.dataset.tier)][Number(el.dataset.k)] = el.value; return; }
     if (el.dataset.factory) {

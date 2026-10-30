@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.db import models
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -7,7 +8,16 @@ from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
 from catalog.importer import build_template, import_catalog, unique_slug
-from catalog.models import Category, FactorySettings, PriceTier, Product, ProductImage, Supplier, SupplierPost
+from catalog.models import (
+    Category,
+    FactorySettings,
+    PostImage,
+    PriceTier,
+    Product,
+    ProductImage,
+    Supplier,
+    SupplierPost,
+)
 
 
 def is_supplier(request):
@@ -40,15 +50,27 @@ class SupplierAdmin(ModelAdmin):
         return redirect(f"/seller/?act={supplier.code}")
 
 
+class PostImageInline(TabularInline):
+    model = PostImage
+    extra = 3
+    max_num = 10
+
+
 @admin.register(SupplierPost)
 class SupplierPostAdmin(ModelAdmin):
-    """Посты поставщиков в ленту: модератор переводит текст на русский и публикует."""
+    """Посты в ленту от имени поставщика: команда пишет текст для покупателей, прикладывает фото и публикует."""
 
-    list_display = ("supplier", "product", "kind", "status", "created_at")
+    list_display = ("supplier", "product", "kind", "status", "author", "created_at")
     list_filter = ("status", "kind", "supplier")
-    fields = ("supplier", "product", "kind", "text", "text_ru", "status")
-    readonly_fields = ("supplier", "product", "kind", "text")
+    fields = ("supplier", "product", "kind", "text_ru", "text", "status")
+    autocomplete_fields = ("product",)
+    inlines = [PostImageInline]
     actions = ["publish", "reject"]
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.author = request.user
+        super().save_model(request, obj, form, change)
 
     @admin.action(description=_("Опубликовать"))
     def publish(self, request, queryset):
@@ -83,10 +105,13 @@ class ProductAdmin(ModelAdmin):
     search_fields = ("title_ru", "title_zh", "sku", "slug")
     inlines = [PriceTierInline, ProductImageInline]
     actions = ["publish", "reject"]
+    # Ссылку без схемы считаем https://, как будет по умолчанию в Django 6.
+    formfield_overrides = {models.URLField: {"assume_scheme": "https"}}
     change_list_template = "admin/catalog/product/change_list.html"
     fieldsets = (
         (None, {"fields": ("supplier", "category", "sku", "slug", "status", "moderation_note")}),
-        (_("Название и описание"), {"fields": ("title_zh", "title_ru", "description_zh", "description_ru")}),
+        (_("Название и описание"), {"fields": ("title_ru", "description_ru", "title_zh", "description_zh",
+                                                "source_url")}),
         (_("Цена и доставка"), {"fields": ("price_cny", "sale_percent", "weight_kg", "bulky", "size_grid",
                                            "is_new")}),
     )
@@ -150,14 +175,20 @@ class ProductAdmin(ModelAdmin):
         if not supplier and request.POST.get("supplier"):
             supplier = Supplier.objects.filter(pk=request.POST["supplier"]).first()
         result = None
-        if request.method == "POST" and request.FILES.get("file"):
+        if request.method == "POST" and (request.FILES.get("file") or request.FILES.get("photos")):
             if supplier is None:
                 messages.error(request, _("Выберите поставщика"))
             else:
-                result = import_catalog(request.FILES["file"], supplier)
+                # Сразу на сайт выкладывает только команда, у поставщика товары идут на модерацию.
+                publish = bool(request.POST.get("publish")) and not is_supplier(request)
+                result = import_catalog(request.FILES.get("file"), supplier, photos=request.FILES.get("photos"),
+                                        publish=publish)
                 if result.ok:
-                    messages.success(request, _("Загружено: новых %(c)s, обновлено %(u)s. Товары ушли на модерацию.")
-                                     % {"c": result.created, "u": result.updated})
+                    where = _("Товары уже на сайте.") if publish else _("Товары ушли на модерацию.")
+                    messages.success(request, _("Загружено: новых %(c)s, обновлено %(u)s, фото %(p)s. %(where)s")
+                                     % {"c": result.created, "u": result.updated, "p": result.photos, "where": where})
+                    for warning in result.warnings:
+                        messages.warning(request, warning)
                     return redirect("admin:catalog_product_changelist")
         context = {
             **self.admin_site.each_context(request),

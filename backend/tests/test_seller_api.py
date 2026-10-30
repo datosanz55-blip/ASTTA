@@ -1,4 +1,5 @@
 import json
+import zipfile
 from decimal import Decimal
 from io import BytesIO
 
@@ -128,7 +129,7 @@ def test_image_upload(client, setup):
     buffer.name = "shoe.png"
     resp = client.post(f"{API}/products/{setup['mine'].pk}/image", {"file": buffer})
     assert resp.status_code == 200
-    assert resp.json()["img"].endswith(".png")
+    assert resp.json()["img"].endswith(".webp")  # фото хранится уменьшенным в WebP
     not_image = BytesIO(b"not an image")
     not_image.name = "x.png"
     assert client.post(f"{API}/products/{setup['mine'].pk}/image", {"file": not_image}).status_code == 400
@@ -173,13 +174,15 @@ def test_payouts_from_received_orders(client, setup):
 
 def test_import_from_cabinet(client):
     wb = load_workbook(BytesIO(build_template()))
-    wb.worksheets[0].append(["S-9", "拖鞋", "", "shoes", 30, 0.4, "10:25", "", ""])
+    wb.worksheets[0].append(["S-9", "Шлёпанцы", "shoes", 30, 0.4, "10:25", "", "", "", "拖鞋"])
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
     buffer.name = "catalog.xlsx"
-    result = client.post(f"{API}/import", {"file": buffer}).json()
+    # Поставщик не может выложить сразу на сайт, даже если попросит.
+    result = client.post(f"{API}/import", {"file": buffer, "publish": "true"}).json()
     assert (result["ok"], result["created"]) == (True, 1)
+    assert Product.objects.get(sku="S-9").status == Product.Status.MODERATION
     broken = BytesIO(b"x")
     broken.name = "bad.xlsx"
     assert client.post(f"{API}/import", {"file": broken}).json()["ok"] is False
@@ -199,11 +202,12 @@ def test_factory_and_posts(client, setup):
     assert saved.json() == {"new_items": False, "weekly": True, "restock": True, "per_day": 5}
     too_many = as_json(client, "put", "/factory", {"new_items": True, "weekly": True, "restock": True, "per_day": 50})
     assert too_many.status_code == 422
-    post = as_json(client, "post", "/posts", {"product": setup["mine"].pk, "kind": "new", "text": "新到"}).json()
+    post = client.post(f"{API}/posts", {"product": setup["mine"].pk, "kind": "new", "text": "新到"}).json()
     assert post["status"] == "moderation"
     assert SupplierPost.objects.get().supplier == setup["supplier"]
-    foreign = as_json(client, "post", "/posts", {"product": setup["theirs"].pk, "kind": "new", "text": "x"})
+    foreign = client.post(f"{API}/posts", {"product": setup["theirs"].pk, "kind": "new", "text": "x"})
     assert foreign.status_code == 404
+    assert Client().get("/api/feed").json()["total"] == 0  # пост поставщика ждёт модерации
 
 
 def test_moderator_can_open_any_cabinet(setup):
@@ -223,3 +227,83 @@ def test_blocked_supplier_is_locked_out(client, setup):
     setup["supplier"].is_active = False
     setup["supplier"].save()
     assert client.get(f"{API}/products").status_code == 403
+
+
+@pytest.fixture
+def team(setup):
+    moderator = User.objects.create_user("mod", password="pw-123456!", is_staff=True)
+    moderator.groups.add(Group.objects.get(name="Модераторы"))
+    client = Client()
+    client.force_login(moderator)
+    return client
+
+
+def png(color="white"):
+    buffer = BytesIO()
+    Image.new("RGB", (40, 30), color).save(buffer, "PNG")
+    buffer.seek(0)
+    buffer.name = f"{color}.png"
+    return buffer
+
+
+def test_team_creates_product_in_russian_and_publishes(team, setup):
+    payload = {"ru": "Тапки домашние", "sku": "T-1", "cat": "shoes", "price": "12", "kg": "0.3", "desc": "Мягкие",
+               "src": "https://detail.1688.com/offer/2.html"}
+    resp = as_json(team, "post", "/products", payload, HTTP_X_ACT_AS="jj")
+    assert resp.status_code == 200, resp.content
+    data = resp.json()
+    assert (data["status"], data["ru"], data["zh"], data["desc"]) == ("published", "Тапки домашние", "", "Мягкие")
+    product = Product.objects.get(pk=data["id"])
+    assert (product.sku, product.source_url, product.tiers.count()) == ("T-1", payload["src"], 0)
+    assert as_json(team, "post", "/products", {**payload, "ru": ""}, HTTP_X_ACT_AS="jj").status_code == 422
+    duplicate = as_json(team, "post", "/products", payload, HTTP_X_ACT_AS="jj")
+    assert duplicate.status_code == 422 and "sku" in duplicate.json()["detail"]
+    photo = team.post(f"{API}/products/{product.pk}/image", {"file": png()}, HTTP_X_ACT_AS="jj")
+    assert photo.json()["status"] == "published"  # фото от команды не отправляет товар на модерацию
+
+
+def test_team_import_publishes_with_photos(team, setup):
+    wb = load_workbook(BytesIO(build_template()))
+    wb.worksheets[0].append(["S-9", "Шлёпанцы", "shoes", 30, 0.4, "", "", "", "", ""])
+    sheet = BytesIO()
+    wb.save(sheet)
+    sheet.seek(0)
+    sheet.name = "catalog.xlsx"
+    photos = BytesIO()
+    with zipfile.ZipFile(photos, "w") as zf:
+        zf.writestr("S-9.png", png().getvalue())
+        zf.writestr("other.png", png().getvalue())
+    photos.seek(0)
+    photos.name = "photos.zip"
+    result = team.post(f"{API}/import", {"file": sheet, "photos": photos, "publish": "true"}, HTTP_X_ACT_AS="jj").json()
+    assert (result["ok"], result["created"], result["photos"]) == (True, 1, 1), result
+    assert any("other.png" in w for w in result["warnings"])
+    product = Product.objects.get(sku="S-9")
+    assert product.status == Product.Status.PUBLISHED and product.supplier == setup["supplier"]
+
+
+def test_team_post_with_photos_goes_to_feed(team, setup):
+    resp = team.post(f"{API}/posts", {"product": setup["mine"].pk, "kind": "new", "text": "Новинка: мягкие тапки",
+                                      "images": [png("red"), png("blue")]}, HTTP_X_ACT_AS="jj")
+    assert resp.status_code == 200, resp.content
+    post = resp.json()
+    assert post["status"] == "published" and len(post["images"]) == 2
+    saved = SupplierPost.objects.get()
+    assert (saved.text_ru, saved.text) == ("Новинка: мягкие тапки", "")
+
+    feed = Client().get("/api/feed").json()
+    assert feed["total"] == 1
+    item = feed["items"][0]
+    assert item["text"] == "Новинка: мягкие тапки" and len(item["images"]) == 2
+    assert item["product"]["slug"] == "mine" and item["product"]["retail_rub"]
+    assert Client().get("/api/feed?supplier=gz").json()["total"] == 0
+
+    # Снятый с продажи товар из поста пропадает, сам пост остаётся.
+    Product.objects.filter(pk=setup["mine"].pk).update(status=Product.Status.MODERATION)
+    assert Client().get("/api/feed").json()["items"][0]["product"] is None
+
+    photos_only = team.post(f"{API}/posts", {"text": "", "images": [png()]}, HTTP_X_ACT_AS="jj")
+    assert photos_only.status_code == 200  # пост без товара и без текста, только фото
+    assert team.post(f"{API}/posts", {"text": " "}, HTTP_X_ACT_AS="jj").status_code == 422
+    assert team.delete(f"{API}/posts/{post['id']}", HTTP_X_ACT_AS="jj").status_code == 200
+    assert Client().get("/api/feed").json()["total"] == 1

@@ -1,8 +1,9 @@
 """API кабинета поставщика (/api/seller/...). Вход по сессии, запись только с CSRF-токеном.
 
-Поставщик видит и меняет только свой магазин. Основатели и модераторы (право catalog.change_supplier)
-открывают кабинет любого поставщика, передав его код в заголовке X-Act-As.
-Покупателей поставщик не видит: в заказах только товары, размеры и количество.
+Каталоги поставщиков загружает команда ASTTA (основатели и модераторы с правом catalog.change_supplier):
+она открывает кабинет любого поставщика, передав его код в заголовке X-Act-As, пишет по-русски
+и публикует сразу. Вход для самого поставщика остаётся: он видит и меняет только свой магазин,
+а его правки проходят модерацию. Покупателей поставщик не видит: в заказах только товары и количество.
 """
 
 import datetime as dt
@@ -14,26 +15,40 @@ from django.db.models import Count, F, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import File, Router, Schema
+from ninja import File, Form, Router, Schema
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 from ninja.security import django_auth
 from ninja.throttling import AnonRateThrottle
-from PIL import Image, UnidentifiedImageError
 
+from catalog.images import ImageError, prepare_image
 from catalog.importer import build_template, import_catalog, unique_slug
-from catalog.models import Category, FactorySettings, PriceTier, Product, ProductImage, Supplier, SupplierPost
+from catalog.models import (
+    Category,
+    FactorySettings,
+    PostImage,
+    PriceTier,
+    Product,
+    ProductImage,
+    Supplier,
+    SupplierPost,
+)
 from orders.models import OrderItem, Payout, SupplierOrder
 from orders.services import SupplierOrderError, supplier_action, unpaid_received
 
 router = Router(tags=["Кабинет поставщика"], auth=django_auth)
 
-MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_POST_IMAGES = 10
 LANGUAGES = {"ru", "zh-hans"}
 
 
 def can_act(user):
     return user.is_superuser or user.has_perm("catalog.change_supplier")
+
+
+def is_team(request):
+    """Команда ASTTA работает за поставщика: пишет по-русски и публикует без модерации."""
+    return can_act(request.user) and not request.user.is_supplier
 
 
 def current_supplier(request) -> Supplier:
@@ -155,26 +170,30 @@ def _pending_sum(supplier):
 # ---------- Товары ----------
 
 class ProductIn(Schema):
-    zh: str
+    zh: str = ""
     ru: str = ""
+    sku: str = ""
     cat: str
     price: Decimal
     sale: int = 0
     kg: Decimal
     bulky: bool = False
-    tiers: list[tuple[int, Decimal]]
+    tiers: list[tuple[int, Decimal]] = []
     desc: str = ""
+    src: str = ""
 
 
 def product_out(request, p, orders_count=0):
+    team = is_team(request)
     return {
-        # Пока модератор не перевёл, title_ru совпадает с китайским: в форме показываем пустое поле.
+        # Пока модератор не перевёл, title_ru совпадает с китайским: в форме поставщика показываем пустое поле.
         "id": p.pk, "slug": p.slug, "sku": p.sku, "zh": p.title_zh,
-        "ru": p.title_ru if p.title_ru != p.title_zh else "",
+        "ru": p.title_ru if team or p.title_ru != p.title_zh else "",
         "cat": p.category.slug, "price": p.price_cny, "sale": p.sale_percent, "kg": p.weight_kg, "bulky": p.bulky,
         "tiers": [[t.min_qty, t.price_cny] for t in sorted(p.tiers.all(), key=lambda t: t.min_qty)],
-        "status": p.status, "reason": p.moderation_note, "desc": p.description_zh, "img": image_url(request, p),
-        "orders": orders_count,
+        "status": p.status, "reason": p.moderation_note,
+        "desc": p.description_ru if team else p.description_zh, "src": p.source_url,
+        "img": image_url(request, p), "photos": len(p.images.all()), "orders": orders_count,
     }
 
 
@@ -192,39 +211,56 @@ def products(request):
 
 
 def _save_product(request, supplier, product, payload: ProductIn):
+    team = is_team(request)
     errors = {}
-    if not payload.zh.strip():
+    # Команда пишет по-русски, китайское название по желанию. Поставщик наоборот.
+    if team and not payload.ru.strip():
+        errors["ru"] = "required"
+    if not team and not payload.zh.strip():
         errors["zh"] = "required"
     if payload.price <= 0:
         errors["price"] = "positive"
     if payload.kg <= 0:
         errors["kg"] = "positive"
     tiers = sorted({q: c for q, c in payload.tiers if q > 0 and c > 0}.items())
-    if not tiers:
+    # Без оптовых ступеней товар продаётся только в розницу. Поставщик указывает опт обязательно.
+    if not tiers and not team:
         errors["tiers"] = "required"
     if not 0 <= payload.sale <= 90:
         errors["sale"] = "range"
     category = Category.objects.filter(slug=payload.cat).first()
     if category is None:
         errors["cat"] = "unknown"
+    sku = payload.sku.strip()[:64]
+    if sku and Product.objects.filter(supplier=supplier, sku=sku).exclude(pk=getattr(product, "pk", None)).exists():
+        errors["sku"] = "duplicate"
     if errors:
         raise HttpError(422, str(errors))
 
     with transaction.atomic():
         is_new = product is None
         if is_new:
-            product = Product(supplier=supplier, slug=unique_slug(supplier, "item"))
+            product = Product(supplier=supplier, slug=unique_slug(supplier, sku or "item"))
         product.category = category
         product.title_zh = payload.zh.strip()
-        # Без русского названия в карточке пока китайское, модератор переведёт перед публикацией.
-        product.title_ru = payload.ru.strip() or (product.title_ru if not is_new else "") or product.title_zh
-        product.description_zh = payload.desc.strip()
+        if team:
+            product.title_ru = payload.ru.strip()
+            product.description_ru = payload.desc.strip()
+            product.sku = sku
+            product.source_url = payload.src.strip()
+            product.status = Product.Status.PUBLISHED
+        else:
+            # Без русского названия в карточке пока китайское, модератор переведёт перед публикацией.
+            product.title_ru = payload.ru.strip() or (product.title_ru if not is_new else "") or product.title_zh
+            product.description_zh = payload.desc.strip()
+            if is_new:
+                product.sku = sku
+            # Любая правка поставщика снова проходит модерацию.
+            product.status = Product.Status.MODERATION
         product.price_cny = payload.price
         product.sale_percent = payload.sale
         product.weight_kg = payload.kg
         product.bulky = payload.bulky
-        # Любая правка поставщика снова проходит модерацию.
-        product.status = Product.Status.MODERATION
         product.moderation_note = ""
         product.full_clean(exclude=["slug"])
         product.save()
@@ -233,42 +269,47 @@ def _save_product(request, supplier, product, payload: ProductIn):
     return product_out(request, _my_products(supplier).get(pk=product.pk))
 
 
-@router.post("/products", summary="Добавить товар (уходит на модерацию)")
+@router.post("/products", summary="Добавить товар (от команды сразу на сайт, от поставщика на модерацию)")
 def create_product(request, payload: ProductIn):
     return _save_product(request, current_supplier(request), None, payload)
 
 
-@router.put("/products/{product_id}", summary="Изменить товар (снова на модерацию)")
+@router.put("/products/{product_id}", summary="Изменить товар")
 def update_product(request, product_id: int, payload: ProductIn):
     supplier = current_supplier(request)
     product = get_object_or_404(Product, pk=product_id, supplier=supplier)
     return _save_product(request, supplier, product, payload)
 
 
+def _photo(file: UploadedFile):
+    try:
+        return prepare_image(file.read(), file.name or "photo")
+    except ImageError as exc:
+        raise HttpError(400, f"{exc} / 不是图片文件或文件太大") from exc
+
+
 @router.post("/products/{product_id}/image", summary="Загрузить главное фото товара")
 def upload_image(request, product_id: int, file: UploadedFile = File(...)):
     supplier = current_supplier(request)
     product = get_object_or_404(Product, pk=product_id, supplier=supplier)
-    if file.size > MAX_IMAGE_BYTES:
-        raise HttpError(413, "Фото больше 8 МБ / 图片超过 8MB")
-    try:
-        Image.open(file).verify()
-    except (UnidentifiedImageError, OSError) as exc:
-        raise HttpError(400, "Это не изображение / 不是图片文件") from exc
-    file.seek(0)
+    content = _photo(file)
     with transaction.atomic():
         product.images.update(position=F("position") + 1)
-        ProductImage.objects.create(product=product, image=file, position=0)
-        product.status = Product.Status.MODERATION
-        product.save(update_fields=["status", "updated_at"])
+        ProductImage.objects.create(product=product, image=content, position=0)
+        if not is_team(request):
+            product.status = Product.Status.MODERATION
+            product.save(update_fields=["status", "updated_at"])
     return product_out(request, _my_products(supplier).get(pk=product.pk))
 
 
-@router.post("/import", summary="Загрузить каталог из Excel")
-def import_view(request, file: UploadedFile = File(...)):
+@router.post("/import", summary="Загрузить каталог: Excel и/или ZIP с фото по артикулам")
+def import_view(request, file: UploadedFile | None = File(None), photos: UploadedFile | None = File(None),
+                publish: Form[bool] = False):
     supplier = current_supplier(request)
-    result = import_catalog(file, supplier)
-    return {"ok": result.ok, "created": result.created, "updated": result.updated, "errors": result.errors}
+    # Сразу на сайт может выложить только команда, у поставщика товары идут на модерацию.
+    result = import_catalog(file, supplier, photos=photos, publish=publish and is_team(request))
+    return {"ok": result.ok, "created": result.created, "updated": result.updated, "photos": result.photos,
+            "errors": result.errors, "warnings": result.warnings}
 
 
 @router.get("/template", summary="Шаблон Excel")
@@ -397,8 +438,8 @@ class FactoryIn(Schema):
 
 
 class PostIn(Schema):
-    product: int
-    kind: str
+    product: int | None = None
+    kind: str = SupplierPost.Kind.NEW
     text: str
 
 
@@ -422,20 +463,57 @@ def save_factory(request, payload: FactoryIn):
     return factory_out(settings_)
 
 
-@router.get("/posts", summary="Мои посты в ленту")
+def post_out(request, post):
+    return {
+        "id": post.pk, "product": post.product_id, "kind": post.kind, "status": post.status,
+        "text": post.text_ru or post.text,
+        "images": [request.build_absolute_uri(img.image.url) for img in post.images.all()],
+        "date": timezone.localtime(post.created_at).strftime("%d.%m.%Y"),
+    }
+
+
+@router.get("/posts", summary="Посты поставщика в ленту")
 def posts(request):
     supplier = current_supplier(request)
-    return [{"id": p.pk, "product": p.product_id, "kind": p.kind, "text": p.text, "status": p.status}
-            for p in supplier.posts.all()[:50]]
+    return [post_out(request, p) for p in supplier.posts.prefetch_related("images")[:50]]
 
 
-@router.post("/posts", summary="Отправить пост в ленту (после модерации)")
-def create_post(request, payload: PostIn):
+@router.post("/posts", summary="Пост в ленту: текст и до 10 фото")
+def create_post(request, payload: Form[PostIn], images: list[UploadedFile] | None = File(None)):
     supplier = current_supplier(request)
-    product = get_object_or_404(Product, pk=payload.product, supplier=supplier, status=Product.Status.PUBLISHED)
+    product = None
+    if payload.product:
+        product = get_object_or_404(Product, pk=payload.product, supplier=supplier, status=Product.Status.PUBLISHED)
     if payload.kind not in SupplierPost.Kind.values:
         raise HttpError(400, "Неизвестный тип поста")
-    if not payload.text.strip():
-        raise HttpError(422, "Пустой текст / 内容不能为空")
-    post = SupplierPost.objects.create(supplier=supplier, product=product, kind=payload.kind, text=payload.text.strip())
-    return {"id": post.pk, "product": post.product_id, "kind": post.kind, "text": post.text, "status": post.status}
+    text = payload.text.strip()
+    images = images or []
+    if not text and not images:
+        raise HttpError(422, "Добавьте текст или фото / 内容不能为空")
+    if len(images) > MAX_POST_IMAGES:
+        raise HttpError(422, f"Не больше {MAX_POST_IMAGES} фото в посте")
+    contents = [_photo(f) for f in images]
+    team = is_team(request)
+    with transaction.atomic():
+        # Пост команды сразу в ленте и на русском. Пост поставщика ждёт перевода и модерации.
+        post = SupplierPost.objects.create(
+            supplier=supplier, product=product, kind=payload.kind, author=request.user,
+            text="" if team else text, text_ru=text if team else "",
+            status=SupplierPost.Status.PUBLISHED if team else SupplierPost.Status.MODERATION,
+        )
+        for position, content in enumerate(contents):
+            PostImage.objects.create(post=post, image=content, position=position)
+    return post_out(request, post)
+
+
+@router.delete("/posts/{post_id}", summary="Удалить пост")
+def delete_post(request, post_id: int):
+    supplier = current_supplier(request)
+    post = get_object_or_404(SupplierPost, pk=post_id, supplier=supplier)
+    if not is_team(request) and post.status == SupplierPost.Status.PUBLISHED:
+        raise HttpError(403, "Опубликованный пост удаляет модератор")
+    files = [(img.image.storage, img.image.name) for img in post.images.all()]
+    post.delete()
+    for storage, name in files:
+        storage.delete(name)
+    return {"ok": True}

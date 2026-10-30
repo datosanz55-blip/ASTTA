@@ -1,3 +1,4 @@
+# Тайм-аут 180 с: загрузка каталога с архивом на 300 фото обрабатывается около минуты.
 # Собирается из корня репозитория: кроме сервера в образ нужен кабинет поставщика (seller.html и его ресурсы).
 #   docker build -f backend/Dockerfile .
 FROM python:3.12-slim
@@ -19,4 +20,4 @@ RUN DJANGO_SECRET_KEY=build-only python manage.py collectstatic --noinput \
 USER app
 
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi", "--bind", "0.0.0.0:8000", "--workers", "3", "--access-logfile", "-", "--no-control-socket"]
+CMD ["gunicorn", "config.wsgi", "--bind", "0.0.0.0:8000", "--workers", "3", "--access-logfile", "-", "--no-control-socket", "--timeout", "180"]

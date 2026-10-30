@@ -3,9 +3,14 @@
 
 {% block content %}
 <div class="max-w-2xl flex flex-col gap-6">
-  <p>{% translate "Заполните шаблон: одна строка — один товар. Если в файле есть ошибка, не загрузится ничего, исправьте файл и загрузите снова. Новые и изменённые товары уходят на модерацию." %}</p>
+  <p>{% translate "Заполните шаблон: одна строка — один товар. Фото положите в ZIP: имя файла начинается с артикула (A-101.jpg, A-101_2.jpg) или фото лежат в папке с артикулом. Новые фото товара заменяют старые. Если в файле или архиве есть ошибка, не загрузится ничего: исправьте и загрузите снова." %}</p>
   <p><a class="underline font-medium" href="{% url 'admin:catalog_product_template' %}">{% translate "Скачать шаблон Excel" %}</a></p>
 
+  {% if result and result.warnings %}
+    <div class="border border-amber-300 bg-amber-50 text-amber-900 rounded-default p-4 dark:bg-amber-950 dark:text-amber-200">
+      <ul class="list-disc pl-5">{% for warning in result.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
   {% if result and result.errors %}
     <div class="border border-red-300 bg-red-50 text-red-800 rounded-default p-4 dark:bg-red-950 dark:text-red-200">
       <p class="font-semibold mb-2">{% translate "Файл не загружен. Исправьте ошибки:" %}</p>
@@ -22,9 +27,16 @@
         </select>
       </label>
     {% endif %}
-    <label class="flex flex-col gap-1">{% translate "Файл .xlsx" %}
-      <input type="file" name="file" accept=".xlsx" required>
+    <label class="flex flex-col gap-1">{% translate "Файл .xlsx (можно без него, если загружаете только фото)" %}
+      <input type="file" name="file" accept=".xlsx">
     </label>
+    <label class="flex flex-col gap-1">{% translate "Архив с фото .zip (необязательно)" %}
+      <input type="file" name="photos" accept=".zip">
+    </label>
+    {% if suppliers %}
+      <label class="flex items-center gap-2"><input type="checkbox" name="publish" value="1" checked>
+        {% translate "Сразу опубликовать на сайте" %}</label>
+    {% endif %}
     <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default w-fit">{% translate "Загрузить" %}</button>
   </form>
 </div>

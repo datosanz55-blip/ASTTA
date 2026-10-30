@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from django.db.models import Q
@@ -5,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from catalog.models import Category, Product
+from catalog.models import Category, Product, SupplierPost
 from pricing.services import PricingContext, PricingError, quote
 
 router = Router(tags=["Каталог"])
@@ -52,6 +53,24 @@ class ProductDetail(ProductCard):
 
 class ProductPage(Schema):
     items: list[ProductCard]
+    total: int
+    page: int
+    page_size: int
+
+
+class FeedPost(Schema):
+    id: int
+    kind: str
+    text: str
+    images: list[str]
+    supplier: str
+    supplier_code: str
+    product: ProductCard | None
+    created_at: datetime
+
+
+class FeedPage(Schema):
+    items: list[FeedPost]
     total: int
     page: int
     page_size: int
@@ -144,3 +163,33 @@ def product_detail(request, slug: str):
                                if supplier.fact_days_min and supplier.fact_days_max else None),
     })
     return data
+
+
+@router.get("/feed", response=FeedPage, summary="Лента поставщиков: посты с фото")
+def feed(request, supplier: str | None = None, page: int = 1, page_size: int = 20):
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), PAGE_SIZE_MAX)
+    qs = (SupplierPost.objects.filter(status=SupplierPost.Status.PUBLISHED, supplier__is_active=True)
+          .select_related("supplier", "product__category", "product__supplier")
+          .prefetch_related("images", "product__tiers", "product__images").order_by("-created_at", "-id"))
+    if supplier:
+        qs = qs.filter(supplier__code=supplier)
+    total = qs.count()
+    ctx = _pricing_context()
+    start = (page - 1) * page_size
+    items = []
+    for post in qs[start:start + page_size]:
+        product = post.product
+        # Снятый с продажи товар в посте не показываем, сам пост остаётся.
+        shown = product and product.status == Product.Status.PUBLISHED
+        items.append({
+            "id": post.pk,
+            "kind": post.kind,
+            "text": post.text_ru,
+            "images": [request.build_absolute_uri(img.image.url) for img in post.images.all()],
+            "supplier": post.supplier.name,
+            "supplier_code": post.supplier.code,
+            "product": _card(request, product, ctx) if shown else None,
+            "created_at": post.created_at,
+        })
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
