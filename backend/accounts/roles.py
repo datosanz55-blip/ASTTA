@@ -18,6 +18,7 @@ ROLE_PERMISSIONS = {
               "supplierpost", "postimage"),
         *_all("orders", "order", "orderitem", "orderevent", "supplierorder", "payout"),
         *_all("pricing", "exchangerate", "shippingmethod", "pricingconfig", "commissionrule"),
+        *_all("links", "marketplace", "linkrequest"),
         "accounts.view_user",
     ],
     "Поставщики": [
@@ -33,6 +34,7 @@ ROLE_PERMISSIONS = {
         "orders.view_supplierorder", "orders.change_supplierorder",
         "catalog.view_product", "catalog.change_product", "catalog.view_pricetier", "catalog.view_supplier",
         "pricing.view_exchangerate", "pricing.view_shippingmethod",
+        "links.view_linkrequest", "links.change_linkrequest", "links.view_marketplace",
     ],
 }
 

@@ -45,13 +45,22 @@ class PricingContext:
         self._by_supplier = {r.supplier_id: r for r in self.rules if r.supplier_id}
         self._by_category = {r.category_id: r for r in self.rules if r.category_id}
 
-    def fee_for(self, product: Product, mode: str) -> Decimal:
+    def fee_share(self, supplier_id: int | None, category_id: int | None, mode: str) -> Decimal:
         """Сбор поставщика важнее сбора категории, пустое поле в правиле значит «как обычно»."""
         attr = "retail_fee" if mode == "retail" else "wholesale_fee"
-        for rule in (self._by_supplier.get(product.supplier_id), self._by_category.get(product.category_id)):
+        for rule in (self._by_supplier.get(supplier_id), self._by_category.get(category_id)):
             if rule is not None and getattr(rule, attr) is not None:
                 return getattr(rule, attr)
         return getattr(self.config, attr)
+
+    def fee_for(self, product: Product, mode: str) -> Decimal:
+        return self.fee_share(product.supplier_id, product.category_id, mode)
+
+    def default_shipping(self, bulky: bool = False) -> ShippingMethod:
+        candidates = [m for m in self.methods if m.for_bulky_only == bulky and (bulky or m.is_default)]
+        if not candidates:
+            raise PricingError("Нет подходящего способа доставки")
+        return candidates[0]
 
     def shipping_for(self, product: Product, wanted: str | None = None) -> ShippingMethod:
         if product.bulky:

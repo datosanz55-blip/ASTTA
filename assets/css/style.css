@@ -1200,3 +1200,12 @@ html.is-trends main { padding: 0; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Заказ по ссылке: предварительный расчёт */
+.linkcalc { display: flex; flex-direction: column; gap: 14px; }
+.linkcalc .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.linkcalc__src { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.linkcalc__src .mono { min-width: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--muted); }
+.linkcalc__tag { padding: 6px 10px; border-radius: 999px; font: 600 12px/1 var(--font-display); letter-spacing: .05em; text-transform: uppercase; background: var(--lime); color: var(--on-lime); }
+.linkcalc__photo { width: 96px; height: 96px; border-radius: 12px; object-fit: cover; }
+@media (max-width: 520px) { .linkcalc .grid2 { grid-template-columns: minmax(0, 1fr); } }

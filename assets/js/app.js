@@ -1636,6 +1636,75 @@ ${aiCatalogJSON()}
     roomRender();
   }
 
+  /* ---------- Заказ по ссылке: площадка, предварительная цена, заявка агенту ---------- */
+  // На сервере то же самое делают /api/link/lookup, /api/link/estimate и /api/link/requests.
+  // Из сообщения «поделиться» (Taobao, Poizon и др.) берём первую ссылку.
+  const extractUrl = (text) => (text.match(/https?:\/\/[^\s<>"'，。、】」）)]+/i) || [text])[0];
+  // Вес не знаем: берём средний вес товаров этой категории в каталоге, как сервер.
+  function catWeight(cat) {
+    const items = PRODUCTS.filter((p) => p.cat === cat);
+    return items.length ? items.reduce((sum, p) => sum + p.kg, 0) / items.length : 1;
+  }
+  let linkCalc = null;
+  function openLinkCalc(text) {
+    const url = extractUrl(text);
+    const found = PLATFORMS.find(([re]) => re.test(url));
+    linkCalc = { text, url, platform: found ? found[1] : '' };
+    openSheet(`<div class="linkcalc">
+      <h2 class="sheet__title">Цена по ссылке</h2>
+      <p class="linkcalc__src"><span class="linkcalc__tag">${found ? esc(found[1]) : 'Ссылка'}</span><span class="mono">${esc(url)}</span></p>
+      <p class="note">В нашем каталоге этого товара пока нет. Впишите цену с площадки и посчитаем примерно, сколько он будет стоить с доставкой. Точную цену пришлёт агент.</p>
+      <form class="stack" id="linkCalcForm" novalidate>
+        <div class="grid2">
+          <label class="field"><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Например, 299"></label>
+          <label class="field"><span>Количество</span><input id="lcQty" type="number" min="1" max="10000" step="1" inputmode="numeric" value="1"></label>
+          <label class="field"><span>Что это</span><select id="lcCat">${CATS.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="field"><span>Размер, цвет (если есть)</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off"></label>
+        </div>
+        <label class="field"><span>Фото или скриншот товара (необязательно)</span><input id="lcPhoto" type="file" accept="image/*"></label>
+        <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
+        <div id="lcSum"></div>
+        <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username"></label>
+        <button class="btn btn--lime btn--wide" type="submit">Отправить агенту</button>
+      </form></div>`);
+    linkCalcOut();
+  }
+  function linkCalcOut() {
+    const box = $('#lcSum');
+    if (!box) return;
+    const price = Number($('#lcPrice').value);
+    const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
+    if (!(price > 0)) {
+      box.innerHTML = '<div class="sum"><div class="sum__note">Впишите цену в юанях, и здесь появится расчёт.</div></div>';
+      return;
+    }
+    const cat = $('#lcCat').value;
+    const kg = catWeight(cat);
+    const ship = SHIP[cat === 'furniture' ? 'cargo' : 'auto'];
+    const goods = price * qty * RATE;
+    const delivery = kg * ship.perKg * qty;
+    const fee = goods * FEE_RETAIL;
+    box.innerHTML = `<div class="sum">
+      <div class="sum__row"><span>Товар · ${cny(price * qty)}</span><span>${rub(goods + fee)}</span></div>
+      <div class="sum__row"><span>Доставка · ${ship.name.toLowerCase()}, около ${(kg * qty).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} кг</span><span>${rub(delivery)}</span></div>
+      <div class="sum__row sum__row--total"><span>Примерно</span><span>${rub(round10(goods + delivery + fee))}</span></div>
+      <div class="sum__note">Вес взяли средний для категории «${esc(CATS.find((c) => c.id === cat).name)}». ${linkCalc.platform === 'Poizon' ? 'У Poizon бывает своя надбавка за проверку подлинности: агент учтёт её в точной цене.' : 'Доставку по Китаю до склада агент добавит в точной цене.'}</div>
+    </div>`;
+  }
+  function sendLinkRequest() {
+    const input = $('#lcContact');
+    const field = input.closest('.field');
+    const bad = !input.value.trim();
+    field.classList.toggle('is-error', bad);
+    if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
+    const price = Number($('#lcPrice').value);
+    const extra = [$('#lcSize').value.trim(), price > 0 ? `цена ${cny(price)} × ${$('#lcQty').value || 1}` : ''].filter(Boolean).join(', ');
+    closeSheet();
+    openChat();
+    sendChat(`Посчитайте цену${linkCalc.platform ? ` с ${linkCalc.platform}` : ''}: ${linkCalc.url}${extra ? ` (${extra})` : ''}`,
+      'Приняла заявку. Проверю продавца и пришлю точную цену в рублях с доставкой в течение 15 минут.');
+  }
+
   /* ---------- Шторка, меню, уведомления ---------- */
   let lastFocus = null;
   function openSheet(html, opts = {}) {
@@ -2074,6 +2143,12 @@ ${aiCatalogJSON()}
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
+    if (t.id === 'lcPrice' || t.id === 'lcQty' || t.id === 'lcCat') linkCalcOut();
+    if (t.id === 'lcPhoto') {
+      const file = t.files[0];
+      const pv = $('#lcPreview');
+      if (file && file.type.startsWith('image/')) { pv.src = URL.createObjectURL(file); pv.hidden = false; } else pv.hidden = true;
+    }
     if (t.id === 'solveFile') {
       const file = t.files[0];
       $('#solveName').textContent = file ? file.name : 'Фото или видео проблемы';
@@ -2161,12 +2236,11 @@ ${aiCatalogJSON()}
       const input = $('#linkInput');
       const link = input.value.trim();
       if (!link) { toast('Вставьте ссылку на товар'); input.focus(); return; }
-      const found = PLATFORMS.find(([re]) => re.test(link));
       input.value = '';
-      openChat();
-      sendChat(`Посчитайте цену${found ? ` с ${found[1]}` : ''}: ${link}`, 'Приняла ссылку. Проверю продавца и пришлю цену в рублях с доставкой в течение 15 минут.');
+      openLinkCalc(link);
       return;
     }
+    if (f.id === 'linkCalcForm') { sendLinkRequest(); return; }
     if (f.id === 'checkoutForm') { submitCheckout(); return; }
     if (f.id === 'chatForm') { const i = $('#chatInput'); sendChat(i.value); i.value = ''; return; }
   }
