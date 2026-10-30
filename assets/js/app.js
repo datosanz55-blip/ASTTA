@@ -893,7 +893,7 @@
       </div>`;
     }
 
-    const optNote = !sup ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b></span><button class="linkbtn" type="button" data-switch-mode="supplier">Раздел для поставщиков</button></div>` : '';
+    const optNote = !sup ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b></span><button class="linkbtn" type="button" data-switch-mode="supplier">Перейти в «Опт»</button></div>` : '';
 
     const minQty = sup ? p.tiers[0][0] : 1;
     const qty = `<div class="qty" role="group" aria-label="Количество">
@@ -1705,6 +1705,33 @@ ${aiCatalogJSON()}
       'Приняла заявку. Проверю продавца и пришлю точную цену в рублях с доставкой в течение 15 минут.');
   }
 
+  // Товар по фото. На сервере /api/link/photo: узнали товар и цену — сразу расчёт, не узнали — заявка менеджеру.
+  // В превью распознавания нет, поэтому показываем путь «не узнали»: менеджер уточнит и пришлёт цену.
+  function openPhotoOrder() {
+    openSheet(`<div class="linkcalc">
+      <h2 class="sheet__title">Товар по фото</h2>
+      <p class="note">Пришлите фото или скриншот с Poizon, Taobao, 1688. Если узнаем товар и цену, сразу посчитаем. Если нет — уточним у менеджера и пришлём цену в чате.</p>
+      <form class="stack" id="photoOrderForm" novalidate>
+        <label class="field"><span>Фото или скриншот</span><input id="poPhoto" type="file" accept="image/*"></label>
+        <img class="linkcalc__photo" id="poPreview" alt="" hidden>
+        <label class="field"><span>Размер, цвет, количество (если важно)</span><input id="poNote" placeholder="42, чёрный, 1 шт." autocomplete="off"></label>
+        <label class="field"><span>Телефон или Telegram</span><input id="poContact" autocomplete="tel" placeholder="+7 … или @username"></label>
+        <button class="btn btn--lime btn--wide" type="submit">Отправить</button>
+      </form></div>`, { narrow: true });
+  }
+  function sendPhotoOrder() {
+    const photo = $('#poPhoto').files[0];
+    if (!photo) { toast('Добавьте фото товара'); return; }
+    const input = $('#poContact');
+    const bad = !input.value.trim();
+    input.closest('.field').classList.toggle('is-error', bad);
+    if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
+    const note = $('#poNote').value.trim();
+    closeSheet();
+    openChat();
+    sendChat(`Фото товара${note ? ` (${note})` : ''}`, 'Не узнали товар на фото — уточню у менеджера и пришлю цену в чате.');
+  }
+
   /* ---------- Шторка, меню, уведомления ---------- */
   let lastFocus = null;
   function openSheet(html, opts = {}) {
@@ -1766,7 +1793,18 @@ ${aiCatalogJSON()}
       pdState.qty = mode === 'supplier' ? Math.max(p.tiers[0][0], pdState.qty) : 1;
       rerenderProduct();
     }
-    if (!silent) toast(mode === 'supplier' ? 'Раздел для поставщиков: цены в юанях и опт' : 'Раздел для покупателей: цены в рублях под ключ');
+    placeModeThumbs();
+    if (!silent) toast(mode === 'supplier' ? 'Опт: цены за штуку в юанях, скидка от партии' : 'Покупателям: цены в рублях под ключ');
+  }
+  // Кнопки «Покупателям» и «Опт» разной ширины: зелёная подложка встаёт ровно под выбранную.
+  function placeModeThumbs() {
+    $$('[data-mode-switch]').forEach((sw) => {
+      const btn = $('[aria-checked="true"]', sw);
+      const thumb = $('.mode__thumb', sw);
+      if (!btn || !thumb || !btn.offsetWidth) return;
+      thumb.style.width = `${btn.offsetWidth}px`;
+      thumb.style.transform = `translateX(${btn.offsetLeft - 4}px)`;
+    });
   }
 
   /* ---------- Навигация ---------- */
@@ -1853,6 +1891,7 @@ ${aiCatalogJSON()}
 
     if (d.close !== undefined) { if (t.tagName !== 'A') e.preventDefault(); closeSheet(); if (t.tagName !== 'A') return; }
     if (d.closeMenu !== undefined) { closeMenu(); if (t.tagName !== 'A' && d.openChat === undefined) return; }
+    if (d.photoOrder !== undefined) { openPhotoOrder(); return; }
 
     if (d.filter) {
       state.cat = d.filter; state.q = ''; $('#q').value = '';
@@ -2144,6 +2183,11 @@ ${aiCatalogJSON()}
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
     if (t.id === 'lcPrice' || t.id === 'lcQty' || t.id === 'lcCat') linkCalcOut();
+    if (t.id === 'poPhoto') {
+      const file = t.files[0];
+      const pv = $('#poPreview');
+      if (file && file.type.startsWith('image/')) { pv.src = URL.createObjectURL(file); pv.hidden = false; } else pv.hidden = true;
+    }
     if (t.id === 'lcPhoto') {
       const file = t.files[0];
       const pv = $('#lcPreview');
@@ -2241,6 +2285,7 @@ ${aiCatalogJSON()}
       return;
     }
     if (f.id === 'linkCalcForm') { sendLinkRequest(); return; }
+    if (f.id === 'photoOrderForm') { sendPhotoOrder(); return; }
     if (f.id === 'checkoutForm') { submitCheckout(); return; }
     if (f.id === 'chatForm') { const i = $('#chatInput'); sendChat(i.value); i.value = ''; return; }
   }
@@ -2293,6 +2338,9 @@ ${aiCatalogJSON()}
     setMode(state.mode, true);
     route();
     initHero();
+    // Ширина кнопок меняется, когда загрузится шрифт и когда переключатель переезжает из шапки в строку ниже.
+    window.addEventListener('resize', placeModeThumbs);
+    if (document.fonts) document.fonts.ready.then(placeModeThumbs);
   }
 
   init();

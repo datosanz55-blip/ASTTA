@@ -155,6 +155,8 @@ button { cursor: pointer; }
   transition: transform .35s cubic-bezier(.3, .7, .2, 1);
 }
 html[data-mode="supplier"] .mode__thumb { transform: translateX(100%); }
+/* Ширину и сдвиг подложки точнее задаёт скрипт по выбранной кнопке; правило выше — запасное, без скрипта. */
+.mode__thumb { transition: transform .35s cubic-bezier(.3, .7, .2, 1), width .35s cubic-bezier(.3, .7, .2, 1); }
 
 .subbar__in {
   max-width: 1320px; margin: 0 auto;
@@ -355,6 +357,7 @@ main {
 .linkform input::placeholder { color: rgba(10, 15, 11, .55); }
 .linkform input:focus { box-shadow: inset 0 0 0 2px var(--on-lime); }
 .linkform .btn { min-height: 56px; }
+.linkform__photo { margin-top: 12px; padding: 0; border: 0; background: none; color: var(--on-lime); font: inherit; font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .banner__media { margin: 0; border-radius: var(--r-md); overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%; }
 .banner__media img { width: 100%; height: 100%; object-fit: cover; }
 

@@ -17,6 +17,7 @@ from assistant.models import AiLog, KnowledgeArticle
 from assistant.services import answer_question, find_articles, find_prices, main_price, translate_cards
 from catalog.importer import build_template, import_catalog
 from catalog.models import Product
+from links.models import LinkRequest
 from tests.conftest import make_product
 
 
@@ -89,7 +90,13 @@ def test_disabled_without_keys(settings, db):
     client = Client()
     ask = client.post("/api/ai/ask", {"question": "когда платить?"}, content_type="application/json")
     assert ask.status_code == 503
-    assert client.post("/api/link/photo", {"photo": jpeg()}).status_code == 503
+    # Без ИИ фото всё равно принимаем: просим контакт и передаём менеджеру.
+    no_contact = client.post("/api/link/photo", {"photo": jpeg()}).json()
+    assert (no_contact["handoff"], no_contact["need_contact"], no_contact["request_id"]) == (True, True, None)
+    sent = client.post("/api/link/photo", {"photo": jpeg(), "contact": "@buyer", "marketplace": "poizon"}).json()
+    assert sent["handoff"] and not sent["need_contact"] and "менеджер" in sent["message"]
+    ticket = LinkRequest.objects.get(pk=sent["request_id"])
+    assert (ticket.contact, ticket.marketplace.code, ticket.photo.name.endswith(".webp")) == ("@buyer", "poizon", True)
 
 
 def test_starter_articles_found_by_question(db):
@@ -158,6 +165,7 @@ def test_photo_reading_api(ai, supplier, shoes, pricing_setup):
     data = resp.json()
     # Цену берём с самой крупной строки, а не ту, что предложил YandexGPT.
     assert (Decimal(data["price_cny"]), data["category"]) == (Decimal("899"), "shoes")
+    assert data["understood"] and not data["handoff"] and data["request_id"] is None
     assert data["similar"][0]["slug"] == "sneaker"
     assert data["estimate"]["weight_kg"] == "1.20"
     ocr_request = calls[0][1]
@@ -223,3 +231,21 @@ def test_cabinet_translate_for_team_only(ai, supplier, shoes):
     own.force_login(seller)
     assert own.post("/api/seller/translate", {"items": [{"zh": "卫衣"}]},
                     content_type="application/json").status_code == 403
+
+
+def test_photo_not_understood_goes_to_manager(ai, supplier, shoes, pricing_setup):
+    _, replies = ai
+    # На фото нет ни цены, ни понятного товара: ИИ не угадывает, а передаёт менеджеру.
+    replies.extend([{"textAnnotation": {"fullText": "好看", "blocks": [{"lines": [{"text": "好看"}]}]}},
+                    gpt({"title_ru": "", "category": "", "price_cny": None, "keywords": []})])
+    data = Client().post("/api/link/photo", {"photo": jpeg(), "contact": "+7 900 000-00-00"}).json()
+    assert (data["understood"], data["handoff"]) == (False, True)
+    assert LinkRequest.objects.get(pk=data["request_id"]).text.startswith("Фото без ссылки")
+    assert AiLog.objects.get(kind="photo").handoff is True
+
+
+def test_photo_when_yandex_fails_goes_to_manager(ai, supplier, shoes, pricing_setup):
+    _, replies = ai
+    replies.append(yandex.AIError("Яндекс вернул 500"))
+    data = Client().post("/api/link/photo", {"photo": jpeg(), "contact": "@b"}).json()
+    assert data["handoff"] and data["request_id"]

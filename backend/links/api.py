@@ -5,6 +5,7 @@ from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
 from assistant import yandex
+from assistant.models import AiLog
 from assistant.services import read_photo
 from catalog.api import ProductCard, _card, _pricing_context
 from catalog.images import ImageError, prepare_image
@@ -68,6 +69,11 @@ class RequestIn(Schema):
 
 
 class PhotoOut(Schema):
+    understood: bool
+    handoff: bool
+    need_contact: bool
+    message: str
+    request_id: int | None
     price_cny: Decimal | None
     prices: list[Decimal]
     title_ru: str
@@ -167,30 +173,59 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
     })
 
 
+HANDOFF = "Не узнали товар на фото — уточним у менеджера и пришлём цену в чате."
+ASK_CONTACT = "Не узнали товар на фото. Оставьте телефон или Telegram: менеджер уточнит и пришлёт цену."
+
+
 @router.post("/photo", response=PhotoOut, throttle=[per_ip("link_photo", "10/m"), per_ip("link_photo_day", "100/d")],
-             summary="Скриншот с площадки: цена, что за товар, похожее в каталоге и предварительный расчёт")
-def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] = ""):
-    if not yandex.enabled():
-        raise HttpError(503, "Распознавание фото пока не подключено: впишите цену вручную")
+             summary="Фото товара: узнали — цена и похожее в каталоге, не узнали — передаём менеджеру")
+def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] = "", contact: Form[str] = "",
+               comment: Form[str] = ""):
     if photo.size and photo.size > 15 * 1024 * 1024:
         raise HttpError(413, "Фото больше 15 МБ")
+    data = photo.read()
     try:
-        reading = read_photo(photo.read())
-    except ValueError as exc:
+        prepared = prepare_image(data, photo.name or "photo")
+    except ImageError as exc:
         raise HttpError(400, str(exc)) from exc
-    except yandex.AIError as exc:
-        raise HttpError(502, "Не получилось распознать фото, впишите цену вручную") from exc
+    place = Marketplace.objects.filter(code=marketplace).first() if marketplace else None
+
+    reading = None
+    if yandex.enabled():
+        try:
+            reading = read_photo(data)
+        except (ValueError, yandex.AIError):
+            reading = None  # Яндекс не ответил: не мучаем покупателя, передаём фото менеджеру
+    # Узнали товар, только если есть и цена, и понятно, что это за вещь. Иначе вручную считает менеджер.
+    understood = bool(reading and reading.price_cny and (reading.title_ru or reading.category))
     result = None
-    if reading.price_cny:
-        place = Marketplace.objects.filter(code=marketplace).first() if marketplace else None
+    if understood:
         try:
             result = estimate(reading.price_cny, 1, place, reading.category)
         except PricingError:
             result = None
+
+    request_id, message = None, ""
+    if not understood and reading and reading.log_id:
+        AiLog.objects.filter(pk=reading.log_id).update(handoff=True)
+    if not understood:
+        if contact.strip():
+            item = LinkRequest.objects.create(
+                photo=prepared, marketplace=place, contact=contact.strip()[:64], comment=comment.strip()[:2000],
+                text="Фото без ссылки: ИИ не узнал товар" if yandex.enabled() else "Фото без ссылки",
+                price_cny=reading.price_cny if reading else None,
+                category=reading.category if reading else None,
+            )
+            request_id, message = item.pk, HANDOFF
+        else:
+            message = ASK_CONTACT
     ctx = _pricing_context()
     return {
-        "price_cny": reading.price_cny, "prices": reading.prices[:10], "title_ru": reading.title_ru,
-        "category": reading.category.slug if reading.category else "",
-        "similar": [_card(request, p, ctx) for p in reading.similar],
+        "understood": understood, "handoff": not understood, "need_contact": not understood and request_id is None,
+        "message": message, "request_id": request_id,
+        "price_cny": reading.price_cny if reading else None, "prices": reading.prices[:10] if reading else [],
+        "title_ru": reading.title_ru if reading else "",
+        "category": reading.category.slug if reading and reading.category else "",
+        "similar": [_card(request, p, ctx) for p in reading.similar] if reading else [],
         "estimate": _estimate_out(result) if result else None,
     }

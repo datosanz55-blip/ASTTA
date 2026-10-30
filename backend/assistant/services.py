@@ -161,6 +161,7 @@ class PhotoReading:
     category: Category | None = None
     keywords: list[str] = field(default_factory=list)
     similar: list[Product] = field(default_factory=list)
+    log_id: int | None = None
 
 
 def similar_products(keywords: list[str], category: Category | None, limit: int = 6) -> list[Product]:
@@ -220,6 +221,7 @@ def read_photo(data: bytes) -> PhotoReading:
     log.response = json.dumps({"price_cny": str(reading.price_cny) if reading.price_cny else None,
                                "title_ru": reading.title_ru}, ensure_ascii=False)
     log.save()
+    reading.log_id = log.pk
     return reading
 
 
