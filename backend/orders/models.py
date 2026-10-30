@@ -139,6 +139,8 @@ class OrderItem(models.Model):
     goods_rub = models.DecimalField(_("товар, ₽"), max_digits=12, decimal_places=2)
     delivery_rub = models.DecimalField(_("доставка, ₽"), max_digits=12, decimal_places=2)
     fee_rub = models.DecimalField(_("сбор ASTTA, ₽"), max_digits=12, decimal_places=2)
+    # Сбор у категорий и поставщиков бывает разный: запоминаем, по какой ставке посчитан этот заказ.
+    fee_share = models.DecimalField(_("ставка сбора"), max_digits=5, decimal_places=4, default=0)
     total_rub = models.DecimalField(_("итого, ₽"), max_digits=12, decimal_places=2)
 
     class Meta:

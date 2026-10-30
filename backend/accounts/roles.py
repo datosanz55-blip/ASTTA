@@ -15,9 +15,9 @@ ROLE_PERMISSIONS = {
     # право менять пользователей позволило бы выдать себе права суперпользователя.
     "Модераторы": [
         *_all("catalog", "category", "supplier", "product", "pricetier", "productimage", "factorysettings",
-              "supplierpost"),
+              "supplierpost", "postimage"),
         *_all("orders", "order", "orderitem", "orderevent", "supplierorder", "payout"),
-        *_all("pricing", "exchangerate", "shippingmethod", "pricingconfig"),
+        *_all("pricing", "exchangerate", "shippingmethod", "pricingconfig", "commissionrule"),
         "accounts.view_user",
     ],
     "Поставщики": [

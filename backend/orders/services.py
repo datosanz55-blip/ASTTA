@@ -108,7 +108,7 @@ def create_order(lines: list[CartLine], contact: str, mode: str = "retail", ship
                 shipping_code=q.shipping.code,
                 goods_rub=q.goods_rub.quantize(Decimal("0.01")),
                 delivery_rub=q.delivery_rub.quantize(Decimal("0.01")),
-                fee_rub=q.fee_rub.quantize(Decimal("0.01")), total_rub=q.total_rub,
+                fee_rub=q.fee_rub.quantize(Decimal("0.01")), fee_share=q.fee_share, total_rub=q.total_rub,
             )
             total += q.goods_rub + q.delivery_rub + q.fee_rub
         order.total_rub = round10(total).quantize(Decimal("0.01"))

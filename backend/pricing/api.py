@@ -29,6 +29,7 @@ class QuoteOut(Schema):
     goods_rub: Decimal
     delivery_rub: Decimal
     fee_rub: Decimal
+    fee_percent: Decimal
     total_rub: Decimal
     each_rub: Decimal
 
@@ -39,6 +40,7 @@ def quote_out(q) -> dict:
         "goods_rub": q.goods_rub.quantize(Decimal("0.01")),
         "delivery_rub": q.delivery_rub.quantize(Decimal("0.01")),
         "fee_rub": q.fee_rub.quantize(Decimal("0.01")),
+        "fee_percent": (q.fee_share * 100).quantize(Decimal("0.01")),
         "total_rub": q.total_rub, "each_rub": q.each_rub,
     }
 

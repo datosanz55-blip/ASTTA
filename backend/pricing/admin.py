@@ -1,7 +1,7 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
 
-from pricing.models import ExchangeRate, PricingConfig, ShippingMethod
+from pricing.models import CommissionRule, ExchangeRate, PricingConfig, ShippingMethod
 
 
 @admin.register(ExchangeRate)
@@ -26,3 +26,13 @@ class PricingConfigAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(CommissionRule)
+class CommissionRuleAdmin(ModelAdmin):
+    """Свой сбор для поставщика или категории. Поставщик важнее категории, пустое поле — общий сбор."""
+
+    list_display = ("__str__", "category", "supplier", "retail_fee", "wholesale_fee", "note")
+    list_filter = ("category",)
+    autocomplete_fields = ("category", "supplier")
+    search_fields = ("category__name_ru", "supplier__name", "note")

@@ -26,7 +26,7 @@ class OrderItemInline(TabularInline):
     extra = 0
     can_delete = False
     readonly_fields = ("product", "title", "size", "color", "qty", "unit_cny", "shipping_code", "goods_rub",
-                       "delivery_rub", "fee_rub", "total_rub")
+                       "delivery_rub", "fee_rub", "fee_share", "total_rub")
 
     def has_add_permission(self, request, obj=None):
         return False

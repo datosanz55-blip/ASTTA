@@ -76,3 +76,42 @@ class PricingConfig(models.Model):
     def load(cls):
         obj, _created = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class CommissionRule(models.Model):
+    """Свой сервисный сбор для категории или поставщика вместо общего из настроек цены.
+    Если есть правило поставщика, берём его, иначе правило категории, иначе общий сбор."""
+
+    category = models.OneToOneField("catalog.Category", verbose_name=_("категория"), null=True, blank=True,
+                                    on_delete=models.CASCADE, related_name="commission")
+    supplier = models.OneToOneField("catalog.Supplier", verbose_name=_("поставщик"), null=True, blank=True,
+                                    on_delete=models.CASCADE, related_name="commission")
+    retail_fee = models.DecimalField(_("сбор, розница"), max_digits=5, decimal_places=4, null=True, blank=True,
+                                     validators=[MinValueValidator(0), MaxValueValidator(1)],
+                                     help_text=_("0.07 = 7%. Пусто — общий сбор из настроек цены"))
+    wholesale_fee = models.DecimalField(_("сбор, опт"), max_digits=5, decimal_places=4, null=True, blank=True,
+                                        validators=[MinValueValidator(0), MaxValueValidator(1)],
+                                        help_text=_("0.02 = 2%. Пусто — общий сбор из настроек цены"))
+    note = models.CharField(_("почему такой сбор"), max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = _("комиссия")
+        verbose_name_plural = _("комиссии")
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(category__isnull=False, supplier__isnull=True)
+                           | models.Q(category__isnull=True, supplier__isnull=False)),
+                name="commission_for_category_or_supplier",
+            ),
+        ]
+
+    def __str__(self):
+        return str(self.supplier or self.category)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if bool(self.category_id) == bool(self.supplier_id):
+            raise ValidationError(_("Выберите либо категорию, либо поставщика"))
+        if self.retail_fee is None and self.wholesale_fee is None:
+            raise ValidationError(_("Укажите сбор хотя бы для розницы или для опта"))

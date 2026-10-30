@@ -2,14 +2,14 @@
 
 Розница: цена ¥ × курс + вес × тариф + сервисный сбор с товара.
 Опт:     ступень ¥ × кол-во × курс + вес × тариф + оптовый сбор с товара.
-Итог округляется до 10 ₽.
+Итог округляется до 10 ₽. Сбор свой у поставщика или категории (CommissionRule), иначе общий.
 """
 
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 
 from catalog.models import Product
-from pricing.models import ExchangeRate, PricingConfig, ShippingMethod
+from pricing.models import CommissionRule, ExchangeRate, PricingConfig, ShippingMethod
 
 
 class PricingError(Exception):
@@ -37,10 +37,21 @@ class PricingContext:
     rate: Decimal | None = None
     methods: list[ShippingMethod] = field(
         default_factory=lambda: list(ShippingMethod.objects.filter(is_active=True)))
+    rules: list[CommissionRule] = field(default_factory=lambda: list(CommissionRule.objects.all()))
 
     def __post_init__(self):
         if self.rate is None:
             self.rate = current_rate(config=self.config)
+        self._by_supplier = {r.supplier_id: r for r in self.rules if r.supplier_id}
+        self._by_category = {r.category_id: r for r in self.rules if r.category_id}
+
+    def fee_for(self, product: Product, mode: str) -> Decimal:
+        """Сбор поставщика важнее сбора категории, пустое поле в правиле значит «как обычно»."""
+        attr = "retail_fee" if mode == "retail" else "wholesale_fee"
+        for rule in (self._by_supplier.get(product.supplier_id), self._by_category.get(product.category_id)):
+            if rule is not None and getattr(rule, attr) is not None:
+                return getattr(rule, attr)
+        return getattr(self.config, attr)
 
     def shipping_for(self, product: Product, wanted: str | None = None) -> ShippingMethod:
         if product.bulky:
@@ -56,7 +67,7 @@ class PricingContext:
 def tiers_of(product: Product):
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     if not tiers:
-        raise PricingError("У товара нет оптовых ступеней")
+        raise PricingError("Этот товар продаётся только в розницу")
     return tiers
 
 
@@ -79,6 +90,7 @@ class Quote:
     goods_rub: Decimal
     delivery_rub: Decimal
     fee_rub: Decimal
+    fee_share: Decimal = Decimal("0")
 
     @property
     def total_rub(self) -> Decimal:
@@ -98,15 +110,14 @@ def quote(product: Product, qty: int = 1, mode: str = "retail", shipping: str | 
 
     if mode == "retail":
         unit = product.unit_price_cny
-        fee_share = ctx.config.retail_fee
     elif mode == "wholesale":
         min_qty = tiers_of(product)[0].min_qty
         if qty < min_qty:
             raise PricingError(f"Минимальная партия {min_qty} шт.")
         unit = tier_price(product, qty)
-        fee_share = ctx.config.wholesale_fee
     else:
         raise PricingError(f"Неизвестный режим {mode}")
+    fee_share = ctx.fee_for(product, mode)
 
     goods = unit * qty * ctx.rate
     return Quote(
@@ -118,4 +129,5 @@ def quote(product: Product, qty: int = 1, mode: str = "retail", shipping: str | 
         goods_rub=goods,
         delivery_rub=product.weight_kg * method.rub_per_kg * qty,
         fee_rub=goods * fee_share,
+        fee_share=fee_share,
     )

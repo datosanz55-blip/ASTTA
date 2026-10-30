@@ -28,6 +28,7 @@ def is_supplier(request):
 class CategoryAdmin(ModelAdmin):
     list_display = ("name_ru", "name_zh", "slug", "position")
     list_editable = ("position",)
+    search_fields = ("name_ru", "name_zh", "slug")
     prepopulated_fields = {"slug": ("name_ru",)}
 
 
