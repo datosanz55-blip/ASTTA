@@ -164,6 +164,13 @@ def _read_rows(file, result, translate=False):
             if key:
                 categories[key.lower()] = category
 
+    # Колонки сверяем по заголовкам: файл по старому шаблону молча разложил бы значения не по своим полям.
+    header = [str(v or "").strip() for v in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())]
+    titles = [title for _, title, _ in COLUMNS]
+    if header[:len(titles)] != titles:
+        result.errors.append("Колонки не совпадают с шаблоном: скачайте свежий шаблон и перенесите данные в него")
+        return []
+
     names = [name for name, _, _ in COLUMNS]
     example = dict(zip(names, EXAMPLE_ROW, strict=True))
     rows = []

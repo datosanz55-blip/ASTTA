@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ASTTA 卖家中心</title>
+<title>ASTTA · Кабинет команды</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Кабинет поставщика ASTTA на китайском и русском и панель модерации.">
+<meta name="description" content="Кабинет команды ASTTA: каталоги поставщиков, закупка, посты в ленту.">
 <meta name="theme-color" content="#070b09">
 <link rel="icon" href="assets/img/brand/logo-mark.png" type="image/png">
 <link rel="preload" href="assets/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -42,21 +42,10 @@
     <img src="assets/img/brand/logo-mark.png" alt="" width="34" height="33">
     <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="104" height="17">
   </a>
-  <span class="top__title" id="topTitle"></span>
-  <span class="top__demo" id="topDemo"></span>
-  <div class="top__right">
-    <div class="seg" role="radiogroup" aria-label="Роль" id="roleSwitch">
-      <button type="button" role="radio" data-role="supplier">供应商 · Поставщик</button>
-      <button type="button" role="radio" data-role="moderator">Модератор</button>
-    </div>
-    <div class="seg seg--sm" role="radiogroup" aria-label="Язык" id="langSwitch">
-      <button type="button" role="radio" data-lang="zh">中文</button>
-      <button type="button" role="radio" data-lang="ru">RU</button>
-    </div>
-  </div>
+  <span class="top__title">Кабинет команды</span>
+  <span class="top__demo" id="topDemo" hidden>Превью · демо-данные</span>
+  <div class="top__right" id="topRight"></div>
 </header>
-
-<div class="banner" id="banner" hidden></div>
 
 <div class="shell">
   <nav class="side" id="side" aria-label="Разделы"></nav>

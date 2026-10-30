@@ -226,11 +226,10 @@ def test_cabinet_translate_for_team_only(ai, supplier, shoes):
                      content_type="application/json", HTTP_X_ACT_AS="jj")
     assert resp.json() == {"items": [{"ru": "Худи оверсайз", "desc": "Плотный хлопок"}]}
     seller = User.objects.create_user("jj_supplier", password="pw-123456!", role="supplier", supplier=supplier)
-    seller.groups.add(Group.objects.get(name="Поставщики"))
     own = Client()
     own.force_login(seller)
     assert own.post("/api/seller/translate", {"items": [{"zh": "卫衣"}]},
-                    content_type="application/json").status_code == 403
+                    content_type="application/json").status_code == 401  # поставщиков в кабинет не пускаем
 
 
 def test_photo_not_understood_goes_to_manager(ai, supplier, shoes, pricing_setup):

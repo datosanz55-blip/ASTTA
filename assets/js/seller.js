@@ -1,356 +1,130 @@
-/* Кабинет поставщика (中文 / RU) и панель модерации ASTTA. Прототип: данные демонстрационные и хранятся
-   в этом браузере. На сервере то же самое делает админка Django (backend/), здесь показан целевой интерфейс. */
+/* Кабинет команды ASTTA. Поставщики из Китая сюда не заходят: они только источник товара.
+   Команда TT и основатели загружают каталоги, заказывают у поставщиков оплаченное, ведут посты в ленту.
+   Без сервера страница работает на демо-данных в браузере, на сервере (/seller/, body[data-api]) —
+   с настоящими через /api/seller. */
 (() => {
   'use strict';
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (name) => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-  const imgSrc = (id) => (/^(data:|https?:|\/)/.test(id || '') ? id : `assets/img/${id}.jpg`);
+  const imgSrc = (id) => (/^(data:|https?:|\/|blob:)/.test(id || '') ? id : `assets/img/${id}.jpg`);
   const nf = new Intl.NumberFormat('ru-RU');
-  const cny = (n) => `${nf.format(Math.round(n))} ¥`;
+  const cny = (n) => `${nf.format(Math.round(n * 100) / 100)} ¥`;
   const rub = (n) => `${nf.format(Math.round(n))} ₽`;
   const round10 = (n) => Math.round(n / 10) * 10;
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const num = (v) => Number(v);
 
-  /* ---------- Переводы кабинета поставщика ---------- */
-  const I18N = {
-    'top.title': ['卖家中心', 'Кабинет поставщика'],
-    'top.demo': ['预览版 · 演示数据', 'Превью · демо-данные'],
-    'nav.overview': ['概览', 'Обзор'],
-    'nav.products': ['商品管理', 'Товары'],
-    'nav.orders': ['订单', 'Заказы'],
-    'nav.payouts': ['结算', 'Выплаты'],
-    'nav.shop': ['店铺设置', 'Магазин'],
-    'nav.factory': ['内容工厂', 'Контент-завод'],
-    'fac.sub': ['根据您的商品自动生成动态，买家在 ASTTA“供应商动态”中看到。您只需要上传商品。', 'Сам делает посты для ленты поставщиков на ASTTA из ваших карточек. Вам остаётся только добавлять товары.'],
-    'fac.auto': ['自动发帖', 'Автопосты'],
-    'fac.newItems': ['新品上架', 'Новые товары'],
-    'fac.newItemsHint': ['商品审核通过后立即发帖', 'Сразу после модерации карточки'],
-    'fac.weekly': ['每周精选', 'Подборка недели'],
-    'fac.weeklyHint': ['每周一，选浏览量最高的商品', 'По понедельникам, из самых просматриваемых'],
-    'fac.restock': ['到货通知', 'Поступления'],
-    'fac.restockHint': ['商品重新有货时', 'Когда товар снова в наличии'],
-    'fac.video': ['视频（即将推出）', 'Видео (скоро)'],
-    'fac.videoHint': ['用商品图片自动生成短视频', 'Короткие ролики из фото товара'],
-    'fac.perDay': ['每天最多发布', 'Постов в день, не больше'],
-    'fac.next': ['下一条自动动态：今天 18:00', 'Следующий автопост: сегодня в 18:00'],
-    'fac.ruNote': ['买家看到的是俄语动态，我们会自动翻译。', 'Покупатели видят пост на русском, переводим сами.'],
-    'fac.post': ['发布动态', 'Пост в ленту'],
-    'fac.product': ['商品', 'Товар'],
-    'fac.kind': ['类型', 'Тип'],
-    'fac.kind.new': ['新品', 'Новинка'],
-    'fac.kind.restock': ['到货', 'Поступление'],
-    'fac.kind.opt': ['批发优惠', 'Оптовое предложение'],
-    'fac.text': ['内容（可以用中文写，发布前会翻译成俄语）', 'Текст (можно по-китайски, переведём перед публикацией)'],
-    'fac.send': ['提交', 'Отправить'],
-    'fac.sent': ['已提交，审核后发布', 'Отправлено, опубликуем после проверки'],
-    'fac.mine': ['我的动态', 'Мои посты'],
-    'fac.none': ['还没有手动发布的动态', 'Своих постов пока нет'],
-    'fac.saved': ['设置已保存', 'Настройки сохранены'],
-    'hello': ['您好，{name}', 'Здравствуйте, {name}'],
-    'hello.sub': ['这里是您在 ASTTA 的店铺：上传商品、处理订单、查看结算。', 'Здесь ваш магазин на ASTTA: товары, заказы и выплаты.'],
-    'kpi.new': ['今日新订单', 'Новых заказов сегодня'],
-    'kpi.todo': ['待处理订单', 'Заказы ждут действий'],
-    'kpi.review': ['审核中商品', 'Товары на модерации'],
-    'kpi.balance': ['待结算', 'К выплате'],
-    'todo.title': ['待办事项', 'Что сделать'],
-    'todo.confirm': ['{n} 个订单待确认库存', 'Подтвердите наличие: {n} зак.'],
-    'todo.ship': ['{n} 个订单待发往 TT 仓库', 'Отправьте на склад TT: {n} зак.'],
-    'todo.rejected': ['{n} 个商品被驳回，请修改', 'Отклонено товаров: {n}, исправьте'],
-    'todo.none': ['暂无待办，做得好！', 'Всё сделано'],
-    'chart.title': ['近 7 天订单', 'Заказы за 7 дней'],
-    'tips.title': ['如何更快通过审核', 'Как быстрее пройти модерацию'],
-    'tips.1': ['使用白底或纯色背景图片，不要带其他店铺的水印', 'Фото на белом или однотонном фоне, без водяных знаков других магазинов'],
-    'tips.2': ['填写包装后重量，运费按重量计算', 'Укажите вес в упаковке: по нему считается доставка'],
-    'tips.3': ['俄语名称可以不填，审核员会帮您翻译', 'Русское название можно не писать, модератор переведёт'],
-    'tips.4': ['禁止上传仿牌、电池、药品等禁售商品', 'Нельзя загружать копии брендов, батареи, лекарства'],
-    'products.add': ['添加商品', 'Добавить товар'],
-    'products.import': ['Excel 批量上传', 'Загрузить из Excel'],
-    'products.sub': ['新商品和修改过的商品需要审核，通常 24 小时内完成。', 'Новые и изменённые товары проходят модерацию, обычно до 24 часов.'],
-    'filter.all': ['全部', 'Все'],
-    'status.published': ['已上架', 'Опубликован'],
-    'status.moderation': ['审核中', 'На модерации'],
-    'status.rejected': ['已驳回', 'Отклонён'],
-    'col.product': ['商品', 'Товар'],
-    'col.price': ['零售价', 'Цена'],
-    'col.tiers': ['批发价', 'Опт'],
-    'col.weight': ['重量', 'Вес'],
-    'col.status': ['状态', 'Статус'],
-    'col.stats': ['浏览 · 订单', 'Просмотры · заказы'],
-    'act.edit': ['编辑', 'Изменить'],
-    'empty.products': ['暂无商品', 'Товаров нет'],
-    'form.add': ['添加商品', 'Новый товар'],
-    'form.edit': ['编辑商品', 'Изменить товар'],
-    'form.zh': ['商品名称（中文）', 'Название (кит.)'],
-    'form.ru': ['俄语名称（可不填）', 'Название (рус., можно не заполнять)'],
-    'form.cat': ['类目', 'Категория'],
-    'form.price': ['零售价（元）', 'Цена в рознице, ¥'],
-    'form.sale': ['折扣（%）', 'Скидка, %'],
-    'form.tiers': ['批发价（起批量 · 单价）', 'Опт (от шт. · цена за шт.)'],
-    'form.tierQty': ['起批量（件）', 'От, шт.'],
-    'form.tierPrice': ['单价（元）', 'Цена, ¥'],
-    'form.addTier': ['+ 添加价格档', '+ Ещё ступень'],
-    'form.weight': ['包装后重量（公斤）', 'Вес в упаковке, кг'],
-    'form.bulky': ['大件（家具等，只能走集运）', 'Крупногабарит (мебель, едет сборным грузом)'],
-    'form.photo': ['商品图片', 'Фото товара'],
-    'form.desc': ['商品描述（中文）', 'Описание (кит.)'],
-    'form.submit': ['提交审核', 'Отправить на модерацию'],
-    'form.cancel': ['取消', 'Отмена'],
-    'form.note': ['修改后商品需要重新审核。', 'После изменения товар снова проходит модерацию.'],
-    'form.buyer': ['买家看到的到手价（含运费和服务费）', 'Цена для покупателя под ключ (с доставкой и сбором)'],
-    'err.required': ['必填', 'Обязательно'],
-    'err.positive': ['必须大于 0', 'Должно быть больше 0'],
-    'err.tiers': ['至少填写一个批发价档', 'Нужна хотя бы одна оптовая ступень'],
-    'toast.submitted': ['已提交审核', 'Отправлено на модерацию'],
-    'import.title': ['Excel 批量上传', 'Загрузка из Excel'],
-    'import.s1': ['下载模板，每行填写一个商品。', 'Скачайте шаблон, одна строка — один товар.'],
-    'import.s2': ['上传文件。如有错误，整个文件不会上传，并显示出错的行。', 'Загрузите файл. Если есть ошибка, не загрузится ничего, и вы увидите строку с ошибкой.'],
-    'import.s3': ['新商品进入审核，通常 24 小时内完成。', 'Новые товары уходят на модерацию, обычно до 24 часов.'],
-    'import.cols': ['模板列', 'Колонки шаблона'],
-    'import.template': ['下载模板', 'Скачать шаблон'],
-    'import.file': ['点击选择 .xlsx 文件', 'Нажмите, чтобы выбрать файл .xlsx'],
-    'import.demo': ['预览版：文件不会真正上传，将添加 2 个示例商品。', 'Превью: файл не уходит на сервер, добавятся 2 товара-примера.'],
-    'import.done': ['已上传 {n} 个商品，已提交审核', 'Загружено товаров: {n}, отправлены на модерацию'],
-    'import.noDownload': ['预览版不能下载文件。正式版会下载双语 Excel 模板。', 'В превью скачивание отключено. В рабочей версии скачается двуязычный шаблон Excel.'],
-    'ost.confirm': ['待确认库存', 'Подтвердите наличие'],
-    'ost.ship': ['待发货', 'Отправьте на склад'],
-    'ost.shipped': ['已发货', 'Отправлено'],
-    'ost.received': ['仓库已签收', 'Принято складом'],
-    'ost.cancelled': ['已取消', 'Отменён'],
-    'order.retail': ['零售', 'Розница'],
-    'order.wholesale': ['批发', 'Опт'],
-    'order.deadline': ['请在 24 小时内确认', 'Подтвердите в течение 24 часов'],
-    'order.inStock': ['有货，确认', 'Есть в наличии'],
-    'order.outOfStock': ['缺货', 'Нет в наличии'],
-    'order.whTitle': ['请发货至 TT 广州集货仓', 'Отправьте на склад TT в Гуанчжоу'],
-    'order.whAddr': ['仓库地址和收件人请看 TT 经理微信。包裹上请写订单号。', 'Адрес склада и получателя даст менеджер TT в WeChat. Напишите номер заказа на коробке.'],
-    'order.tracking': ['快递单号', 'Трек-номер'],
-    'order.markShipped': ['确认已发货', 'Отправлено'],
-    'order.waitWh': ['等待仓库签收 · 快递单号 {t}', 'Ждём приёмку на складе · трек {t}'],
-    'order.received': ['仓库已签收，已计入本周结算', 'Склад принял, попадёт в выплату этой недели'],
-    'order.cancelled': ['已通知买家，订单已取消', 'Покупатель уведомлён, заказ отменён'],
-    'order.total': ['合计', 'Итого'],
-    'order.size': ['尺码', 'Размер'],
-    'order.empty': ['该状态下暂无订单', 'Заказов с таким статусом нет'],
-    'toast.confirmed': ['已确认，请尽快发货到仓库', 'Подтверждено, отправьте на склад'],
-    'toast.cancelled': ['已标记缺货，订单已取消', 'Отмечено «нет в наличии», заказ отменён'],
-    'toast.shipped': ['已标记为已发货', 'Отмечено как отправленное'],
-    'err.tracking': ['请填写快递单号', 'Укажите трек-номер'],
-    'pay.pending': ['待结算', 'К выплате'],
-    'pay.next': ['下次结算', 'Следующая выплата'],
-    'pay.nextDate': ['下周一', 'в понедельник'],
-    'pay.total': ['累计已结算', 'Выплачено всего'],
-    'pay.rule': ['我们按您的报价全额结算（人民币）。平台服务费和运费由买家支付。每周一结算上周仓库已签收的订单。', 'Выплачиваем вашу цену полностью, в юанях. Сбор площадки и доставку оплачивает покупатель. Каждый понедельник платим за заказы, принятые складом на прошлой неделе.'],
-    'pay.method': ['收款方式', 'Способ получения'],
-    'pay.methodValue': ['支付宝或银行卡（通过 TT 支付代理），在店铺设置中修改', 'Alipay или карта (через платёжного агента TT), меняется в настройках магазина'],
-    'pay.history': ['结算记录', 'История выплат'],
-    'col.date': ['日期', 'Дата'],
-    'col.period': ['周期', 'Период'],
-    'col.orders': ['订单数', 'Заказов'],
-    'col.amount': ['金额', 'Сумма'],
-    'pay.paid': ['已支付', 'Выплачено'],
-    'shop.name': ['店铺名称', 'Название магазина'],
-    'shop.city': ['城市', 'Город'],
-    'shop.about': ['店铺简介（买家可见）', 'О магазине (видят покупатели)'],
-    'shop.wechat': ['微信', 'WeChat'],
-    'shop.phone': ['联系电话', 'Телефон'],
-    'shop.payout': ['收款方式', 'Способ получения выплат'],
-    'shop.fact': ['实际时效（买家可见）', 'Фактический срок (видят покупатели)'],
-    'shop.factNote': ['根据最近 40 个订单自动计算', 'Считается по последним 40 заказам'],
-    'shop.lang': ['界面语言', 'Язык кабинета'],
-    'shop.save': ['保存', 'Сохранить'],
-    'toast.saved': ['已保存', 'Сохранено'],
-    'days': ['天', 'дн.'],
-    'pcs': ['件', 'шт.'],
-    'kg': ['公斤', 'кг'],
-    'from': ['{n} 件起', 'от {n} шт.'],
-    'login.title': ['登录卖家中心', 'Вход в кабинет поставщика'],
-    'login.user': ['用户名', 'Логин'],
-    'login.pass': ['密码', 'Пароль'],
-    'login.submit': ['登录', 'Войти'],
-    'login.hint': ['账号由 TT 经理提供。忘记密码请联系经理。', 'Логин и пароль выдаёт менеджер TT. Если забыли пароль, напишите ему.'],
-    'logout': ['退出', 'Выйти'],
-    'err.network': ['网络错误，请重试', 'Ошибка сети, попробуйте ещё раз'],
-    'err.save': ['保存失败：{e}', 'Не сохранилось: {e}'],
-    'import.errors': ['文件未上传，请修改以下错误：', 'Файл не загружен. Исправьте ошибки:'],
-    'import.uploading': ['正在上传…', 'Загружаю…'],
-    'import.upload': ['上传', 'Загрузить'],
-    'shop.payout': ['收款信息（支付宝、银行卡）', 'Реквизиты для выплат (Alipay, карта)'],
-    'shop.nameNote': ['俄语店铺名称由审核员修改', 'Русское название меняет модератор'],
-    'loading': ['加载中…', 'Загрузка…'],
-  };
-  const MOD_REASONS = {
-    watermark: ['图片带有其他店铺的水印', 'Фото с водяным знаком другого магазина'],
-    no_weight: ['未填写包装后重量', 'Не указан вес в упаковке'],
-    no_photo: ['没有商品图片', 'Нет фото товара'],
-    brand: ['疑似仿冒品牌，平台禁售', 'Похоже на копию бренда, такие товары запрещены'],
-    banned: ['禁售商品（电池、药品等）', 'Запрещённый товар (батареи, лекарства и т. п.)'],
-    blurry: ['图片不清晰，请重新上传', 'Фото нечёткие, загрузите заново'],
-  };
-
-  /* ---------- Демо-данные ---------- */
-  const CATS = {
-    clothes: ['服装', 'Одежда'], shoes: ['鞋类', 'Обувь'], furniture: ['家具', 'Мебель'], home: ['家居', 'Дом'],
-    tech: ['电子产品', 'Электроника'], acc: ['配饰', 'Аксессуары'], bags: ['箱包', 'Сумки'],
-  };
+  /* ---------- Демо-данные (на сервере приходят из API) ---------- */
+  const CATS = { clothes: 'Одежда', shoes: 'Обувь', furniture: 'Мебель', home: 'Дом', tech: 'Электроника', acc: 'Аксессуары', bags: 'Сумки' };
   const SEED_SUPPLIERS = [
-    { code: 'gz', ru: 'TT · Гуанчжоу', zh: 'TT · 广州', cityRu: 'Гуанчжоу', cityZh: '广州', about: '服装批发，白马市场', wechat: 'tt_gz_baima', phone: '+86 138 0000 0001', fact: [17, 22], active: true, base: 16150, week: [3, 5, 4, 6, 4, 7, 5] },
-    { code: 'jj', ru: 'TT · Цзиньцзян', zh: 'TT · 晋江', cityRu: 'Цзиньцзян', cityZh: '晋江', about: '福建鞋厂直供', wechat: 'tt_jinjiang', phone: '+86 138 0000 0002', fact: [16, 21], active: true, base: 9800, week: [2, 3, 2, 4, 3, 3, 4] },
-    { code: 'fs', ru: 'TT · Фошань', zh: 'TT · 佛山', cityRu: 'Фошань', cityZh: '佛山', about: '乐从家具市场', wechat: 'tt_foshan', phone: '+86 138 0000 0003', fact: [27, 33], active: true, base: 21400, week: [1, 0, 1, 2, 1, 1, 2] },
-    { code: 'sz', ru: 'TT · Шэньчжэнь', zh: 'TT · 深圳', cityRu: 'Шэньчжэнь', cityZh: '深圳', about: '华强北电子产品', wechat: 'tt_shenzhen', phone: '+86 138 0000 0004', fact: [15, 20], active: true, base: 7300, week: [2, 2, 3, 2, 4, 3, 2] },
-    { code: 'yw', ru: 'TT · Иу', zh: 'TT · 义乌', cityRu: 'Иу', cityZh: '义乌', about: '福田市场配饰和箱包', wechat: 'tt_yiwu', phone: '+86 138 0000 0005', fact: [18, 23], active: true, base: 5600, week: [3, 2, 4, 3, 3, 5, 4] },
+    { code: 'gz', name: 'TT · Гуанчжоу', city: 'Гуанчжоу', about: 'Одежда, рынок Baima', wechat: 'tt_gz_baima', phone: '+86 138 0000 0001', pay: 'Alipay через TT', is_active: true },
+    { code: 'jj', name: 'TT · Цзиньцзян', city: 'Цзиньцзян', about: 'Обувь с фабрик Фуцзяни', wechat: 'tt_jinjiang', phone: '+86 138 0000 0002', pay: 'Банковский перевод', is_active: true },
+    { code: 'fs', name: 'TT · Фошань', city: 'Фошань', about: 'Мебель, рынок Лэцун', wechat: 'tt_foshan', phone: '+86 138 0000 0003', pay: 'Alipay через TT', is_active: true },
+    { code: 'sz', name: 'TT · Шэньчжэнь', city: 'Шэньчжэнь', about: 'Электроника, Хуацянбэй', wechat: 'tt_shenzhen', phone: '+86 138 0000 0004', pay: 'Наличные через агента', is_active: true },
+    { code: 'yw', name: 'TT · Иу', city: 'Иу', about: 'Аксессуары и сумки, рынок Футянь', wechat: 'tt_yiwu', phone: '+86 138 0000 0005', pay: 'Alipay через TT', is_active: true },
   ];
-  // id, поставщик, категория, кит., рус., ¥, кг, опт, скидка, крупногабарит, просмотры, заказы
+  // id, поставщик, категория, название, название у поставщика, ¥, кг, опт, скидка, крупногабарит, размеры, цвета
   const RAW = [
-    ['runner', 'jj', 'shoes', '轻便跑步鞋 Cloud', 'Кроссовки беговые Cloud', 268, 1.1, [[6, 198], [30, 176]], 0, false, 9840, 41],
-    ['loafers', 'jj', 'shoes', '麂皮乐福鞋', 'Лоферы замшевые', 210, 1, [[5, 165], [20, 148]], 15, false, 3120, 12],
-    ['leather-jacket', 'gz', 'clothes', '真皮机车夹克', 'Косуха из натуральной кожи', 520, 1.6, [[3, 430], [10, 395]], 0, false, 6410, 18],
-    ['bomber', 'gz', 'clothes', '宽松飞行员夹克', 'Бомбер oversize', 189, 0.9, [[5, 142], [30, 128]], 20, false, 5230, 22],
-    ['tee-white', 'gz', 'clothes', '基础款纯棉T恤 240克', 'Футболка базовая, 240 г/м²', 39, 0.3, [[20, 26], [100, 22]], 0, false, 4870, 35],
-    ['sweatshirt', 'gz', 'clothes', '三线毛圈卫衣', 'Свитшот, футер трёхнитка', 79, 0.6, [[10, 58], [50, 51]], 0, false, 2960, 14],
-    ['tee-black', 'gz', 'clothes', '印花T恤', 'Футболка с принтом', 45, 0.3, [[20, 31], [100, 27]], 10, false, 3780, 19],
-    ['sofa', 'fs', 'furniture', '三人位丝绒沙发', 'Диван трёхместный, велюр', 2980, 48, [[2, 2690], [5, 2480]], 0, true, 2140, 4],
-    ['lounge-chair', 'fs', 'furniture', '旋转休闲椅', 'Кресло на поворотной опоре', 1150, 16, [[2, 990], [6, 920]], 0, true, 1580, 3],
-    ['stool', 'fs', 'furniture', '白蜡木吧台凳', 'Табурет барный, ясень', 160, 4.5, [[4, 128], [20, 112]], 12, false, 1230, 6],
-    ['lamp', 'fs', 'home', '可调灯头落地灯', 'Торшер с поворотным плафоном', 230, 5, [[4, 185], [20, 166]], 0, false, 1890, 7],
-    ['headphones', 'sz', 'tech', '头戴式蓝牙耳机 5.3', 'Наушники накладные, Bluetooth 5.3', 159, 0.5, [[10, 118], [50, 104]], 0, false, 5410, 26],
-    ['headphones-anc', 'sz', 'tech', '主动降噪耳机', 'Наушники с шумоподавлением', 299, 0.7, [[5, 236], [30, 214]], 0, false, 4120, 15],
-    ['watch', 'yw', 'acc', '石英手表 40毫米表盘', 'Часы кварцевые, корпус 40 мм', 129, 0.3, [[10, 92], [50, 81]], 18, false, 3350, 17],
-    ['sunglasses', 'yw', 'acc', '太阳镜 UV400', 'Очки солнцезащитные, UV400', 58, 0.15, [[20, 34], [100, 28]], 0, false, 2780, 21],
-    ['bag', 'yw', 'bags', '环保皮革公文包', 'Сумка-портфель, экокожа', 245, 0.9, [[5, 188], [20, 170]], 0, false, 2210, 9],
-    ['backpack', 'yw', 'bags', '城市双肩包 20升', 'Рюкзак городской, 20 л', 139, 0.8, [[10, 104], [40, 95]], 0, false, 2650, 13],
-    ['armchair', 'fs', 'furniture', '拉扣单人沙发椅', 'Кресло с каретной стяжкой', 690, 11, [[2, 590], [6, 545]], 0, true, 1440, 5],
+    ['runner', 'jj', 'shoes', 'Кроссовки беговые Cloud', '轻便跑步鞋 Cloud', 268, 1.1, [[6, 198], [30, 176]], 0, false, '39-45', 'белый, чёрный'],
+    ['loafers', 'jj', 'shoes', 'Лоферы замшевые', '麂皮乐福鞋', 210, 1, [[5, 165], [20, 148]], 15, false, '38-44', 'коричневый'],
+    ['leather-jacket', 'gz', 'clothes', 'Косуха из натуральной кожи', '真皮机车夹克', 520, 1.6, [[3, 430], [10, 395]], 0, false, 'S, M, L, XL', 'чёрный'],
+    ['bomber', 'gz', 'clothes', 'Бомбер oversize', '宽松飞行员夹克', 189, 0.9, [[5, 142], [30, 128]], 20, false, 'M, L, XL', 'хаки, чёрный'],
+    ['tee-white', 'gz', 'clothes', 'Футболка базовая, 240 г/м²', '基础款纯棉T恤 240克', 39, 0.3, [[20, 26], [100, 22]], 0, false, 'S, M, L, XL, XXL', 'белый, чёрный, серый'],
+    ['sweatshirt', 'gz', 'clothes', 'Свитшот, футер трёхнитка', '三线毛圈卫衣', 79, 0.6, [[10, 58], [50, 51]], 0, false, 'S, M, L, XL', 'серый, бежевый'],
+    ['tee-black', 'gz', 'clothes', 'Футболка с принтом', '印花T恤', 45, 0.3, [[20, 31], [100, 27]], 10, false, 'M, L, XL', 'чёрный'],
+    ['sofa', 'fs', 'furniture', 'Диван трёхместный, велюр', '三人位丝绒沙发', 2980, 48, [[2, 2690], [5, 2480]], 0, true, '', 'зелёный, серый'],
+    ['lounge-chair', 'fs', 'furniture', 'Кресло на поворотной опоре', '旋转休闲椅', 1150, 16, [[2, 990], [6, 920]], 0, true, '', ''],
+    ['stool', 'fs', 'furniture', 'Табурет барный, ясень', '白蜡木吧台凳', 160, 4.5, [[4, 128], [20, 112]], 12, false, '', ''],
+    ['lamp', 'fs', 'home', 'Торшер с поворотным плафоном', '可调灯头落地灯', 230, 5, [[4, 185], [20, 166]], 0, false, '', 'чёрный, белый'],
+    ['headphones', 'sz', 'tech', 'Наушники накладные, Bluetooth 5.3', '头戴式蓝牙耳机 5.3', 159, 0.5, [[10, 118], [50, 104]], 0, false, '', 'чёрный, белый'],
+    ['headphones-anc', 'sz', 'tech', 'Наушники с шумоподавлением', '主动降噪耳机', 299, 0.7, [[5, 236], [30, 214]], 0, false, '', 'чёрный'],
+    ['watch', 'yw', 'acc', 'Часы кварцевые, корпус 40 мм', '石英手表 40毫米表盘', 129, 0.3, [[10, 92], [50, 81]], 18, false, '', 'серебряный, золотой'],
+    ['sunglasses', 'yw', 'acc', 'Очки солнцезащитные, UV400', '太阳镜 UV400', 58, 0.15, [[20, 34], [100, 28]], 0, false, '', 'чёрный'],
+    ['bag', 'yw', 'bags', 'Сумка-портфель, экокожа', '环保皮革公文包', 245, 0.9, [[5, 188], [20, 170]], 0, false, '', 'чёрный, коричневый'],
+    ['backpack', 'yw', 'bags', 'Рюкзак городской, 20 л', '城市双肩包 20升', 139, 0.8, [[10, 104], [40, 95]], 0, false, '', 'чёрный, серый'],
+    ['armchair', 'fs', 'furniture', 'Кресло с каретной стяжкой', '拉扣单人沙发椅', 690, 11, [[2, 590], [6, 545]], 0, true, '', ''],
   ];
   const SEED_PRODUCTS = [
-    ...RAW.map(([id, sup, cat, zh, ru, price, kg, tiers, sale, bulky, views, orders]) => ({
-      id, sup, cat, zh, ru, price, kg, tiers, sale, bulky, views, orders, img: id, desc: '', status: 'published', reason: '',
+    ...RAW.map(([id, sup, cat, ru, zh, price, kg, tiers, sale, bulky, sizes, colors], i) => ({
+      id, sup, cat, ru, zh, sku: `${sup.toUpperCase()}-${String(101 + i)}`, src: '', price, kg, tiers, sale, bulky, sizes, colors,
+      img: id, photos: 1, desc: '', status: 'published', orders: (i * 7) % 23,
     })),
-    { id: 'hoodie-380', sup: 'gz', cat: 'clothes', zh: '加绒连帽卫衣 380克', ru: '', price: 96, kg: 0.8, tiers: [[10, 72], [50, 64]], sale: 0, bulky: false, views: 0, orders: 0, img: 'banner-hoodie', desc: '380克毛圈面料，宽松版型，男女同款', status: 'moderation', reason: '' },
-    { id: 'denim-jacket', sup: 'gz', cat: 'clothes', zh: '水洗牛仔夹克', ru: 'Джинсовая куртка, варёная', price: 135, kg: 0.9, tiers: [[5, 105], [30, 96]], sale: 0, bulky: false, views: 0, orders: 0, img: 'hero-denim', desc: '', status: 'rejected', reason: 'watermark' },
-    { id: 'eva-slides', sup: 'jj', cat: 'shoes', zh: 'EVA 拖鞋', ru: '', price: 25, kg: 0.4, tiers: [[20, 16], [100, 13]], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '轻便防滑，36–45码', status: 'moderation', reason: '' },
-    { id: 'logo-waist-bag', sup: 'yw', cat: 'bags', zh: '老花腰包 大牌同款', ru: '', price: 68, kg: 0.3, tiers: [[10, 45]], sale: 0, bulky: false, views: 0, orders: 0, img: 'bag', desc: '经典老花图案', status: 'moderation', reason: '' },
+    { id: 'hoodie-380', sup: 'gz', cat: 'clothes', ru: 'Худи с начёсом, 380 г/м²', zh: '加绒连帽卫衣 380克', sku: 'GZ-201', src: 'https://detail.1688.com/offer/000000000.html', price: 96, kg: 0.8, tiers: [[10, 72], [50, 64]], sale: 0, bulky: false, sizes: 'S, M, L, XL', colors: 'серый, чёрный', img: 'banner-hoodie', photos: 1, desc: 'Ждём от поставщика фото всех цветов', status: 'draft', orders: 0 },
   ];
-  // Перевод для кнопки «Перевести», когда модель недоступна (вне claude.ai).
-  const DEMO_TRANSLATIONS = {
-    '加绒连帽卫衣 380克': 'Худи с начёсом, 380 г/м²',
-    'EVA 拖鞋': 'Шлёпанцы из EVA',
-    '老花腰包 大牌同款': 'Поясная сумка с монограммой «как у бренда»',
-    '水洗牛仔夹克': 'Джинсовая куртка, варёная',
-    '迷你斜挎包': 'Мини-сумка через плечо',
-    '冰丝阔腿裤': 'Широкие брюки из вискозы',
-  };
-  const IMPORT_SAMPLES = [
-    { cat: 'bags', zh: '迷你斜挎包', price: 52, kg: 0.35, tiers: [[10, 38], [50, 33]], img: 'bag' },
-    { cat: 'clothes', zh: '冰丝阔腿裤', price: 69, kg: 0.4, tiers: [[10, 49], [50, 43]], img: '' },
-  ];
-  // Заказ-закупка: ASTTA через агента выкупает товар у поставщика.
+  // Оплаченные заказы покупателей, разложенные по поставщикам: их команда заказывает у поставщика.
   const SEED_ORDERS = [
-    { num: 'A-000131', sup: 'gz', date: '27.10 10:42', mode: 'retail', buyer: '@ivan_k', items: [['bomber', 'L', 1]], status: 'confirm' },
-    { num: 'A-000129', sup: 'gz', date: '27.10 09:15', mode: 'wholesale', buyer: '+7 916 ***-**-21', items: [['tee-white', '', 50], ['tee-black', '', 30]], status: 'confirm' },
-    { num: 'A-000124', sup: 'gz', date: '26.10 18:03', mode: 'retail', buyer: '@marina.shop', items: [['leather-jacket', 'M', 1]], status: 'ship' },
-    { num: 'A-000117', sup: 'gz', date: '25.10 12:30', mode: 'wholesale', buyer: '@opt_wb_store', items: [['sweatshirt', '', 20]], status: 'shipped', tracking: 'YT7425581123' },
-    { num: 'A-000108', sup: 'gz', date: '23.10 16:47', mode: 'retail', buyer: '@d.petrov', items: [['tee-black', 'XL', 2]], status: 'received' },
-    { num: 'A-000130', sup: 'jj', date: '27.10 10:05', mode: 'retail', buyer: '@alex_run', items: [['runner', '42', 1]], status: 'confirm' },
-    { num: 'A-000121', sup: 'jj', date: '26.10 11:20', mode: 'wholesale', buyer: '@shoes_kzn', items: [['loafers', '', 5]], status: 'ship' },
-    { num: 'A-000127', sup: 'yw', date: '27.10 08:51', mode: 'wholesale', buyer: '@optika_msk', items: [['sunglasses', '', 20]], status: 'confirm' },
-    { num: 'A-000120', sup: 'fs', date: '26.10 09:40', mode: 'retail', buyer: '+7 903 ***-**-08', items: [['sofa', '', 1]], status: 'shipped', tracking: 'SF1302948871' },
-    { num: 'A-000126', sup: 'sz', date: '26.10 21:12', mode: 'retail', buyer: '@sound_lab', items: [['headphones-anc', '', 1]], status: 'received' },
+    { id: 1, num: 'A-000131', sup: 'gz', date: '30.10 10:42', mode: 'retail', status: 'to_order', items: [['bomber', 'L', 'хаки', 1]] },
+    { id: 2, num: 'A-000129', sup: 'gz', date: '30.10 09:15', mode: 'wholesale', status: 'to_order', items: [['tee-white', 'M', 'белый', 30], ['tee-black', 'L', 'чёрный', 20]] },
+    { id: 3, num: 'A-000128', sup: 'gz', date: '30.10 08:02', mode: 'retail', status: 'to_order', items: [['tee-white', 'M', 'белый', 2]] },
+    { id: 4, num: 'A-000124', sup: 'gz', date: '29.10 18:03', mode: 'retail', status: 'ordered', items: [['leather-jacket', 'M', 'чёрный', 1]] },
+    { id: 5, num: 'A-000117', sup: 'gz', date: '28.10 12:30', mode: 'wholesale', status: 'shipped', tracking: 'YT7425581123', items: [['sweatshirt', 'L', 'серый', 20]] },
+    { id: 6, num: 'A-000108', sup: 'gz', date: '26.10 16:47', mode: 'retail', status: 'received', items: [['tee-black', 'XL', 'чёрный', 2]] },
+    { id: 7, num: 'A-000130', sup: 'jj', date: '30.10 10:05', mode: 'retail', status: 'to_order', items: [['runner', '42', 'белый', 1]] },
+    { id: 8, num: 'A-000121', sup: 'jj', date: '29.10 11:20', mode: 'wholesale', status: 'ordered', items: [['loafers', '41', 'коричневый', 5]] },
+    { id: 9, num: 'A-000127', sup: 'yw', date: '30.10 08:51', mode: 'wholesale', status: 'to_order', items: [['sunglasses', '', 'чёрный', 20]] },
+    { id: 10, num: 'A-000120', sup: 'fs', date: '29.10 09:40', mode: 'retail', status: 'shipped', tracking: 'SF1302948871', items: [['sofa', '', 'серый', 1]] },
+    { id: 11, num: 'A-000126', sup: 'sz', date: '29.10 21:12', mode: 'retail', status: 'received', items: [['headphones-anc', '', 'чёрный', 1]] },
   ];
-  const PAYOUTS = [['20.10', '13–19.10', 14, 15420], ['13.10', '06–12.10', 11, 12960], ['06.10', '29.09–05.10', 9, 9875]];
-  const BUYER_STATUS = [
-    ['new', 'Новый: агент проверяет наличие'], ['confirmed', 'Подтверждён: ждёт оплаты'], ['paid', 'Оплачен'],
-    ['purchased', 'Выкуплен у поставщика'], ['at_warehouse', 'На складе в Китае'], ['shipped', 'Отправлен в Россию'],
-    ['border', 'На границе'], ['in_russia', 'В России'], ['ready', 'В пункте выдачи'], ['delivered', 'Получен'], ['cancelled', 'Отменён'],
+  const SEED_POSTS = [
+    { id: 1, sup: 'gz', pid: 'leather-jacket', kind: 'new', text: 'Новая партия косух из натуральной кожи. Перед отправкой каждую проверяем на складе и фотографируем.', images: ['leather-jacket'], date: '29.10.2026', status: 'published' },
   ];
-  const SUPPLIER_TO_BUYER = { confirm: 'new', ship: 'paid', shipped: 'purchased', received: 'at_warehouse', cancelled: 'cancelled' };
-  const SEED_PRICING = {
-    rate: 11.4, rateDate: '27.10.2026', markup: 0, retailFee: 5, optFee: 3,
-    ship: [
-      { code: 'auto', name: 'Авто', perKg: 420, days: [18, 25], bulky: false },
-      { code: 'air', name: 'Авиа', perKg: 980, days: [8, 12], bulky: false },
-      { code: 'cargo', name: 'Сборный груз', perKg: 190, days: [25, 35], bulky: true },
-    ],
-  };
+  // Для подсказки «цена для покупателя»; на сервере курс берётся из /api/rate.
+  const PRICING = { rate: 11.4, fee: 0.05, ship: { regular: 420, bulky: 190 } };
 
   /* ---------- Состояние ---------- */
-  // Если страницу отдаёт сервер (/seller/), в body есть data-api: работаем с настоящими данными.
   const API = document.body.dataset.api || '';
   const LIVE = !!API;
-  const KEY = 'astta-seller-v1';
-  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const KEY = 'astta-team-v1';
   function fresh() {
     return {
-      role: 'supplier', lang: 'zh', acting: null, view: { supplier: 'overview', moderator: 'moderation' },
-      pfilter: 'all', ofilter: 'confirm', mfilter: { sup: '', status: '', q: '' },
-      products: clone(SEED_PRODUCTS), orders: clone(SEED_ORDERS), suppliers: clone(SEED_SUPPLIERS),
-      pricing: clone(SEED_PRICING), buyerStatus: {}, imported: 0, factory: {}, posts: [],
+      view: 'overview', sup: 'gz', pfilter: 'all', q: '', ofilter: 'to_order',
+      suppliers: clone(SEED_SUPPLIERS), products: clone(SEED_PRODUCTS), orders: clone(SEED_ORDERS), posts: clone(SEED_POSTS),
     };
   }
   let S;
   if (LIVE) {
-    S = { ...fresh(), products: [], orders: [], suppliers: [], posts: [], factory: {}, me: null, live: {} };
+    S = { ...fresh(), suppliers: [], products: [], orders: [], posts: [], me: null, ai: false, overview: null, purchase: null };
   } else {
     try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = fresh(); }
   }
-  // Каталоги поставщиков загружает команда ASTTA: на сервере она работает в кабинете за поставщика,
-  // пишет по-русски и публикует сразу, без модерации.
-  const team = () => LIVE && !!(S.me && S.me.can_act);
   function save() {
     if (LIVE) return;
     try {
-      // Фото, загруженные в превью, не сохраняем: они большие и только для показа.
-      const light = { ...S, products: S.products.map((p) => (p.img && p.img.startsWith('data:') ? { ...p, img: '' } : p)) };
+      // Фото, выбранные в превью, не сохраняем: они большие и только для показа.
+      const light = {
+        ...S,
+        products: S.products.map((p) => (/^(data:|blob:)/.test(p.img || '') ? { ...p, img: '' } : p)),
+        posts: S.posts.map((x) => ({ ...x, images: x.images.filter((src) => !/^(data:|blob:)/.test(src)) })),
+      };
       localStorage.setItem(KEY, JSON.stringify(light));
     } catch (e) { /* хранилище недоступно: работаем без сохранения */ }
   }
 
-  const DEFAULT_SUP = 'gz';
-  const isMod = () => S.role === 'moderator';
-  const supCode = () => (LIVE ? S.acting || (S.me && S.me.supplier && S.me.supplier.code) : S.acting || DEFAULT_SUP);
-  const supplier = (code = supCode()) => S.suppliers.find((s) => s.code === code);
-  const product = (id) => S.products.find((p) => p.id === id);
-  // Модератор, открывший кабинет поставщика, видит его по-русски.
-  const L = () => (S.role === 'supplier' && !S.acting ? S.lang : 'ru');
-  const li = () => (L() === 'zh' ? 0 : 1);
-  function t(key, vars = {}) {
-    const pair = I18N[key];
-    let s = pair ? pair[li()] : key;
-    for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, v);
-    return s;
-  }
-  const catName = (c) => (CATS[c] ? CATS[c][li()] : c);
-  const supName = (s) => (L() === 'zh' ? s.zh : s.ru);
-  const pName = (p) => (L() === 'zh' && p.zh ? p.zh : (p.ru || p.zh));
+  const supplier = () => S.suppliers.find((s) => s.code === S.sup) || S.suppliers[0];
+  const product = (id) => S.products.find((p) => String(p.id) === String(id));
+  const mine = (list) => list.filter((x) => x.sup === S.sup);
 
-  /* ---------- Цена (как на сервере: backend/pricing/services.py) ---------- */
-  const unitCny = (p) => (p.sale ? Math.round(p.price * (1 - p.sale / 100)) : p.price);
-  function tierFor(p, qty) {
-    let price = p.tiers[0] ? p.tiers[0][1] : p.price;
-    for (const [from, c] of p.tiers) if (qty >= from) price = c;
-    return price;
+  /* ---------- Цена для покупателя (как на сервере, только примерно) ---------- */
+  function buyerRub(p) {
+    const unit = p.sale ? Math.round(p.price * (1 - p.sale / 100)) : p.price;
+    const goods = unit * PRICING.rate;
+    return round10(goods + p.kg * (p.bulky ? PRICING.ship.bulky : PRICING.ship.regular) + goods * PRICING.fee);
   }
-  const lineCny = (p, qty, mode) => (mode === 'wholesale' ? tierFor(p, qty) : unitCny(p)) * qty;
-  function buyerRub(p, qty = 1, mode = 'retail') {
-    const pr = S.pricing;
-    const rate = pr.rate * (1 + pr.markup / 100);
-    const method = pr.ship.find((m) => (p.bulky ? m.bulky : m.code === 'auto')) || pr.ship[0];
-    const goods = lineCny(p, qty, mode) * rate;
-    const fee = goods * (mode === 'wholesale' ? pr.optFee : pr.retailFee) / 100;
-    return round10(goods + p.kg * method.perKg * qty + fee);
-  }
-  const orderCny = (o) => o.items.reduce((sum, [id, , qty, unit]) => sum + (unit ?? lineCny(product(id), qty, o.mode) / qty) * qty, 0);
-  const orderRub = (o) => o.items.reduce((sum, [id, , qty]) => sum + buyerRub(product(id), qty, o.mode), 0);
 
   /* ---------- Общие куски ---------- */
-  function thumb(p, size = '') {
-    return p.img ? `<img class="thumb ${size}" src="${esc(imgSrc(p.img))}" alt="" width="48" height="48" loading="lazy">`
-      : `<span class="thumb thumb--empty ${size}">${L() === 'zh' ? '无图' : 'нет фото'}</span>`;
-  }
-  const PST = { published: 'st--ok', moderation: 'st--wait', rejected: 'st--bad' };
-  const OST = { confirm: 'st--wait', ship: 'st--go', shipped: 'st--go', received: 'st--ok', cancelled: 'st--bad' };
-  const pStatus = (p) => `<span class="st ${PST[p.status] || ''}">${t(`status.${p.status}`)}</span>`;
-  const reasonText = (p) => (p.reason ? (MOD_REASONS[p.reason] ? MOD_REASONS[p.reason][li()] : p.reason) : '');
-  const tiersText = (p) => p.tiers.map(([q, c]) => `${q}+ · ${cny(c)}`).join('<br>');
+  const STATUS = { published: ['На сайте', 'st--ok'], draft: ['Черновик', 'st--wait'], moderation: ['Черновик', 'st--wait'], rejected: ['Снят', 'st--bad'] };
+  const pStatus = (p) => `<span class="st ${(STATUS[p.status] || STATUS.draft)[1]}">${(STATUS[p.status] || STATUS.draft)[0]}</span>`;
+  const OSTATUS = {
+    to_order: ['Заказать', 'st--wait'], ordered: ['Заказано', 'st--go'], shipped: ['Едет на склад', 'st--go'],
+    received: ['На складе', 'st--ok'], cancelled: ['Нет в наличии', 'st--bad'],
+  };
+  const KINDS = { new: 'Новинка', restock: 'Поступление', opt: 'Оптовое предложение' };
+  const thumb = (p) => (p && p.img
+    ? `<img class="thumb" src="${esc(imgSrc(p.img))}" alt="" width="48" height="48" loading="lazy">`
+    : '<span class="thumb thumb--empty">нет фото</span>');
+  const tiersText = (p) => p.tiers.map(([q, c]) => `${q}+ · ${cny(c)}`).join('<br>') || '<span class="muted">только розница</span>';
 
   let toastTimer;
   function toast(msg) {
@@ -358,184 +132,132 @@
     el.textContent = msg;
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
   }
 
   /* ---------- Каркас ---------- */
-  const SUP_NAV = [['overview', 'home'], ['products', 'box'], ['orders', 'truck'], ['factory', 'spark'], ['payouts', 'tag'], ['shop', 'user']];
-  const MOD_NAV = [['moderation', 'check', 'Модерация'], ['catalog', 'grid', 'Все товары'], ['suppliers', 'users', 'Поставщики'],
-    ['orders', 'truck', 'Заказы'], ['pricing', 'tag', 'Цены и доставка']];
-
+  const NAV = [['overview', 'home', 'Обзор'], ['products', 'box', 'Товары'], ['orders', 'truck', 'Заказы'], ['posts', 'spark', 'Посты'], ['suppliers', 'users', 'Поставщики']];
   function render() {
-    document.documentElement.lang = L() === 'zh' ? 'zh-Hans' : 'ru';
-    $('#topTitle').textContent = isMod() ? 'Модерация' : t('top.title');
-    $('#topDemo').textContent = isMod() ? 'Превью · демо-данные' : t('top.demo');
-    document.title = isMod() ? 'ASTTA · Модерация' : `ASTTA ${t('top.title')}`;
-    for (const b of document.querySelectorAll('[data-role]')) b.setAttribute('aria-checked', String(b.dataset.role === (S.acting ? 'moderator' : S.role)));
-    $('#langSwitch').hidden = S.role !== 'supplier' || !!S.acting;
-    for (const b of document.querySelectorAll('[data-lang]')) b.setAttribute('aria-checked', String(b.dataset.lang === S.lang));
-    if (LIVE) renderLiveTop();
-
-    const banner = $('#banner');
-    banner.hidden = !S.acting || (LIVE && !supplier());
-    if (!banner.hidden) {
-      banner.innerHTML = `<span>Вы в кабинете поставщика «${esc(supplier().ru)}» как модератор: видите и меняете всё, что видит он.</span>
-        ${LIVE ? '<a class="btn btn--sm" href="/admin/">Вернуться в админку</a>' : '<button class="btn btn--sm" type="button" data-act="stop-acting">Вернуться к модерации</button>'}`;
-    }
-    if (LIVE && (!S.me || S.loading || !supplier())) {
+    $('#topDemo').hidden = LIVE;
+    if (LIVE && !S.me) {
+      $('#topRight').innerHTML = '';
       $('#side').innerHTML = '';
-      $('#main').innerHTML = !S.me ? vLogin() : `<div class="empty">${S.loadError ? esc(S.loadError) : t('loading')}</div>`;
+      $('#main').innerHTML = vLogin();
       return;
     }
-
-    const view = S.view[S.role];
-    let nav;
-    if (S.role === 'supplier') {
-      const counts = supplierCounts();
-      nav = SUP_NAV.map(([id, ic]) => navBtn(id, ic, t(`nav.${id}`), id === 'orders' ? counts.todo : (id === 'products' ? counts.rejected : 0)));
-    } else {
-      const queue = S.products.filter((p) => p.status === 'moderation').length;
-      nav = MOD_NAV.map(([id, ic, name]) => navBtn(id, ic, name, id === 'moderation' ? queue : 0));
-    }
-    $('#side').innerHTML = nav.join('');
-    const views = S.role === 'supplier'
-      ? { overview: vOverview, products: vProducts, orders: vOrders, factory: vFactory, payouts: vPayouts, shop: vShop }
-      : { moderation: vModeration, catalog: vCatalog, suppliers: vSuppliers, orders: vModOrders, pricing: vPricing };
-    $('#main').innerHTML = (views[view] || Object.values(views)[0])();
+    const active = S.suppliers.filter((s) => s.is_active !== false);
+    $('#topRight').innerHTML = `<label class="suppick"><span>Поставщик</span>
+        <select class="select" id="supPick">${active.map((s) => `<option value="${esc(s.code)}" ${s.code === S.sup ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+      ${LIVE ? '<button class="btn btn--sm" type="button" data-act="logout">Выйти</button>' : ''}`;
+    const toOrder = LIVE ? (S.overview ? S.overview.to_order : 0) : mine(S.orders).filter((o) => o.status === 'to_order').length;
+    $('#side').innerHTML = NAV.map(([id, ic, name]) => `<button type="button" data-nav="${id}" ${S.view === id ? 'aria-current="page"' : ''}>${icon(ic)}<span>${name}</span>${id === 'orders' && toOrder ? `<span class="badge">${toOrder}</span>` : ''}</button>`).join('')
+      + (LIVE ? `<a class="side__link" href="/admin/">${icon('arrow-ur')}<span>Админка: цены, заявки, ИИ</span></a>` : '');
+    const views = { overview: vOverview, products: vProducts, orders: vOrders, posts: vPosts, suppliers: vSuppliers };
+    $('#main').innerHTML = (views[S.view] || vOverview)();
   }
-  const navBtn = (id, ic, name, badge) => `<button type="button" data-nav="${id}" ${S.view[S.role] === id ? 'aria-current="page"' : ''}>${icon(ic)}<span>${esc(name)}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
 
-  function supplierCounts(code = supCode()) {
-    const orders = S.orders.filter((o) => o.sup === code);
-    const products = S.products.filter((p) => p.sup === code);
+  /* ---------- Обзор ---------- */
+  function counts() {
+    if (LIVE && S.overview) return S.overview;
+    const orders = mine(S.orders);
+    const products = mine(S.products);
+    const by = (st) => orders.filter((o) => o.status === st).length;
     return {
-      confirm: orders.filter((o) => o.status === 'confirm').length,
-      ship: orders.filter((o) => o.status === 'ship').length,
-      todo: orders.filter((o) => o.status === 'confirm' || o.status === 'ship').length,
-      review: products.filter((p) => p.status === 'moderation').length,
-      rejected: products.filter((p) => p.status === 'rejected').length,
-      today: LIVE ? S.live.today : orders.filter((o) => o.date.startsWith('27.10')).length,
-      pending: LIVE ? S.live.pending : supplier(code).base + orders.filter((o) => o.status === 'received').reduce((s, o) => s + orderCny(o), 0),
+      to_order: by('to_order'), ordered: by('ordered'), shipped: by('shipped'), received_week: by('received'),
+      published: products.filter((p) => p.status === 'published').length,
+      drafts: products.filter((p) => p.status !== 'published').length,
+      posts: mine(S.posts).length,
     };
   }
-
-  /* ---------- Поставщик: обзор ---------- */
   function vOverview() {
     const s = supplier();
-    const c = supplierCounts();
+    const c = counts();
     const todo = [
-      c.confirm && `<button type="button" data-goto="orders" data-ofilter="confirm"><span class="dot dot--warn"></span>${t('todo.confirm', { n: c.confirm })}${icon('arrow-ur')}</button>`,
-      c.ship && `<button type="button" data-goto="orders" data-ofilter="ship"><span class="dot"></span>${t('todo.ship', { n: c.ship })}${icon('arrow-ur')}</button>`,
-      c.rejected && `<button type="button" data-goto="products" data-pfilter="rejected"><span class="dot dot--bad"></span>${t('todo.rejected', { n: c.rejected })}${icon('arrow-ur')}</button>`,
+      c.to_order && `<button type="button" data-goto="orders" data-ofilter="to_order"><span class="dot dot--warn"></span>Заказать у поставщика: ${c.to_order} ${plural(c.to_order, 'заказ', 'заказа', 'заказов')}${icon('arrow-ur')}</button>`,
+      c.ordered && `<button type="button" data-goto="orders" data-ofilter="ordered"><span class="dot"></span>Ждём трек-номер от поставщика: ${c.ordered}${icon('arrow-ur')}</button>`,
+      c.drafts && `<button type="button" data-goto="products" data-pfilter="draft"><span class="dot"></span>Черновики, не видны покупателям: ${c.drafts}${icon('arrow-ur')}</button>`,
     ].filter(Boolean);
-    const max = Math.max(...s.week, 1);
-    const days = LIVE ? S.live.weekLabels : (L() === 'zh' ? ['一', '二', '三', '四', '五', '六', '日'] : ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']);
     return `
-      <div class="pagehead"><div><h1>${t('hello', { name: esc(supName(s)) })}</h1><p>${t('hello.sub')}</p></div>
-        <div class="pagehead__actions"><button class="btn btn--lime" type="button" data-act="add-product">${icon('plus')}${t('products.add')}</button></div></div>
+      <div class="pagehead"><div><h1>${esc(s.name)}</h1><p>${esc([s.city, s.about, s.wechat && `WeChat ${s.wechat}`].filter(Boolean).join(' · '))}</p></div>
+        <div class="pagehead__actions"><button class="btn" type="button" data-act="edit-supplier" data-code="${esc(s.code)}">Карточка поставщика</button></div></div>
       <div class="kpis">
-        <button class="kpi" type="button" data-goto="orders" data-ofilter="confirm"><span>${t('kpi.new')}</span><b>${c.today}</b></button>
-        <button class="kpi kpi--hot" type="button" data-goto="orders" data-ofilter="confirm"><span>${t('kpi.todo')}</span><b>${c.todo}</b></button>
-        <button class="kpi" type="button" data-goto="products" data-pfilter="moderation"><span>${t('kpi.review')}</span><b>${c.review}</b></button>
-        <button class="kpi" type="button" data-goto="payouts"><span>${t('kpi.balance')}</span><b>${cny(c.pending)}</b></button>
+        <button class="kpi kpi--hot" type="button" data-goto="orders" data-ofilter="to_order"><span>Заказать у поставщика</span><b>${c.to_order}</b></button>
+        <button class="kpi" type="button" data-goto="orders" data-ofilter="shipped"><span>Едет на склад</span><b>${c.ordered + c.shipped}</b></button>
+        <button class="kpi" type="button" data-goto="products" data-pfilter="published"><span>Товаров на сайте</span><b>${c.published}</b></button>
+        <button class="kpi" type="button" data-goto="posts"><span>Постов в ленте</span><b>${c.posts}</b></button>
       </div>
       <div class="grid2">
-        <section class="panel"><h2>${t('todo.title')}</h2>
-          <div class="todo">${todo.join('') || `<p class="muted">${t('todo.none')}</p>`}</div>
-          <h2>${t('chart.title')}</h2>
-          <div class="bars">${s.week.map((n, i) => `<div><b>${n}</b><i style="height:${(n / max) * 100}%"></i><span>${days[i]}</span></div>`).join('')}</div>
+        <section class="panel"><h2>Что сделать</h2>
+          <div class="todo">${todo.join('') || '<p class="muted">Всё сделано: новых заказов у этого поставщика нет.</p>'}</div>
         </section>
-        <section class="panel"><h2>${t('tips.title')}</h2>
-          <ol class="tips"><li>${t('tips.1')}</li><li>${t('tips.2')}</li><li>${t('tips.3')}</li><li>${t('tips.4')}</li></ol>
+        <section class="panel"><h2>Быстро</h2>
+          <div class="todo todo--quick">
+            <button type="button" data-act="import">${icon('upload')}Загрузить каталог поставщика: Excel и фото</button>
+            <button type="button" data-act="add-product">${icon('plus')}Добавить товар вручную</button>
+            <button type="button" data-goto="posts">${icon('spark')}Сделать пост в ленту</button>
+          </div>
+          <p class="note">Каталоги присылают поставщики, а на сайт их выкладываете вы: поставщики в систему не заходят.</p>
         </section>
       </div>`;
   }
+  const plural = (n, one, few, many) => {
+    const m10 = n % 10;
+    const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  };
 
-  /* ---------- Поставщик: товары ---------- */
+  /* ---------- Товары ---------- */
   function vProducts() {
-    const mine = S.products.filter((p) => p.sup === supCode());
-    const count = (st) => mine.filter((p) => p.status === st).length;
-    const list = S.pfilter === 'all' ? mine : mine.filter((p) => p.status === S.pfilter);
-    const chips = [['all', mine.length], ['published', count('published')], ['moderation', count('moderation')], ['rejected', count('rejected')]]
-      .map(([id, n]) => `<button class="chip" type="button" data-pfilter="${id}" aria-pressed="${S.pfilter === id}">${id === 'all' ? t('filter.all') : t(`status.${id}`)}<em>${n}</em></button>`).join('');
-    const rows = list.map((p) => `<tr>
-        <td><div class="pcell">${thumb(p)}${team()
-          ? `<div><b>${esc(p.ru)}</b><span>${esc([p.sku, catName(p.cat)].filter(Boolean).join(' · '))}</span></div>`
-          : `<div><b>${esc(p.zh)}</b><span>${esc(p.ru || '—')} · ${esc(catName(p.cat))}</span></div>`}</div></td>
+    const list = mine(S.products);
+    const shown = list
+      .filter((p) => S.pfilter === 'all' || (S.pfilter === 'published' ? p.status === 'published' : p.status !== 'published'))
+      .filter((p) => !S.q || `${p.ru} ${p.sku} ${p.zh}`.toLowerCase().includes(S.q.toLowerCase()));
+    const chips = [['all', 'Все', list.length], ['published', 'На сайте', list.filter((p) => p.status === 'published').length], ['draft', 'Черновики', list.filter((p) => p.status !== 'published').length]]
+      .map(([id, name, n]) => `<button class="chip" type="button" data-pfilter="${id}" aria-pressed="${S.pfilter === id}">${name}<em>${n}</em></button>`).join('');
+    const rows = shown.map((p) => `<tr>
+        <td><div class="pcell">${thumb(p)}<div><b>${esc(p.ru)}</b><span>${esc([p.sku, CATS[p.cat]].filter(Boolean).join(' · '))}</span></div></div></td>
         <td class="num">${cny(p.price)}${p.sale ? `<br><span class="muted">−${p.sale}%</span>` : ''}</td>
         <td class="num">${tiersText(p)}</td>
-        <td class="num">${p.kg} ${t('kg')}</td>
-        <td>${pStatus(p)}${p.status === 'rejected' ? `<span class="reason">${esc(reasonText(p))}</span>` : ''}</td>
-        <td class="num">${nf.format(p.views)} · ${p.orders}</td>
-        <td><button class="btn btn--sm" type="button" data-act="edit-product" data-id="${p.id}">${t('act.edit')}</button></td>
+        <td class="num">${p.kg} кг</td>
+        <td>${pStatus(p)}</td>
+        <td class="num">${p.orders || 0}</td>
+        <td><button class="btn btn--sm" type="button" data-act="edit-product" data-id="${p.id}">Изменить</button></td>
       </tr>`).join('');
     return `
-      <div class="pagehead"><div><h1>${t('nav.products')}</h1><p>${team() ? 'Каталог поставщика на сайте. Что вы сохраняете здесь, сразу видят покупатели.' : t('products.sub')}</p></div>
+      <div class="pagehead"><div><h1>Товары</h1><p>Каталог поставщика на сайте. Что сохраняете здесь, сразу видят покупатели, черновики — нет.</p></div>
         <div class="pagehead__actions">
-          <button class="btn" type="button" data-act="import">${icon('upload')}${team() ? 'Загрузить каталог' : t('products.import')}</button>
-          <button class="btn btn--lime" type="button" data-act="add-product">${icon('plus')}${t('products.add')}</button>
+          <button class="btn" type="button" data-act="import">${icon('upload')}Загрузить каталог</button>
+          <button class="btn btn--lime" type="button" data-act="add-product">${icon('plus')}Добавить товар</button>
         </div></div>
-      <div class="filters">${chips}</div>
-      ${list.length ? `<div class="tablewrap"><table class="tbl"><thead><tr>
-        <th>${t('col.product')}</th><th class="num">${t('col.price')}</th><th class="num">${t('col.tiers')}</th><th class="num">${t('col.weight')}</th>
-        <th>${t('col.status')}</th><th class="num">${t('col.stats')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : `<div class="empty">${t('empty.products')}</div>`}`;
+      <div class="filters">${chips}<label class="search">${icon('search')}<span class="sr">Поиск</span><input id="pSearch" placeholder="Название или артикул" value="${esc(S.q)}" autocomplete="off"></label></div>
+      ${shown.length ? `<div class="tablewrap"><table class="tbl"><thead><tr>
+        <th>Товар</th><th class="num">Цена у поставщика</th><th class="num">Опт</th><th class="num">Вес</th><th>Статус</th><th class="num">Заказов</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : `<div class="empty">${list.length ? 'Ничего не нашлось' : 'Товаров пока нет: загрузите каталог поставщика или добавьте товар вручную.'}</div>`}`;
   }
 
-  /* ---------- Форма товара (поставщик и модератор) ---------- */
   let draft = null;
   let draftFile = null;
   function openProductForm(id) {
     const p = id ? product(id) : null;
     draftFile = null;
-    draft = p ? clone(p) : { id: '', sup: supCode(), cat: Object.keys(CATS)[0], zh: '', ru: '', sku: '', src: '', sizes: '', colors: '', price: '', kg: '', tiers: team() ? [] : [[10, '']], sale: 0, bulky: false, views: 0, orders: 0, img: '', desc: '', status: 'moderation', reason: '' };
-    openDrawer(p ? t('form.edit') : t('form.add'), productFormHTML());
+    draft = p ? clone(p) : { id: '', sup: S.sup, cat: Object.keys(CATS)[0], ru: '', zh: '', sku: '', src: '', sizes: '', colors: '', price: '', kg: '', tiers: [], sale: 0, bulky: false, img: '', photos: 0, desc: '', status: 'published', orders: 0 };
+    openDrawer(p ? 'Изменить товар' : 'Новый товар', productFormHTML());
   }
   function productFormHTML(errors = {}) {
     const d = draft;
     const err = (k) => (errors[k] ? `<span class="err">${errors[k]}</span>` : '');
-    const cls = (k) => (errors[k] ? 'field is-error' : 'field');
+    const cls = (k, extra = '') => `field ${extra} ${errors[k] ? 'is-error' : ''}`;
     const tiers = d.tiers.map(([q, c], i) => `<div class="tier">
-        <input type="number" min="1" step="1" inputmode="numeric" aria-label="${t('form.tierQty')}" placeholder="${t('form.tierQty')}" value="${esc(q)}" data-tier="${i}" data-k="0">
-        <input type="number" min="0.01" step="0.01" inputmode="decimal" aria-label="${t('form.tierPrice')}" placeholder="${t('form.tierPrice')}" value="${esc(c)}" data-tier="${i}" data-k="1">
-        <button class="iconbtn" type="button" data-act="del-tier" data-i="${i}" aria-label="×" ${d.tiers.length < 2 && !team() ? 'disabled' : ''}>${icon('close')}</button></div>`).join('');
-    if (team()) return teamFormHTML(d, errors, err, cls, tiers);
-    const mod = isMod() && !S.acting;
-    const modFields = mod ? `
-      <label class="field"><span>Поставщик</span><select id="fSup">${S.suppliers.map((s) => `<option value="${s.code}" ${s.code === d.sup ? 'selected' : ''}>${esc(s.ru)}</option>`).join('')}</select></label>
-      <label class="field"><span>Статус</span><select id="fStatus">${['published', 'moderation', 'rejected'].map((st) => `<option value="${st}" ${st === d.status ? 'selected' : ''}>${t(`status.${st}`)}</option>`).join('')}</select></label>
-      <label class="field field--full"><span>Причина отклонения (видит поставщик)</span><select id="fReason"><option value="">—</option>${Object.entries(MOD_REASONS).map(([k, v]) => `<option value="${k}" ${d.reason === k ? 'selected' : ''}>${v[1]}</option>`).join('')}</select></label>` : '';
+        <input type="number" min="1" step="1" inputmode="numeric" aria-label="От, шт." placeholder="От, шт." value="${esc(q)}" data-tier="${i}" data-k="0">
+        <input type="number" min="0.01" step="0.01" inputmode="decimal" aria-label="Цена, ¥" placeholder="Цена, ¥" value="${esc(c)}" data-tier="${i}" data-k="1">
+        <button class="iconbtn" type="button" data-act="del-tier" data-i="${i}" aria-label="Убрать ступень">${icon('close')}</button></div>`).join('');
     const priceOk = Number(d.price) > 0 && Number(d.kg) > 0;
     return `<form class="form" id="productForm" novalidate>
-      <label class="${cls('zh')} field--full"><span>${t('form.zh')}</span><input id="fZh" value="${esc(d.zh)}" required>${err('zh')}</label>
-      <label class="${cls('ru')} field--full"><span>${mod ? 'Название (рус.), обязательно для публикации' : t('form.ru')}</span>
-        <input id="fRu" value="${esc(d.ru)}">${err('ru')}</label>
-      ${mod ? `<div class="field--full"><button class="linkbtn" type="button" data-act="translate-form">Перевести с китайского</button></div>` : ''}
-      <label class="field"><span>${t('form.cat')}</span><select id="fCat">${Object.keys(CATS).map((c) => `<option value="${c}" ${c === d.cat ? 'selected' : ''}>${catName(c)}</option>`).join('')}</select></label>
-      <label class="${cls('price')}"><span>${t('form.price')}</span><input id="fPrice" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.price)}">${err('price')}</label>
-      <label class="field"><span>${t('form.sale')}</span><input id="fSale" type="number" min="0" max="90" step="1" inputmode="numeric" value="${esc(d.sale)}"></label>
-      <label class="${cls('kg')}"><span>${t('form.weight')}</span><input id="fKg" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.kg)}">${err('kg')}</label>
-      <div class="${cls('tiers')} field--full"><span>${t('form.tiers')}</span><div class="tiers">${tiers}</div>
-        <button class="linkbtn" type="button" data-act="add-tier" style="align-self:flex-start">${t('form.addTier')}</button>${err('tiers')}</div>
-      <label class="check field--full"><input id="fBulky" type="checkbox" ${d.bulky ? 'checked' : ''}>${t('form.bulky')}</label>
-      <label class="field field--full"><span>${t('form.photo')}</span><input id="fPhoto" type="file" accept="image/*"></label>
-      ${d.img ? `<div class="preview field--full"><img src="${esc(imgSrc(d.img))}" alt=""><span class="muted">${esc(d.zh)}</span></div>` : ''}
-      <label class="field field--full"><span>${t('form.desc')}</span><textarea id="fDesc">${esc(d.desc)}</textarea></label>
-      ${modFields}
-      ${priceOk && d.tiers[0] && Number(d.tiers[0][1]) > 0 ? `<div class="price-hint field--full">${t('form.buyer')}: <b>${rub(buyerRub(normalize(d)))}</b></div>` : ''}
-      ${!mod ? `<p class="note field--full">${t('form.note')}</p>` : ''}
-      <div class="form__actions">
-        <button class="btn" type="button" data-act="close-drawer">${t('form.cancel')}</button>
-        <button class="btn btn--lime" type="submit">${mod ? 'Сохранить' : t('form.submit')}</button>
-      </div></form>`;
-  }
-  function teamFormHTML(d, errors, err, cls, tiers) {
-    const priceOk = Number(d.price) > 0 && Number(d.kg) > 0;
-    const more = d.photos > 1 ? `<p class="note field--full">У товара фото: ${d.photos}. Остальные фото загружайте архивом в «Загрузке каталога».</p>` : '';
-    return `<form class="form" id="productForm" novalidate>
-      <label class="${cls('ru')} field--full"><span>Название для покупателей</span><input id="fRu" value="${esc(d.ru)}" required>${err('ru')}</label>
+      <label class="${cls('ru', 'field--full')}"><span>Название для покупателей</span><input id="fRu" value="${esc(d.ru)}" required>${err('ru')}</label>
       <label class="${cls('sku')}"><span>Артикул поставщика</span><input id="fSku" value="${esc(d.sku)}" maxlength="64">${err('sku')}</label>
-      <label class="field"><span>Категория</span><select id="fCat">${Object.keys(CATS).map((c) => `<option value="${c}" ${c === d.cat ? 'selected' : ''}>${esc(CATS[c][1])}</option>`).join('')}</select></label>
+      <label class="field"><span>Категория</span><select id="fCat">${Object.entries(CATS).map(([c, name]) => `<option value="${c}" ${c === d.cat ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
       <label class="${cls('price')}"><span>Цена у поставщика, ¥</span><input id="fPrice" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.price)}">${err('price')}</label>
       <label class="field"><span>Скидка, %</span><input id="fSale" type="number" min="0" max="90" step="1" inputmode="numeric" value="${esc(d.sale)}"></label>
       <label class="${cls('kg')}"><span>Вес в упаковке, кг</span><input id="fKg" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(d.kg)}">${err('kg')}</label>
@@ -543,326 +265,263 @@
         <button class="linkbtn" type="button" data-act="add-tier" style="align-self:flex-start">+ Оптовая ступень</button></div>
       <label class="field"><span>Размеры через запятую (S, M, L или 36-45)</span><input id="fSizes" value="${esc(d.sizes)}" maxlength="300"></label>
       <label class="field"><span>Цвета через запятую</span><input id="fColors" value="${esc(d.colors)}" maxlength="300"></label>
-      <p class="note field--full">Покупатель выберет размер и цвет только из этих списков, поставщик получит заказ без ошибок. Пусто — без выбора.</p>
+      <p class="note field--full">Покупатель выберет размер и цвет только из этих списков, и поставщик получит заказ без ошибок. Пусто — без выбора.</p>
       <label class="check field--full"><input id="fBulky" type="checkbox" ${d.bulky ? 'checked' : ''}>Крупногабарит (мебель, едет сборным грузом)</label>
       <label class="field field--full"><span>Главное фото</span><input id="fPhoto" type="file" accept="image/*"></label>
-      ${d.img ? `<div class="preview field--full"><img src="${esc(imgSrc(d.img))}" alt=""><span class="muted">${esc(d.ru)}</span></div>` : ''}
-      ${more}
+      ${d.img ? `<div class="preview field--full"><img src="${esc(imgSrc(d.img))}" alt=""><span class="muted">${d.photos > 1 ? `Фото у товара: ${d.photos}. Остальные загружайте архивом в «Загрузке каталога».` : esc(d.ru)}</span></div>` : ''}
       <label class="field field--full"><span>Описание</span><textarea id="fDesc">${esc(d.desc)}</textarea></label>
-      <label class="${cls('src')} field--full"><span>Ссылка у поставщика (1688, Taobao, Poizon)</span><input id="fSrc" type="url" inputmode="url" value="${esc(d.src)}" placeholder="https://">${err('src')}</label>
-      <label class="field field--full"><span>Название на китайском (для заказа у поставщика, можно пусто)</span><input id="fZh" value="${esc(d.zh)}"></label>
-      ${S.me && S.me.ai ? '<div class="field--full"><button class="linkbtn" type="button" data-act="team-translate">Перевести название и описание с китайского (YandexGPT)</button></div>' : ''}
-      ${priceOk ? `<div class="price-hint field--full">Цена для покупателя под ключ: <b>${rub(buyerRub(normalize(d)))}</b></div>` : ''}
-      <p class="note field--full">После сохранения товар сразу появится на сайте.</p>
+      <label class="${cls('src', 'field--full')}"><span>Ссылка у поставщика (1688, Taobao, Poizon)</span><input id="fSrc" type="url" inputmode="url" value="${esc(d.src)}" placeholder="https://">${err('src')}</label>
+      <label class="field field--full"><span>Название у поставщика (как в его каталоге, для заказа в WeChat)</span><input id="fZh" value="${esc(d.zh)}"></label>
+      ${LIVE && S.ai ? '<div class="field--full"><button class="linkbtn" type="button" data-act="translate">Перевести название и описание поставщика на русский (YandexGPT)</button></div>' : ''}
+      <label class="check field--full"><input id="fPublish" type="checkbox" ${d.status === 'published' ? 'checked' : ''}>Показывать на сайте</label>
+      ${priceOk ? `<div class="price-hint field--full">Цена для покупателя под ключ, примерно: <b>${rub(buyerRub(normalize(d)))}</b></div>` : ''}
       <div class="form__actions">
         <button class="btn" type="button" data-act="close-drawer">Отмена</button>
-        <button class="btn btn--lime" type="submit">Сохранить и опубликовать</button>
+        <button class="btn btn--lime" type="submit">Сохранить</button>
       </div></form>`;
   }
   function normalize(d) {
     return { ...d, price: Number(d.price), kg: Number(d.kg), sale: Number(d.sale) || 0, tiers: d.tiers.map(([q, c]) => [Number(q), Number(c)]).filter(([q, c]) => q > 0 && c > 0).sort((a, b) => a[0] - b[0]) };
   }
   function readForm() {
-    draft.zh = $('#fZh').value.trim();
     draft.ru = $('#fRu').value.trim();
+    draft.sku = $('#fSku').value.trim();
     draft.cat = $('#fCat').value;
     draft.price = $('#fPrice').value;
     draft.sale = $('#fSale').value;
     draft.kg = $('#fKg').value;
+    draft.sizes = $('#fSizes').value.trim();
+    draft.colors = $('#fColors').value.trim();
     draft.bulky = $('#fBulky').checked;
     draft.desc = $('#fDesc').value.trim();
-    if ($('#fSku')) {
-      draft.sku = $('#fSku').value.trim();
-      draft.src = $('#fSrc').value.trim();
-      draft.sizes = $('#fSizes').value.trim();
-      draft.colors = $('#fColors').value.trim();
-    }
-    if ($('#fSup')) {
-      draft.sup = $('#fSup').value;
-      draft.status = $('#fStatus').value;
-      draft.reason = $('#fReason').value;
-    }
+    draft.src = $('#fSrc').value.trim();
+    draft.zh = $('#fZh').value.trim();
+    draft.status = $('#fPublish').checked ? 'published' : 'draft';
   }
-  function submitProduct() {
+  let saving = false;
+  async function submitProduct() {
     readForm();
-    const mod = isMod() && !S.acting;
     const n = normalize(draft);
     const errors = {};
-    if (team()) {
-      if (!n.ru) errors.ru = 'Обязательно';
-      if (n.src && !/^https?:\/\/\S+$/i.test(n.src)) errors.src = 'Нужна ссылка вида https://…';
-    } else {
-      if (!n.zh) errors.zh = t('err.required');
-      if (!n.tiers.length) errors.tiers = t('err.tiers');
-    }
-    if (!(n.price > 0)) errors.price = t('err.positive');
-    if (!(n.kg > 0)) errors.kg = t('err.positive');
-    if (mod && n.status === 'published' && !n.ru) errors.ru = 'Для публикации нужно русское название';
-    if (Object.keys(errors).length) {
-      $('#drawerBody').innerHTML = productFormHTML(errors);
+    if (!n.ru) errors.ru = 'Обязательно';
+    if (!(n.price > 0)) errors.price = 'Больше 0';
+    if (!(n.kg > 0)) errors.kg = 'Больше 0';
+    if (n.src && !/^https?:\/\/\S+$/i.test(n.src)) errors.src = 'Нужна ссылка вида https://…';
+    if (n.sku && S.products.some((p) => p.sup === S.sup && p.sku === n.sku && String(p.id) !== String(n.id))) errors.sku = 'Такой артикул уже есть у этого поставщика';
+    if (Object.keys(errors).length) { $('#drawerBody').innerHTML = productFormHTML(errors); return; }
+    if (!LIVE) {
+      if (!n.id) { n.id = `p${Date.now().toString(36)}`; S.products.unshift(n); } else { S.products[S.products.findIndex((p) => String(p.id) === String(n.id))] = n; }
+      save(); closeDrawer(); render();
+      toast(n.status === 'published' ? 'Сохранено, товар на сайте' : 'Сохранено черновиком');
       return;
     }
-    if (LIVE) { liveSaveProduct(n); return; }
-    if (!mod) {
-      n.status = 'moderation';
-      n.reason = '';
-    }
-    if (!n.id) {
-      n.id = `p${Date.now().toString(36)}`;
-      S.products.unshift(n);
-    } else {
-      S.products[S.products.findIndex((p) => p.id === n.id)] = n;
-    }
-    save();
-    closeDrawer();
-    toast(mod ? 'Сохранено' : t('toast.submitted'));
-    render();
-  }
-
-  // Двойной клик по «Сохранить» не должен создавать два одинаковых товара.
-  let saving = false;
-  async function liveSaveProduct(n) {
-    if (saving) return;
+    if (saving) return; // двойной клик по «Сохранить» не должен создавать два товара
     saving = true;
     try {
-      const body = { zh: n.zh, ru: n.ru, sku: n.sku || '', src: n.src || '', sizes: n.sizes || '', colors: n.colors || '', cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc };
+      const body = { ru: n.ru, zh: n.zh, sku: n.sku, src: n.src, sizes: n.sizes, colors: n.colors, cat: n.cat, price: n.price, sale: n.sale, kg: n.kg, bulky: n.bulky, tiers: n.tiers, desc: n.desc, publish: n.status === 'published' };
       let saved;
       try {
         saved = await api(n.id ? `/products/${n.id}` : '/products', { method: n.id ? 'PUT' : 'POST', body });
       } catch (e) {
-        // Повтор артикула показываем у поля, остальные ошибки сервера — всплывающим сообщением.
         if (/'sku': 'duplicate'/.test(e.message)) { $('#drawerBody').innerHTML = productFormHTML({ sku: 'Такой артикул уже есть у этого поставщика' }); return; }
-        toast(t('err.save', { e: e.message }));
+        toast(`Не сохранилось: ${e.message}`);
         return;
       }
       // Если фото не загрузится, шторка остаётся открытой, а повторное сохранение обновит этот же товар.
       draft.id = String(saved.id);
-      upsert(S.products, mapProduct(supCode())(saved));
+      upsert(S.products, mapProduct(saved));
       if (draftFile) {
         const form = new FormData();
         form.append('file', draftFile);
         const withImage = await liveTry(() => api(`/products/${saved.id}/image`, { method: 'POST', form }));
         if (!withImage) return;
-        upsert(S.products, mapProduct(supCode())(withImage));
+        upsert(S.products, mapProduct(withImage));
       }
-      closeDrawer();
-      toast(team() ? 'Сохранено, товар на сайте' : t('toast.submitted'));
-      render();
+      closeDrawer(); render();
+      toast(saved.status === 'published' ? 'Сохранено, товар на сайте' : 'Сохранено черновиком');
     } finally {
       saving = false;
     }
   }
 
-  /* ---------- Загрузка из Excel ---------- */
+  /* ---------- Загрузка каталога ---------- */
   function openImport() {
-    const tm = team();
-    const cols = tm
-      ? ['Артикул', 'Название', 'Категория', 'Цена у поставщика, ¥', 'Вес, кг', 'Опт (можно пусто)', 'Размеры', 'Цвета', 'Крупногабарит', 'Описание', 'Ссылка у поставщика', 'Название на китайском']
-      : L() === 'zh'
-        ? ['货号', '商品名称（中文）', '俄语名称', '类目', '零售价（元）', '包装后重量（公斤）', '批发价 起批量:单价', '大件', '描述']
-        : ['Артикул', 'Название (кит.)', 'Название (рус.)', 'Категория', 'Цена, ¥', 'Вес, кг', 'Опт от шт.:цена', 'Крупногабарит', 'Описание'];
-    const steps = tm
-      ? ['Скачайте шаблон и перенесите туда каталог поставщика: одна строка — один товар.',
-        'Фото сложите в ZIP: имя файла начинается с артикула (A-101.jpg, A-101_2.jpg) или фото лежат в папке с артикулом. Новые фото заменяют старые. Если товары уже есть, можно загрузить только архив.',
-        'Если в файле или архиве ошибка, не загрузится ничего, и вы увидите, что исправить.']
-      : [t('import.s1'), t('import.s2'), t('import.s3')];
-    openDrawer(tm ? 'Загрузка каталога' : t('import.title'), `
-      <ol class="steps">${steps.map((s) => `<li>${s}</li>`).join('')}</ol>
-      <div><p class="note">${t('import.cols')}</p><div class="cols">${cols.map((c) => `<span>${esc(c)}</span>`).join('')}</div></div>
-      <button class="btn" type="button" data-act="template" style="align-self:flex-start">${icon('upload')}${t('import.template')}</button>
+    const cols = ['Артикул', 'Название', 'Категория', 'Цена у поставщика, ¥', 'Вес, кг', 'Опт (можно пусто)', 'Размеры', 'Цвета', 'Крупногабарит', 'Описание', 'Ссылка у поставщика', 'Название у поставщика'];
+    openDrawer(`Каталог: ${supplier().name}`, `
+      <ol class="steps">
+        <li>Скачайте шаблон и перенесите туда каталог поставщика: одна строка — один товар.</li>
+        <li>Фото сложите в ZIP: имя файла начинается с артикула (A-101.jpg, A-101_2.jpg) или фото лежат в папке с артикулом. Новые фото заменяют старые. Если товары уже есть, можно загрузить только архив.</li>
+        <li>Если в файле или архиве ошибка, не загрузится ничего, и вы увидите, что исправить.</li>
+      </ol>
+      <div><p class="note">Колонки шаблона</p><div class="cols">${cols.map((c) => `<span>${esc(c)}</span>`).join('')}</div></div>
+      <button class="btn" type="button" data-act="template" style="align-self:flex-start">${icon('upload')}Скачать шаблон</button>
       <form class="form" id="importForm" novalidate style="grid-template-columns:minmax(0,1fr)">
-        <label class="drop">${icon('upload')}<b>${t('import.file')}</b><input type="file" id="importFile" accept=".xlsx"></label>
-        ${tm ? `<label class="drop">${icon('upload')}<b>Архив с фото .zip (необязательно)</b><input type="file" id="importPhotos" accept=".zip,application/zip"></label>
-        <label class="check"><input id="importPublish" type="checkbox" checked>Сразу опубликовать на сайте</label>
-        ${S.me && S.me.ai ? '<label class="check"><input id="importTranslate" type="checkbox">Перевести с китайского, где нет русского названия (YandexGPT)</label>' : ''}` : ''}
-        <div class="form__actions"><button class="btn btn--lime" type="submit">${icon('upload')}${t('import.upload')}</button></div>
+        <label class="drop">${icon('upload')}<b>Файл Excel .xlsx</b><input type="file" id="importFile" accept=".xlsx"></label>
+        <label class="drop">${icon('camera')}<b>Архив с фото .zip (необязательно)</b><input type="file" id="importPhotos" accept=".zip,application/zip"></label>
+        <label class="check"><input id="importPublish" type="checkbox" checked>Сразу показывать на сайте</label>
+        ${LIVE && S.ai ? '<label class="check"><input id="importTranslate" type="checkbox">Перевести названия поставщика на русский, где русского нет (YandexGPT)</label>' : ''}
+        <div class="form__actions"><button class="btn btn--lime" type="submit">${icon('upload')}Загрузить</button></div>
       </form>
-      ${LIVE ? '' : `<p class="note">${t('import.demo')}</p>`}
+      ${LIVE ? '' : '<p class="note">Превью: файлы не уходят на сервер, добавятся 2 товара-примера.</p>'}
       <div id="importResult"></div>`);
   }
   let importing = false;
   async function doImport() {
     const file = $('#importFile').files[0];
-    const photos = $('#importPhotos') ? $('#importPhotos').files[0] : null;
-    if (!file && !photos) { toast(team() ? 'Выберите файл Excel или архив с фото' : t('import.file')); return; }
-    if (LIVE) {
-      if (importing) return;
-      importing = true;
-      const out = $('#importResult');
-      out.innerHTML = `<p class="note">${t('import.uploading')}${photos ? ' Фото уменьшаем и сохраняем, на большой архив уходит пара минут.' : ''}</p>`;
-      const form = new FormData();
-      if (file) form.append('file', file);
-      if (photos) form.append('photos', photos);
-      const publish = !!($('#importPublish') && $('#importPublish').checked);
-      if ($('#importPublish')) form.append('publish', publish ? 'true' : 'false');
-      if ($('#importTranslate') && $('#importTranslate').checked) form.append('translate', 'true');
-      let res;
-      try {
-        res = await liveTry(() => api('/import', { method: 'POST', form }));
-      } finally {
-        importing = false;
-      }
-      if (!res) { out.innerHTML = ''; return; }
-      const warnings = (res.warnings || []).length
-        ? `<div class="panel" style="border-color:var(--warn)"><ul class="tips">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : '';
-      if (!res.ok) {
-        out.innerHTML = `<div class="panel" style="border-color:var(--bad)"><b>${t('import.errors')}</b><ul class="tips">${res.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>${warnings}`;
-        return;
-      }
-      S.products = (await api('/products')).map(mapProduct(supCode()));
-      const done = team()
-        ? `Готово: новых ${res.created}, обновлено ${res.updated}, фото ${res.photos}${res.translated ? `, переведено названий ${res.translated}` : ''}. ${publish ? 'Товары уже на сайте.' : 'Товары ушли на модерацию.'}`
-        : t('import.done', { n: res.created + res.updated });
-      out.innerHTML = `<div class="result">${done}</div>${warnings}`;
+    const photos = $('#importPhotos').files[0];
+    const publish = $('#importPublish').checked;
+    if (!file && !photos) { toast('Выберите файл Excel или архив с фото'); return; }
+    const out = $('#importResult');
+    if (!LIVE) {
+      const added = [
+        { cat: 'bags', ru: 'Мини-сумка через плечо', zh: '迷你斜挎包', price: 52, kg: 0.35, tiers: [[10, 38], [50, 33]], img: 'bag' },
+        { cat: 'clothes', ru: 'Широкие брюки из вискозы', zh: '冰丝阔腿裤', price: 69, kg: 0.4, tiers: [[10, 49], [50, 43]], img: '' },
+      ].map((x, i) => ({ id: `imp${Date.now().toString(36)}${i}`, sup: S.sup, sku: `IMP-${i + 1}`, src: '', sizes: '', colors: '', sale: 0, bulky: false, photos: x.img ? 1 : 0, desc: '', status: publish ? 'published' : 'draft', orders: 0, ...x }));
+      S.products.unshift(...added);
+      save();
+      out.innerHTML = `<div class="result">Готово: новых ${added.length}. ${publish ? 'Товары уже на сайте.' : 'Сохранены черновиками.'}</div>`;
       render();
       return;
     }
-    const added = IMPORT_SAMPLES.map((s, i) => ({
-      id: `imp${Date.now().toString(36)}${i}`, sup: supCode(), ru: '', sale: 0, bulky: false, views: 0, orders: 0, desc: '', status: 'moderation', reason: '', ...clone(s),
-    }));
-    S.products.unshift(...added);
-    save();
-    $('#importResult').innerHTML = `<div class="result">${t('import.done', { n: added.length })}</div>`;
+    if (importing) return;
+    importing = true;
+    out.innerHTML = `<p class="note">Загружаю…${photos ? ' Фото уменьшаем и сохраняем, на большой архив уходит пара минут.' : ''}</p>`;
+    const form = new FormData();
+    if (file) form.append('file', file);
+    if (photos) form.append('photos', photos);
+    form.append('publish', publish ? 'true' : 'false');
+    if ($('#importTranslate') && $('#importTranslate').checked) form.append('translate', 'true');
+    let res;
+    try { res = await liveTry(() => api('/import', { method: 'POST', form })); } finally { importing = false; }
+    if (!res) { out.innerHTML = ''; return; }
+    const warnings = (res.warnings || []).length ? `<div class="panel" style="border-color:var(--warn)"><ul class="tips">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : '';
+    if (!res.ok) {
+      out.innerHTML = `<div class="panel" style="border-color:var(--bad)"><b>Ничего не загружено. Исправьте ошибки:</b><ul class="tips">${res.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>${warnings}`;
+      return;
+    }
+    await loadSupplier();
+    out.innerHTML = `<div class="result">Готово: новых ${res.created}, обновлено ${res.updated}, фото ${res.photos}${res.translated ? `, переведено названий ${res.translated}` : ''}. ${publish ? 'Товары уже на сайте.' : 'Сохранены черновиками.'}</div>${warnings}`;
     render();
   }
 
-  /* ---------- Поставщик: заказы ---------- */
-  // Для команды те же вкладки называются по шагам выкупа: заказывает у поставщика она сама.
-  const TEAM_OST = { confirm: 'Заказать', ship: 'Заказано', shipped: 'Едет на склад', received: 'На складе', cancelled: 'Нет в наличии' };
-  const ostLabel = (st) => (team() ? TEAM_OST[st] : t(`ost.${st}`));
+  /* ---------- Заказы у поставщика ---------- */
+  const COLORS_ZH = { 'чёрный': '黑色', 'белый': '白色', 'серый': '灰色', 'бежевый': '米色', 'коричневый': '棕色', 'хаки': '卡其色', 'зелёный': '绿色', 'серебряный': '银色', 'золотой': '金色' };
+  function demoPurchase() {
+    const orders = mine(S.orders).filter((o) => o.status === 'to_order');
+    const lines = [];
+    for (const o of orders) {
+      for (const [pid, size, color, qty] of o.items) {
+        const p = product(pid);
+        const unit = o.mode === 'wholesale' ? (p.tiers.filter(([from]) => qty >= from).pop() || p.tiers[0] || [0, p.price])[1] : p.price;
+        const same = lines.find((l) => l.pid === pid && l.size === size && l.color === color && l.unit === unit);
+        if (same) same.qty += qty; else lines.push({ pid, title: p.ru, zh: p.zh, sku: p.sku, size, color, qty, unit });
+      }
+    }
+    const total = lines.reduce((s, l) => s + l.unit * l.qty, 0);
+    const rows = ['您好！ASTTA 下单：', ...lines.map((l, i) => {
+      const det = [l.sku && `货号 ${l.sku}`, l.color && `颜色 ${COLORS_ZH[l.color] ? `${COLORS_ZH[l.color]}（${l.color}）` : l.color}`, l.size && `尺码 ${l.size}`].filter(Boolean).join(' · ');
+      return `${i + 1}. ${l.zh || l.title}${det ? `（${det}）` : ''} × ${l.qty} 件，单价 ${l.unit} 元`;
+    }), `合计 ${lines.reduce((s, l) => s + l.qty, 0)} 件，${total} 元。`, `请确认有货并发往 TT 仓库，包裹上请写订单号：${orders.map((o) => o.num).join(', ')}。谢谢！`];
+    return { lines, orders: orders.map((o) => o.id), total_qty: lines.reduce((s, l) => s + l.qty, 0), total_cny: total, text_zh: lines.length ? rows.join('\n') : '' };
+  }
   function purchasePanel() {
-    const pu = S.live.purchase;
-    if (!team() || S.ofilter !== 'confirm' || !pu || !pu.lines.length) return '';
+    const pu = LIVE ? S.purchase : demoPurchase();
+    if (S.ofilter !== 'to_order' || !pu || !pu.lines.length) return '';
+    const s = supplier();
     const rows = pu.lines.map((l) => `<li>${esc(l.title)}${l.color ? ` · ${esc(l.color)}` : ''}${l.size ? ` · ${esc(l.size)}` : ''} — <b>${l.qty} шт.</b> × ${cny(l.unit)}</li>`).join('');
     return `<section class="panel purchase"><h2>Сводный заказ поставщику</h2>
-      <p class="muted">Покупатели оплатили, одинаковые товары сложены. Отправьте сообщение поставщику в WeChat${supplier().wechat ? ` (${esc(supplier().wechat)})` : ''}, потом отметьте заказанным.</p>
+      <p class="muted">Покупатели оплатили, одинаковые товары сложены в одну строку. Отправьте сообщение поставщику${s.wechat ? ` в WeChat ${esc(s.wechat)}` : ''}, потом отметьте заказанным.</p>
       <ul class="tips">${rows}</ul>
       <p><b>Итого: ${pu.total_qty} шт., ${cny(pu.total_cny)}</b></p>
-      <label class="field"><span>Сообщение на китайском</span><textarea id="puText" readonly rows="${Math.min(12, pu.lines.length * 2 + 3)}">${esc(pu.text_zh)}</textarea></label>
-      <div class="form__actions"><button class="btn" type="button" data-act="copy-purchase">Скопировать для WeChat</button>
+      <label class="field"><span>Сообщение поставщику в WeChat (на китайском)</span><textarea id="puText" readonly rows="${Math.min(12, pu.lines.length * 2 + 3)}">${esc(pu.text_zh)}</textarea></label>
+      <div class="form__actions"><button class="btn" type="button" data-act="copy-purchase">Скопировать</button>
         <button class="btn btn--lime" type="button" data-act="purchase-ordered">${icon('check')}Отметить всё заказанным</button></div>
     </section>`;
   }
   function vOrders() {
-    const mine = S.orders.filter((o) => o.sup === supCode());
-    const chips = ['confirm', 'ship', 'shipped', 'received', 'cancelled'].map((st) => {
-      const n = mine.filter((o) => o.status === st).length;
-      return `<button class="chip" type="button" data-ofilter="${st}" aria-pressed="${S.ofilter === st}">${ostLabel(st)}<em>${n}</em></button>`;
-    }).join('');
-    const list = mine.filter((o) => o.status === S.ofilter);
+    const list = mine(S.orders);
+    const chips = Object.entries(OSTATUS).map(([st, [name]]) => `<button class="chip" type="button" data-ofilter="${st}" aria-pressed="${S.ofilter === st}">${name}<em>${list.filter((o) => o.status === st).length}</em></button>`).join('');
+    const shown = list.filter((o) => o.status === S.ofilter);
     return `
-      <div class="pagehead"><div><h1>${t('nav.orders')}</h1>${team() ? '<p>Здесь только оплаченные заказы: их можно сразу заказывать у поставщика.</p>' : ''}</div></div>
+      <div class="pagehead"><div><h1>Заказы у поставщика</h1><p>Только оплаченные заказы покупателей: их можно сразу заказывать у поставщика.</p></div></div>
       <div class="filters">${chips}</div>
       ${purchasePanel()}
-      <div class="orders">${list.map(orderCard).join('') || `<div class="empty">${t('order.empty')}</div>`}</div>`;
+      <div class="orders">${shown.map(orderCard).join('') || '<div class="empty">Заказов с таким статусом нет</div>'}</div>`;
+  }
+  function orderItems(o) {
+    return o.items.map((i) => (Array.isArray(i)
+      ? (() => { const [pid, size, color, qty] = i; const p = product(pid) || {}; return { ru: p.ru, img: p.img, size, color, qty, unit: o.mode === 'wholesale' ? ((p.tiers || []).filter(([from]) => qty >= from).pop() || (p.tiers || [])[0] || [0, p.price])[1] : p.price }; })()
+      : i));
   }
   function orderCard(o) {
-    const items = o.items.map(([id, size, qty, fixedUnit, info]) => {
-      // В боевом режиме цена и название берутся из заказа: они зафиксированы в момент покупки.
-      const p = product(id) || info;
-      const unit = fixedUnit ?? (o.mode === 'wholesale' ? tierFor(p, qty) : unitCny(p));
-      const color = info && info.color ? `${esc(info.color)} · ` : '';
-      return `<div class="oitem">${thumb(p)}<div><b>${esc(pName(p))}</b><span>${color}${size ? `${t('order.size')} ${esc(size)} · ` : ''}${qty} ${t('pcs')} × ${cny(unit)}</span></div><div class="num">${cny(unit * qty)}</div></div>`;
-    }).join('');
+    const items = orderItems(o);
+    const rows = items.map((i) => `<div class="oitem">${thumb(i)}<div><b>${esc(i.ru)}</b><span>${[i.color, i.size && `размер ${i.size}`].filter(Boolean).map(esc).join(' · ')}${i.color || i.size ? ' · ' : ''}${i.qty} шт. × ${cny(i.unit)}</span></div><div class="num">${cny(i.unit * i.qty)}</div></div>`).join('');
+    const total = items.reduce((s, i) => s + i.unit * i.qty, 0);
     let actions = '';
     let extra = '';
-    const tm = team();
-    if (o.status === 'confirm') {
-      actions = `<span class="deadline">${tm ? 'Оплачен. Закажите у поставщика' : t('order.deadline')}</span>
-        <button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-num="${o.num}">${tm ? 'Нет в наличии: вернуть деньги' : t('order.outOfStock')}</button>
-        <button class="btn btn--sm btn--lime" type="button" data-act="confirm-order" data-num="${o.num}">${icon('check')}${tm ? 'Заказано у поставщика' : t('order.inStock')}</button>`;
-    } else if (o.status === 'ship' && tm) {
-      extra = `<div class="ocard__wh"><b>Ждём, когда поставщик отправит на склад TT</b><span class="muted">Впишите трек-номер, который пришлёт поставщик. Если товара не оказалось, отмените часть заказа: деньги вернём покупателю.</span>
-        <form data-ship-form="${o.num}" novalidate><label class="sr" for="tr-${o.num}">Трек-номер</label>
-          <input id="tr-${o.num}" placeholder="Трек-номер" autocomplete="off">
+    if (o.status === 'to_order') {
+      actions = `<button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-id="${o.id}">Нет в наличии: вернуть деньги</button>
+        <button class="btn btn--sm btn--lime" type="button" data-act="ordered" data-id="${o.id}">${icon('check')}Заказано у поставщика</button>`;
+    } else if (o.status === 'ordered') {
+      extra = `<div class="ocard__wh"><b>Ждём, когда поставщик отправит на склад TT</b><span class="muted">Впишите трек-номер, который пришлёт поставщик.</span>
+        <form data-ship-form="${o.id}" novalidate><label class="sr" for="tr-${o.id}">Трек-номер</label>
+          <input id="tr-${o.id}" placeholder="Трек-номер" autocomplete="off">
           <button class="btn btn--lime" type="submit">${icon('truck')}Отправлено на склад</button></form></div>`;
-      actions = `<button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-num="${o.num}">Нет в наличии: вернуть деньги</button>`;
-    } else if (o.status === 'ship') {
-      extra = `<div class="ocard__wh"><b>${t('order.whTitle')}</b><span class="muted">${t('order.whAddr')}</span>
-        <form data-ship-form="${o.num}" novalidate><label class="sr" for="tr-${o.num}">${t('order.tracking')}</label>
-          <input id="tr-${o.num}" placeholder="${t('order.tracking')}" autocomplete="off">
-          <button class="btn btn--lime" type="submit">${icon('truck')}${t('order.markShipped')}</button></form></div>`;
+      actions = `<button class="btn btn--sm btn--bad" type="button" data-act="out-of-stock" data-id="${o.id}">Нет в наличии: вернуть деньги</button>`;
     } else if (o.status === 'shipped') {
-      actions = `<span class="muted">${t('order.waitWh', { t: esc(o.tracking) })}</span>`;
+      actions = `<span class="muted">Трек ${esc(o.tracking)} · приёмку отмечает склад в админке</span>`;
     } else if (o.status === 'received') {
-      actions = `<span class="muted">${t('order.received')}</span>`;
+      actions = '<span class="muted">Склад TT принял посылку</span>';
     } else {
-      actions = `<span class="muted">${t('order.cancelled')}</span>`;
+      actions = '<span class="muted">Отменено, деньги за эту часть вернём покупателю</span>';
     }
     return `<article class="ocard">
-      <div class="ocard__head"><span class="ocard__num">${o.num}</span><span class="muted">${esc(o.date)} · ${t(`order.${o.mode}`)}</span>
-        <span class="st ${OST[o.status]}">${ostLabel(o.status)}</span></div>
-      <div class="oitems">${items}</div>${extra}
-      <div class="ocard__foot"><span class="ocard__total">${t('order.total')}: ${cny(orderCny(o))}</span><div class="ocard__actions">${actions}</div></div>
+      <div class="ocard__head"><span class="ocard__num">${esc(o.num)}</span><span class="muted">${esc(o.date)} · ${o.mode === 'wholesale' ? 'Опт' : 'Розница'}</span>
+        <span class="st ${OSTATUS[o.status][1]}">${OSTATUS[o.status][0]}</span></div>
+      <div class="oitems">${rows}</div>${extra}
+      <div class="ocard__foot"><span class="ocard__total">Итого у поставщика: ${cny(total)}</span><div class="ocard__actions">${actions}</div></div>
     </article>`;
   }
-
-  /* ---------- Поставщик: выплаты и магазин ---------- */
-  function vPayouts() {
-    const c = supplierCounts();
-    const k = supCode() === DEFAULT_SUP ? 1 : 0.6;
-    const history = LIVE ? S.live.payouts : PAYOUTS.map(([date, period, n, amount]) => ({ date, period, orders: Math.round(n * k), amount: amount * k, status: 'paid' }));
-    const rows = history.map((p) => `<tr><td>${esc(p.date)}</td><td>${esc(p.period || '—')}</td><td class="num">${p.orders}</td><td class="num">${cny(p.amount)}</td><td><span class="st ${p.status === 'paid' ? 'st--ok' : 'st--wait'}">${p.status === 'paid' ? t('pay.paid') : t('pay.pending')}</span></td></tr>`).join('') || `<tr><td colspan="5" class="muted">—</td></tr>`;
-    const paidTotal = LIVE ? S.live.paidTotal : 38255 * k;
-    const method = LIVE ? (supplier().payout || '—') : t('pay.methodValue');
-    return `
-      <div class="pagehead"><div><h1>${t('nav.payouts')}</h1><p>${t('pay.rule')}</p></div></div>
-      <div class="kpis">
-        <div class="kpi kpi--hot"><span>${t('pay.pending')}</span><b>${cny(c.pending)}</b></div>
-        <div class="kpi"><span>${t('pay.next')}</span><b>${t('pay.nextDate')}</b></div>
-        <div class="kpi"><span>${t('pay.total')}</span><b>${cny(paidTotal)}</b></div>
-        <div class="kpi"><span>${t('pay.method')}</span><b style="font-size:16px;line-height:1.3">${esc(method)}</b></div>
-      </div>
-      <section class="panel"><h2>${t('pay.history')}</h2>
-        <div class="tablewrap"><table class="tbl" style="min-width:520px"><thead><tr><th>${t('col.date')}</th><th>${t('col.period')}</th><th class="num">${t('col.orders')}</th><th class="num">${t('col.amount')}</th><th>${t('col.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>
-      </section>`;
-  }
-  function vShop() {
-    const s = supplier();
-    return `
-      <div class="pagehead"><div><h1>${t('nav.shop')}</h1></div></div>
-      <section class="panel">
-        <form class="form" id="shopForm" novalidate>
-          <label class="field"><span>${t('shop.name')}</span><input id="sName" value="${esc(L() === 'zh' ? s.zh : s.ru)}" ${LIVE && L() !== 'zh' ? `readonly title="${t('shop.nameNote')}"` : ''}></label>
-          <label class="field"><span>${t('shop.city')}</span><input id="sCity" value="${esc(L() === 'zh' ? s.cityZh : s.cityRu)}"></label>
-          <label class="field field--full"><span>${t('shop.about')}</span><textarea id="sAbout">${esc(s.about)}</textarea></label>
-          <label class="field"><span>${t('shop.wechat')}</span><input id="sWechat" value="${esc(s.wechat)}"></label>
-          <label class="field"><span>${t('shop.phone')}</span><input id="sPhone" value="${esc(s.phone)}" inputmode="tel"></label>
-          <label class="field field--full"><span>${t('shop.payout')}</span><input id="sPayout" value="${esc(s.payout || '')}"></label>
-          <label class="field"><span>${t('shop.fact')}</span><input value="${s.fact ? `${s.fact[0]}–${s.fact[1]} ${t('days')}` : '—'}" readonly></label>
-          <label class="field"><span>${t('shop.lang')}</span><select id="sLang"><option value="zh" ${S.lang === 'zh' ? 'selected' : ''}>中文</option><option value="ru" ${S.lang === 'ru' ? 'selected' : ''}>Русский</option></select></label>
-          <p class="note field--full">${t('shop.factNote')}</p>
-          <div class="form__actions"><button class="btn btn--lime" type="submit">${t('shop.save')}</button></div>
-        </form>
-      </section>`;
+  async function orderAction(id, action, body) {
+    if (!LIVE) {
+      const o = S.orders.find((x) => String(x.id) === String(id));
+      o.status = { confirm: 'ordered', cancel: 'cancelled', ship: 'shipped' }[action];
+      if (body && body.tracking) o.tracking = body.tracking;
+      save(); render();
+      return true;
+    }
+    const res = await liveTry(() => api(`/orders/${id}/${action}`, { method: 'POST', body }));
+    if (!res) return false;
+    upsert(S.orders, mapOrder(res));
+    await refreshCounts();
+    render();
+    return true;
   }
 
-  /* ---------- Поставщик: контент-завод ---------- */
-  const FACTORY_DEFAULT = { newItems: true, weekly: true, restock: false, perDay: '3' };
-  const factory = () => (S.factory[supCode()] = S.factory[supCode()] || { ...FACTORY_DEFAULT });
-  function vTeamPosts() {
-    const mine = S.products.filter((p) => p.status === 'published');
-    const posts = S.posts.filter((x) => x.sup === supCode());
+  /* ---------- Посты ---------- */
+  function vPosts() {
+    const published = mine(S.products).filter((p) => p.status === 'published');
+    const posts = mine(S.posts);
     const card = (x) => {
       const p = x.pid ? product(x.pid) : null;
       return `<article class="postcard">
-        ${x.images.length ? `<div class="postthumbs">${x.images.slice(0, 4).map((src) => `<img src="${esc(src)}" alt="" loading="lazy">`).join('')}${x.images.length > 4 ? `<span class="more">+${x.images.length - 4}</span>` : ''}</div>` : ''}
+        ${x.images.length ? `<div class="postthumbs">${x.images.slice(0, 4).map((src) => `<img src="${esc(imgSrc(src))}" alt="" loading="lazy">`).join('')}${x.images.length > 4 ? `<span class="more">+${x.images.length - 4}</span>` : ''}</div>` : ''}
         ${x.text ? `<p>${esc(x.text)}</p>` : ''}
-        <div class="postcard__meta"><span class="muted">${esc(x.date || '')}${p ? ` · ${esc(pName(p))}` : ''} · ${t(`fac.kind.${x.kind}`)}</span>
-          <span class="st ${PST[x.status] || ''}">${t(`status.${x.status}`)}</span>
+        <div class="postcard__meta"><span class="muted">${esc(x.date || '')}${p ? ` · ${esc(p.ru)}` : ''} · ${KINDS[x.kind] || ''}</span>
+          <span class="st st--ok">В ленте</span>
           <button class="btn btn--sm btn--bad" type="button" data-act="del-post" data-id="${x.id}">Удалить</button></div>
       </article>`;
     };
     return `
-      <div class="pagehead"><div><h1>Посты в ленту</h1><p>Пост с фото сразу появляется в ленте поставщиков на сайте. Видео сделаем следующим этапом контент-завода.</p></div></div>
+      <div class="pagehead"><div><h1>Посты в ленту</h1><p>Пост с фото сразу появляется в ленте на сайте от имени поставщика. Видео сделаем следующим этапом контент-завода.</p></div></div>
       <div class="grid2">
         <section class="panel"><h2>Новый пост</h2>
           <form class="form" id="postForm" novalidate>
             <label class="field field--full"><span>Текст для покупателей</span><textarea id="poText" placeholder="Например: новая партия худи, плотный хлопок, 6 цветов"></textarea></label>
             <label class="field field--full"><span>Фото, до 10 штук</span><input id="poImages" type="file" accept="image/*" multiple></label>
             <div class="postthumbs field--full" id="poPreview"></div>
-            <label class="field"><span>Товар (можно без него)</span><select id="poProduct"><option value="">Без товара</option>${mine.map((p) => `<option value="${p.id}">${esc(pName(p))}</option>`).join('')}</select></label>
-            <label class="field"><span>Тип</span><select id="poKind">${['new', 'restock', 'opt'].map((k) => `<option value="${k}">${t(`fac.kind.${k}`)}</option>`).join('')}</select></label>
+            <label class="field"><span>Товар (можно без него)</span><select id="poProduct"><option value="">Без товара</option>${published.map((p) => `<option value="${p.id}">${esc(p.ru)}</option>`).join('')}</select></label>
+            <label class="field"><span>Тип</span><select id="poKind">${Object.entries(KINDS).map(([k, name]) => `<option value="${k}">${name}</option>`).join('')}</select></label>
             <div class="form__actions"><button class="btn btn--lime" type="submit">Опубликовать</button></div>
           </form>
         </section>
@@ -875,343 +534,177 @@
   function postPreview(files) {
     postFiles = [...files];
     const box = $('#poPreview');
-    if (!box) return;
     box.innerHTML = postFiles.slice(0, 10).map((f) => `<img src="${URL.createObjectURL(f)}" alt="">`).join('')
       + (postFiles.length > 10 ? '<span class="err">Больше 10 фото: оставьте до 10</span>' : '');
   }
   let posting = false;
-  async function teamPost() {
+  async function submitPost() {
     const text = $('#poText').value.trim();
     if (!text && !postFiles.length) { toast('Добавьте текст или фото'); $('#poText').focus(); return; }
     if (postFiles.length > 10) { toast('Не больше 10 фото в посте'); return; }
+    const pid = $('#poProduct').value;
+    const kind = $('#poKind').value;
+    if (!LIVE) {
+      S.posts.unshift({ id: Date.now(), sup: S.sup, pid, kind, text, images: postFiles.map((f) => URL.createObjectURL(f)), date: new Date().toLocaleDateString('ru-RU'), status: 'published' });
+      postFiles = [];
+      save(); render(); toast('Опубликовано');
+      return;
+    }
     if (posting) return;
     posting = true;
     const form = new FormData();
     form.append('text', text);
-    form.append('kind', $('#poKind').value);
-    if ($('#poProduct').value) form.append('product', $('#poProduct').value);
+    form.append('kind', kind);
+    if (pid) form.append('product', pid);
     for (const f of postFiles) form.append('images', f);
     let res;
-    try {
-      res = await liveTry(() => api('/posts', { method: 'POST', form }));
-    } finally {
-      posting = false;
-    }
+    try { res = await liveTry(() => api('/posts', { method: 'POST', form })); } finally { posting = false; }
     if (!res) return;
     postFiles = [];
-    S.posts.unshift(mapPost(supCode())(res));
+    S.posts.unshift(mapPost(res));
     render(); toast('Опубликовано');
   }
-  function vFactory() {
-    if (team()) return vTeamPosts();
-    const f = factory();
-    const mine = S.products.filter((p) => p.sup === supCode() && p.status === 'published');
-    const next = mine[0];
-    const sw = (key, hint, disabled = false) => `<label class="switchrow"><div><b>${t(`fac.${key}`)}</b><span>${t(hint)}</span></div>
-      <input class="switch" type="checkbox" role="switch" data-factory="${key}" ${f[key] ? 'checked' : ''} ${disabled ? 'disabled' : ''}></label>`;
-    const posts = S.posts.filter((x) => x.sup === supCode());
-    return `
-      <div class="pagehead"><div><h1>${t('nav.factory')}</h1><p>${t('fac.sub')}</p></div></div>
-      <div class="grid2">
-        <section class="panel"><h2>${t('fac.auto')}</h2>
-          <div>${sw('newItems', 'fac.newItemsHint')}${sw('weekly', 'fac.weeklyHint')}${sw('restock', 'fac.restockHint')}${sw('video', 'fac.videoHint', true)}
-            <label class="switchrow"><div><b>${t('fac.perDay')}</b></div>
-              <select class="select" data-factory="perDay" aria-label="${t('fac.perDay')}">${['1', '3', '5'].map((v) => `<option ${f.perDay === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
-          ${next ? `<div class="preview">${thumb(next)}<div><b>${t('fac.next')}</b><br><span class="muted">Новинка от ${esc(supplier().ru)}: ${esc(next.ru || next.zh)}. ${next.tiers[0] ? `${next.tiers[0][1]} ¥ за штуку при партии от ${next.tiers[0][0]} шт.` : `${next.price} ¥ за штуку.`} Фото с проверки на складе пришлём в заказ.</span></div></div>
-            <p class="note">${t('fac.ruNote')}</p>` : ''}
-        </section>
-        <section class="panel"><h2>${t('fac.post')}</h2>
-          <form class="form" id="postForm" novalidate>
-            <label class="field field--full"><span>${t('fac.product')}</span><select id="poProduct">${mine.map((p) => `<option value="${p.id}">${esc(pName(p))}</option>`).join('')}</select></label>
-            <label class="field field--full"><span>${t('fac.kind')}</span><select id="poKind">${['new', 'restock', 'opt'].map((k) => `<option value="${k}">${t(`fac.kind.${k}`)}</option>`).join('')}</select></label>
-            <label class="field field--full"><span>${t('fac.text')}</span><textarea id="poText"></textarea></label>
-            <div class="form__actions"><button class="btn btn--lime" type="submit">${t('fac.send')}</button></div>
-          </form>
-          <h2>${t('fac.mine')}</h2>
-          ${posts.length ? posts.filter((x) => product(x.pid)).map((x) => `<div class="preview">${thumb(product(x.pid))}<div><b>${t(`fac.kind.${x.kind}`)} · ${esc(pName(product(x.pid)))}</b><br><span class="muted">${esc(x.text)}</span></div><span class="st ${PST[x.status || 'moderation'] || ''}" style="margin-left:auto">${t(`status.${x.status || 'moderation'}`)}</span></div>`).join('')
-            : `<p class="muted">${t('fac.none')}</p>`}
-        </section>
-      </div>`;
-  }
 
-  /* ---------- Модератор: очередь ---------- */
-  function vModeration() {
-    const queue = S.products.filter((p) => p.status === 'moderation');
-    const cards = queue.map((p) => {
-      const s = supplier(p.sup);
-      const flags = [!p.img && 'нет фото', /大牌|同款|仿/.test(p.zh) && 'похоже на копию бренда'].filter(Boolean);
-      return `<article class="mcard">
-        ${p.img ? `<img class="thumb" src="${esc(imgSrc(p.img))}" alt="" width="96" height="96" loading="lazy">` : '<span class="thumb thumb--empty">нет фото</span>'}
-        <div class="mcard__body">
-          <div class="mcard__zh">${esc(p.zh)}</div>
-          <div class="mcard__ru"><label class="sr" for="ru-${p.id}">Название на русском</label>
-            <input id="ru-${p.id}" value="${esc(p.ru)}" placeholder="Название на русском" data-ru="${p.id}">
-            <button class="btn btn--sm" type="button" data-act="translate" data-id="${p.id}">Перевести</button></div>
-          <div class="mcard__meta"><span>Поставщик <b>${esc(s.ru)}</b></span><span>${esc(CATS[p.cat][1])}</span>
-            <span>Цена <b>${cny(p.price)}</b></span><span>Опт <b>${p.tiers.map(([q, c]) => `${q}+ · ${c} ¥`).join(', ')}</b></span>
-            <span>Вес <b>${p.kg} кг</b></span><span>Покупатель увидит <b>${rub(buyerRub(p))}</b></span></div>
-          ${p.desc ? `<p class="note">${esc(p.desc)}</p>` : ''}
-          ${flags.length ? `<span class="flag">Проверьте: ${flags.join(', ')}</span>` : ''}
-        </div>
-        <div class="mcard__actions">
-          <button class="btn btn--sm btn--lime" type="button" data-act="publish" data-id="${p.id}">${icon('check')}Опубликовать</button>
-          <label class="sr" for="rs-${p.id}">Причина отклонения</label>
-          <select class="select" id="rs-${p.id}" data-reason="${p.id}"><option value="">Причина отклонения…</option>${Object.entries(MOD_REASONS).map(([k, v]) => `<option value="${k}">${v[1]}</option>`).join('')}</select>
-          <button class="btn btn--sm btn--bad" type="button" data-act="reject" data-id="${p.id}">Отклонить</button>
-          <button class="btn btn--sm" type="button" data-act="edit-product" data-id="${p.id}">Изменить всё</button>
-        </div></article>`;
-    }).join('');
-    return `
-      <div class="pagehead"><div><h1>Модерация</h1>
-        <p>Товары от поставщиков ждут проверки. Перед публикацией нужно русское название; поставщик увидит причину отклонения на китайском.</p></div></div>
-      ${queue.length ? `<div class="mcards">${cards}</div>` : '<div class="empty">Очередь пуста: все товары проверены</div>'}`;
+  /* ---------- Поставщики ---------- */
+  function supplierStats(s) {
+    if (LIVE) return s;
+    const products = S.products.filter((p) => p.sup === s.code);
+    return {
+      ...s, published: products.filter((p) => p.status === 'published').length, drafts: products.filter((p) => p.status !== 'published').length,
+      to_order: S.orders.filter((o) => o.sup === s.code && o.status === 'to_order').length,
+    };
   }
-
-  /* ---------- Модератор: все товары ---------- */
-  function vCatalog() {
-    const f = S.mfilter;
-    const q = f.q.trim().toLowerCase();
-    const list = S.products.filter((p) => (!f.sup || p.sup === f.sup) && (!f.status || p.status === f.status)
-      && (!q || p.zh.toLowerCase().includes(q) || p.ru.toLowerCase().includes(q)));
-    const rows = list.map((p) => `<tr>
-        <td><div class="pcell">${thumb(p)}<div><b>${esc(p.ru || p.zh)}</b><span>${esc(p.zh)}</span></div></div></td>
-        <td>${esc(supplier(p.sup).ru)}</td>
-        <td class="num">${cny(p.price)}</td>
-        <td class="num">${rub(buyerRub(p))}</td>
-        <td>${pStatus(p)}</td>
-        <td><button class="btn btn--sm" type="button" data-act="edit-product" data-id="${p.id}">Изменить</button></td></tr>`).join('');
-    return `
-      <div class="pagehead"><div><h1>Все товары</h1><p>Модератор может изменить любой товар любого поставщика: название, цену, вес, опт, статус.</p></div>
-        <div class="pagehead__actions"><button class="btn btn--lime" type="button" data-act="add-product">${icon('plus')}Добавить товар</button></div></div>
-      <div class="filters">
-        <label class="sr" for="mq">Поиск</label><input class="search" id="mq" type="search" placeholder="Поиск по названию" value="${esc(f.q)}" data-mf="q">
-        <label class="sr" for="msup">Поставщик</label><select class="select" id="msup" data-mf="sup"><option value="">Все поставщики</option>${S.suppliers.map((s) => `<option value="${s.code}" ${f.sup === s.code ? 'selected' : ''}>${esc(s.ru)}</option>`).join('')}</select>
-        <label class="sr" for="mst">Статус</label><select class="select" id="mst" data-mf="status"><option value="">Все статусы</option>${['published', 'moderation', 'rejected'].map((st) => `<option value="${st}" ${f.status === st ? 'selected' : ''}>${I18N[`status.${st}`][1]}</option>`).join('')}</select>
-      </div>
-      <div class="tablewrap"><table class="tbl"><thead><tr><th>Товар</th><th>Поставщик</th><th class="num">Цена, ¥</th><th class="num">Под ключ</th><th>Статус</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="6" class="muted">Ничего не найдено</td></tr>'}</tbody></table></div>`;
-  }
-
-  /* ---------- Модератор: поставщики ---------- */
   function vSuppliers() {
-    const rows = S.suppliers.map((s) => {
-      const c = supplierCounts(s.code);
-      const total = S.products.filter((p) => p.sup === s.code).length;
-      return `<tr>
-        <td><b>${esc(s.ru)}</b><br><span class="muted">${esc(s.zh)} · ${esc(s.cityRu)}</span></td>
-        <td class="num">${total}</td><td class="num">${c.review}</td><td class="num">${c.todo}</td>
-        <td class="num">${s.fact[0]}–${s.fact[1]} дн.</td>
-        <td><span class="st ${s.active ? 'st--ok' : 'st--bad'}">${s.active ? 'Активен' : 'Заблокирован'}</span></td>
-        <td><div class="filters" style="flex-wrap:nowrap">
-          <button class="btn btn--sm btn--lime" type="button" data-act="act-as" data-code="${s.code}">Открыть кабинет</button>
-          <button class="btn btn--sm" type="button" data-act="toggle-sup" data-code="${s.code}">${s.active ? 'Заблокировать' : 'Включить'}</button></div></td></tr>`;
-    }).join('');
+    const rows = S.suppliers.map(supplierStats).map((s) => `<tr>
+        <td><b>${esc(s.name)}</b><br><span class="muted">${esc([s.city, s.about].filter(Boolean).join(' · '))}</span></td>
+        <td>${esc(s.wechat || '—')}<br><span class="muted">${esc(s.phone || '')}</span></td>
+        <td class="num">${s.published}${s.drafts ? `<br><span class="muted">черновиков ${s.drafts}</span>` : ''}</td>
+        <td class="num">${s.to_order ? `<b>${s.to_order}</b>` : '0'}</td>
+        <td>${s.is_active === false ? '<span class="st st--bad">Не работаем</span>' : '<span class="st st--ok">Работаем</span>'}</td>
+        <td><div class="rowbtns"><button class="btn btn--sm btn--lime" type="button" data-act="open-supplier" data-code="${esc(s.code)}">Открыть</button>
+          <button class="btn btn--sm" type="button" data-act="edit-supplier" data-code="${esc(s.code)}">Изменить</button></div></td></tr>`).join('');
     return `
-      <div class="pagehead"><div><h1>Поставщики</h1><p>«Открыть кабинет» показывает кабинет поставщика так, как видит его он сам, и позволяет всё в нём поменять.</p></div>
-        <div class="pagehead__actions"><button class="btn btn--lime" type="button" data-act="invite">${icon('plus')}Пригласить поставщика</button></div></div>
-      <div class="tablewrap"><table class="tbl" style="min-width:860px"><thead><tr><th>Поставщик</th><th class="num">Товаров</th><th class="num">На модерации</th><th class="num">Заказы ждут</th><th class="num">Факт. срок</th><th>Статус</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div class="pagehead"><div><h1>Поставщики</h1><p>Откуда берём товар. Поставщики в систему не заходят: это карточки для команды.</p></div>
+        <div class="pagehead__actions"><button class="btn btn--lime" type="button" data-act="add-supplier">${icon('plus')}Добавить поставщика</button></div></div>
+      <div class="tablewrap"><table class="tbl"><thead><tr><th>Поставщик</th><th>WeChat, телефон</th><th class="num">На сайте</th><th class="num">Заказать</th><th>Статус</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
   }
-  function openInvite() {
-    openDrawer('Новый поставщик', `<form class="form" id="inviteForm" novalidate>
-      <label class="field"><span>Название по-русски</span><input id="iRu" placeholder="TT · Ханчжоу" required></label>
-      <label class="field"><span>Название по-китайски</span><input id="iZh" placeholder="TT · 杭州"></label>
-      <label class="field"><span>Город</span><input id="iCity" placeholder="Ханчжоу"></label>
-      <label class="field"><span>WeChat для входа</span><input id="iWechat" placeholder="wechat_id"></label>
-      <p class="note field--full">В рабочей версии поставщик получит логин и временный пароль в WeChat, а кабинет откроется на китайском.</p>
-      <div class="form__actions"><button class="btn" type="button" data-act="close-drawer">Отмена</button><button class="btn btn--lime" type="submit">Создать</button></div></form>`);
+  let editingSupplier = null;
+  function openSupplierForm(code) {
+    const s = code ? S.suppliers.find((x) => x.code === code) : null;
+    editingSupplier = s ? s.code : null;
+    const v = s || { name: '', city: '', about: '', wechat: '', phone: '', pay: '', is_active: true };
+    openDrawer(s ? 'Карточка поставщика' : 'Новый поставщик', `<form class="form" id="supplierForm" novalidate>
+      <label class="field field--full"><span>Название (его видят покупатели в ленте)</span><input id="sName" value="${esc(v.name)}" required></label>
+      <label class="field"><span>Город</span><input id="sCity" value="${esc(v.city)}"></label>
+      <label class="field"><span>WeChat</span><input id="sWechat" value="${esc(v.wechat)}"></label>
+      <label class="field"><span>Телефон</span><input id="sPhone" value="${esc(v.phone)}"></label>
+      <label class="field"><span>Как платим поставщику</span><input id="sPay" value="${esc(v.pay)}" placeholder="Alipay через TT, банк, наличные"></label>
+      <label class="field field--full"><span>Коротко: что у него берём</span><input id="sAbout" value="${esc(v.about)}" maxlength="200" placeholder="Обувь с фабрик Фуцзяни"></label>
+      <label class="check field--full"><input id="sActive" type="checkbox" ${v.is_active !== false ? 'checked' : ''}>Работаем с поставщиком</label>
+      <div class="form__actions"><button class="btn" type="button" data-act="close-drawer">Отмена</button><button class="btn btn--lime" type="submit">Сохранить</button></div>
+    </form>`);
   }
-
-  /* ---------- Модератор: заказы ---------- */
-  function vModOrders() {
-    const rows = S.orders.map((o) => {
-      const s = supplier(o.sup);
-      const bs = S.buyerStatus[o.num] || SUPPLIER_TO_BUYER[o.status];
-      return `<tr>
-        <td><b>${o.num}</b><br><span class="muted">${esc(o.date)}</span></td>
-        <td>${esc(o.buyer)}<br><span class="muted">${o.mode === 'wholesale' ? 'Опт' : 'Розница'}</span></td>
-        <td>${o.items.map(([id, size, qty]) => `${esc(product(id).ru || product(id).zh)}${size ? ` (${esc(size)})` : ''} × ${qty}`).join('<br>')}</td>
-        <td>${esc(s.ru)}<br><span class="st ${OST[o.status]}">${I18N[`ost.${o.status}`][1]}</span>${o.tracking ? `<br><span class="muted">трек ${esc(o.tracking)}</span>` : ''}</td>
-        <td class="num">${rub(orderRub(o))}<br><span class="muted">${cny(orderCny(o))}</span></td>
-        <td><label class="sr" for="bs-${o.num}">Статус для покупателя</label><select class="select" id="bs-${o.num}" data-bstatus="${o.num}">${BUYER_STATUS.map(([k, v]) => `<option value="${k}" ${k === bs ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`;
-    }).join('');
-    return `
-      <div class="pagehead"><div><h1>Заказы</h1><p>Слева то, что сделал поставщик, справа статус, который видит покупатель в трекинге. Фото со склада и вес агенты добавляют в админке на сервере.</p></div></div>
-      <div class="tablewrap"><table class="tbl" style="min-width:980px"><thead><tr><th>Заказ</th><th>Покупатель</th><th>Товары</th><th>Поставщик</th><th class="num">Сумма</th><th>Статус для покупателя</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  }
-
-  /* ---------- Модератор: цены ---------- */
-  function vPricing() {
-    const pr = S.pricing;
-    const sample = product('runner');
-    const ship = pr.ship.map((m, i) => `<tr><td><b>${esc(m.name)}</b>${m.bulky ? '<br><span class="muted">только крупногабарит</span>' : ''}</td>
-      <td><input class="select" style="width:110px" type="number" min="1" step="1" value="${m.perKg}" data-ship="${i}" data-k="perKg" aria-label="${esc(m.name)}, ₽/кг"></td>
-      <td><input class="select" style="width:70px" type="number" min="1" value="${m.days[0]}" data-ship="${i}" data-k="d0" aria-label="${esc(m.name)}, срок от"> –
-        <input class="select" style="width:70px" type="number" min="1" value="${m.days[1]}" data-ship="${i}" data-k="d1" aria-label="${esc(m.name)}, срок до"></td></tr>`).join('');
-    return `
-      <div class="pagehead"><div><h1>Цены и доставка</h1><p>Всё, из чего складывается цена под ключ. Изменения сразу пересчитывают цены в каталоге.</p></div></div>
-      <div class="grid2">
-        <section class="panel"><h2>Курс и сборы</h2>
-          <form class="form" id="pricingForm" novalidate>
-            <label class="field"><span>Курс ЦБ, ₽ за 1 ¥ (на ${esc(pr.rateDate)})</span><input value="${pr.rate.toFixed(2).replace('.', ',')}" readonly></label>
-            <label class="field"><span>Надбавка к курсу, %</span><input id="prMarkup" type="number" min="0" max="20" step="0.1" value="${pr.markup}"></label>
-            <label class="field"><span>Сбор ASTTA, розница, %</span><input id="prRetail" type="number" min="0" max="50" step="0.5" value="${pr.retailFee}"></label>
-            <label class="field"><span>Сбор ASTTA, опт, %</span><input id="prOpt" type="number" min="0" max="50" step="0.5" value="${pr.optFee}"></label>
-            <p class="note field--full">Курс ЦБ сервер загружает сам каждые 3 часа. Надбавка закрывает колебания курса между оплатой и выкупом.</p>
-            <div class="form__actions"><button class="btn btn--lime" type="submit">Сохранить</button></div>
-          </form>
-        </section>
-        <section class="panel"><h2>Проверка на примере</h2>
-          <div class="kv"><span>${esc(sample.ru)}</span><b>${cny(unitCny(sample))}</b>
-            <span>Покупатель платит (розница, авто)</span><b>${rub(buyerRub(sample))}</b>
-            <span>Опт, ${sample.tiers[1][0]} шт.</span><b>${rub(buyerRub(sample, sample.tiers[1][0], 'wholesale'))}</b></div>
-        </section>
-      </div>
-      <section class="panel"><h2>Тарифы доставки</h2>
-        <div class="tablewrap"><table class="tbl" style="min-width:520px"><thead><tr><th>Способ</th><th>₽ за кг</th><th>Срок, дней</th></tr></thead><tbody>${ship}</tbody></table></div>
-        <p class="note">Реальные тарифы и сроки должна дать TT Логистика, сейчас стоят демо-значения из прототипа.</p>
-      </section>`;
-  }
-
-  /* ---------- Перевод названия ---------- */
-  let samplePromise;
-  async function translate(zh) {
-    if (DEMO_TRANSLATIONS[zh]) return DEMO_TRANSLATIONS[zh];
-    try {
-      samplePromise = samplePromise || (window.claude && window.claude.use ? window.claude.use('sample') : Promise.resolve(null));
-      const sample = await samplePromise;
-      if (!sample) return null;
-      const res = await sample(`Переведи название товара с китайского на русский для карточки маркетплейса. Коротко, без кавычек и пояснений.\n\n${zh}`, { modelTier: 'quick' });
-      return (res.text || '').trim().split('\n')[0] || null;
-    } catch (e) {
-      return null;
+  async function submitSupplier() {
+    const body = {
+      name: $('#sName').value.trim(), city: $('#sCity').value.trim(), about: $('#sAbout').value.trim(), wechat: $('#sWechat').value.trim(),
+      phone: $('#sPhone').value.trim(), pay: $('#sPay').value.trim(), is_active: $('#sActive').checked,
+    };
+    if (!body.name) { toast('Впишите название поставщика'); $('#sName').focus(); return; }
+    let saved = body;
+    if (LIVE) {
+      saved = await liveTry(() => api(editingSupplier ? `/suppliers/${editingSupplier}` : '/suppliers', { method: editingSupplier ? 'PUT' : 'POST', body }));
+      if (!saved) return;
+    } else {
+      saved = { ...body, code: editingSupplier || `s${Date.now().toString(36)}` };
     }
+    upsert(S.suppliers, saved, 'code');
+    if (!editingSupplier) S.sup = saved.code;
+    if (LIVE) await loadSupplier();
+    save(); closeDrawer(); render();
+    toast(editingSupplier ? 'Карточка сохранена' : `Поставщик «${saved.name}» добавлен: загрузите его каталог`);
   }
 
-  /* ---------- Боевой режим: данные с сервера ---------- */
+  /* ---------- Сервер ---------- */
   function cookie(name) {
     const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
     return m ? decodeURIComponent(m[1]) : '';
   }
   async function api(path, { method = 'GET', body, form } = {}) {
     const headers = { 'X-CSRFToken': cookie('csrftoken') };
-    if (S.acting) headers['X-Act-As'] = S.acting;
-    let payload;
-    if (form) payload = form;
-    else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
+    if (S.sup) headers['X-Act-As'] = S.sup;
+    if (body) headers['Content-Type'] = 'application/json';
     let res;
     try {
-      res = await fetch(API + path, { method, headers, body: payload, credentials: 'same-origin' });
+      res = await fetch(`${API}${path}`, { method, headers, credentials: 'same-origin', body: form || (body ? JSON.stringify(body) : undefined) });
     } catch (e) {
-      throw new Error(t('err.network'));
+      throw new Error('Ошибка сети, попробуйте ещё раз');
     }
-    if (res.status === 401 && path !== '/login') { S.me = null; render(); throw new Error(t('login.title')); }
-    const isJson = (res.headers.get('content-type') || '').includes('json');
-    const data = isJson ? await res.json() : res;
+    if (res.status === 401 && path !== '/login') { S.me = null; render(); throw new Error('Войдите снова'); }
     if (!res.ok) {
-      const detail = isJson && data.detail;
-      throw new Error(typeof detail === 'string' ? detail : res.statusText || String(res.status));
+      let detail = `${res.status}`;
+      try { detail = (await res.json()).detail || detail; } catch (e) { /* не JSON */ }
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
     }
-    return data;
+    const type = res.headers.get('Content-Type') || '';
+    return type.includes('application/json') ? res.json() : res;
   }
-  const num = (v) => Number(v);
-  const mapProduct = (code) => (p) => ({
-    id: String(p.id), sup: code, cat: p.cat, zh: p.zh, ru: p.ru, sku: p.sku || '', src: p.src || '', sizes: p.sizes || '', colors: p.colors || '', price: num(p.price), kg: num(p.kg), sale: p.sale,
-    bulky: p.bulky, tiers: p.tiers.map(([q, c]) => [q, num(c)]), views: 0, orders: p.orders, img: p.img || '', photos: p.photos || 0,
-    desc: p.desc, status: p.status, reason: p.reason,
-  });
-  const mapPost = (code) => (x) => ({
-    id: x.id, sup: code, pid: x.product ? String(x.product) : '', kind: x.kind, text: x.text, status: x.status,
-    images: x.images || [], date: x.date || '',
-  });
-  // На сервере часть заказа у поставщика: «заказать» → «заказано» → «отправлено» → «принято складом».
-  // В интерфейсе это те же вкладки, что у поставщика: «подтвердить» и «отправить».
-  const UI_STATUS = { to_order: 'confirm', ordered: 'ship' };
-  const mapOrder = (code) => (o) => ({
-    id: o.id, num: o.num, sup: code, date: o.date, mode: o.mode, status: UI_STATUS[o.status] || o.status, tracking: o.tracking,
-    items: o.items.map((i) => [String(i.product), i.size, i.qty, num(i.unit), { zh: i.zh, ru: i.ru, img: i.img || '', color: i.color || '' }]),
-  });
+  async function liveTry(fn) {
+    try { return await fn(); } catch (e) { toast(`Не получилось: ${e.message}`); return null; }
+  }
   function upsert(list, item, key = 'id') {
-    const i = list.findIndex((x) => x[key] === item[key]);
+    const i = list.findIndex((x) => String(x[key]) === String(item[key]));
     if (i >= 0) list[i] = item; else list.unshift(item);
   }
-  async function loadAll() {
-    const [products, orders, overview, payouts, shop, fac, posts, purchase] = await Promise.all(
-      ['/products', '/orders', '/overview', '/payouts', '/shop', '/factory', '/posts', '/purchase'].map((path) => api(path)));
-    // Категории берём с сервера: их список ведёт модератор.
-    const cats = await fetch(API.replace(/\/seller$/, '/categories'), { credentials: 'same-origin' }).then((r) => r.json());
-    for (const key of Object.keys(CATS)) delete CATS[key];
-    for (const c of cats) CATS[c.slug] = [c.name_zh || c.name_ru, c.name_ru];
-    const code = shop.code;
-    S.suppliers = [{
-      code, ru: shop.name, zh: shop.name_zh || shop.name, cityRu: shop.city, cityZh: shop.city, about: shop.about,
-      wechat: shop.wechat, phone: shop.phone, payout: shop.payout_details, fact: shop.fact, active: true, base: 0, week: overview.week,
-    }];
-    S.products = products.map(mapProduct(code));
-    S.orders = orders.map(mapOrder(code));
-    S.posts = posts.map(mapPost(code));
-    S.factory[code] = { newItems: fac.new_items, weekly: fac.weekly, restock: fac.restock, perDay: String(fac.per_day) };
-    S.live = {
-      pending: num(overview.pending_cny), today: overview.today, weekLabels: overview.week_labels,
-      paidTotal: num(payouts.paid_total_cny),
-      payouts: payouts.items.map((x) => ({ date: x.date, orders: x.orders, amount: num(x.amount), status: x.status })),
-      purchase: mapPurchase(purchase),
-    };
+  const mapProduct = (p) => ({
+    id: String(p.id), sup: S.sup, cat: p.cat, ru: p.ru, zh: p.zh, sku: p.sku || '', src: p.src || '', sizes: p.sizes || '', colors: p.colors || '',
+    price: num(p.price), kg: num(p.kg), sale: p.sale, bulky: p.bulky, tiers: p.tiers.map(([q, c]) => [q, num(c)]),
+    img: p.img || '', photos: p.photos || 0, desc: p.desc, status: p.status, orders: p.orders,
+  });
+  const mapOrder = (o) => ({
+    id: o.id, num: o.num, sup: S.sup, date: o.date, mode: o.mode, status: o.status, tracking: o.tracking,
+    items: o.items.map((i) => ({ ru: i.ru, img: i.img || '', size: i.size, color: i.color, qty: i.qty, unit: num(i.unit) })),
+  });
+  const mapPost = (x) => ({ id: x.id, sup: S.sup, pid: x.product ? String(x.product) : '', kind: x.kind, text: x.text, status: x.status, images: x.images || [], date: x.date || '' });
+  const mapPurchase = (p) => ({ ...p, total_cny: num(p.total_cny), lines: p.lines.map((l) => ({ ...l, unit: num(l.unit) })) });
+  async function refreshCounts() {
+    const [overview, purchase] = await Promise.all([api('/overview'), api('/purchase')]);
+    S.overview = overview;
+    S.purchase = mapPurchase(purchase);
+  }
+  async function loadSupplier() {
+    const [products, orders, posts] = await Promise.all(['/products', '/orders', '/posts'].map((path) => api(path)));
+    S.products = products.map(mapProduct);
+    S.orders = orders.map(mapOrder);
+    S.posts = posts.map(mapPost);
+    await refreshCounts();
   }
   async function startSession() {
-    S.role = 'supplier';
-    S.lang = S.me.language === 'zh-hans' ? 'zh' : 'ru';
-    if (S.me.can_act) {
-      const wanted = new URLSearchParams(location.search).get('act');
-      const codes = S.me.suppliers.map((x) => x.code);
-      S.acting = codes.includes(wanted) ? wanted : (codes.includes(S.acting) ? S.acting : codes[0] || null);
-    } else {
-      S.acting = null;
-    }
-    S.loading = true;
-    S.loadError = '';
-    render();
-    try {
-      await loadAll();
-    } catch (e) {
-      S.loadError = e.message;
-    }
-    S.loading = false;
+    S.ai = !!S.me.ai;
+    S.suppliers = await api('/suppliers');
+    const active = S.suppliers.filter((s) => s.is_active);
+    const wanted = new URLSearchParams(location.search).get('act') || S.sup;
+    S.sup = (active.find((s) => s.code === wanted) || active[0] || {}).code || '';
+    // Подсказку цены считаем по сегодняшнему курсу, если он есть.
+    fetch(API.replace(/\/seller$/, '/rate'), { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null))
+      .then((r) => { if (r) PRICING.rate = num(r.rub_per_unit); }).catch(() => {});
+    // Категории ведутся в админке: берём их с сервера.
+    const cats = await fetch(API.replace(/\/seller$/, '/categories'), { credentials: 'same-origin' }).then((r) => r.json());
+    for (const key of Object.keys(CATS)) delete CATS[key];
+    for (const c of cats) CATS[c.slug] = c.name_ru;
+    if (S.sup) await loadSupplier();
     render();
   }
   function vLogin() {
     return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%">
-      <h2>${t('login.title')}</h2>
+      <h2>Вход для команды</h2>
       <form class="form" id="loginForm" novalidate style="grid-template-columns:minmax(0,1fr)">
-        <label class="field"><span>${t('login.user')}</span><input id="lUser" autocomplete="username" required></label>
-        <label class="field"><span>${t('login.pass')}</span><input id="lPass" type="password" autocomplete="current-password" required></label>
+        <label class="field"><span>Логин</span><input id="lUser" autocomplete="username" required></label>
+        <label class="field"><span>Пароль</span><input id="lPass" type="password" autocomplete="current-password" required></label>
         <p class="reason" id="loginErr" hidden></p>
-        <button class="btn btn--lime" type="submit">${t('login.submit')}</button>
-        <p class="note">${t('login.hint')}</p>
+        <button class="btn btn--lime" type="submit">Войти</button>
+        <p class="note">Аккаунты выдают основатели в админке.</p>
       </form></section>`;
-  }
-  function renderLiveTop() {
-    $('#roleSwitch').hidden = true;
-    $('#topDemo').hidden = true;
-    let tools = $('#liveTools');
-    if (!tools) {
-      tools = document.createElement('div');
-      tools.id = 'liveTools';
-      tools.className = 'top__right';
-      tools.style.marginLeft = '0';
-      $('.top__right').prepend(tools);
-    }
-    if (!S.me) { tools.innerHTML = ''; return; }
-    const picker = S.me.can_act ? `<label class="sr" for="actAs">Поставщик</label>
-      <select class="select" id="actAs" data-act-as>${S.me.suppliers.map((x) => `<option value="${esc(x.code)}" ${x.code === S.acting ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : '';
-    tools.innerHTML = `${picker}<button class="btn btn--sm" type="button" data-act="logout">${t('logout')}</button>`;
-  }
-  async function liveTry(fn) {
-    try {
-      return await fn();
-    } catch (e) {
-      toast(t('err.save', { e: e.message }));
-      return null;
-    }
   }
 
   /* ---------- Шторка ---------- */
@@ -1221,60 +714,41 @@
     $('#drawerTitle').textContent = title;
     $('#drawerBody').innerHTML = html;
     $('#drawer').hidden = false;
-    $('.drawer__panel').focus({ preventScroll: true });
+    document.documentElement.classList.add('is-locked');
+    $('.drawer__panel').focus();
   }
   function closeDrawer() {
     $('#drawer').hidden = true;
-    draft = null;
-    if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
+    document.documentElement.classList.remove('is-locked');
+    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
   }
 
   /* ---------- События ---------- */
   document.addEventListener('click', async (e) => {
-    const el = e.target.closest('button, [data-act]');
+    const el = e.target.closest('[data-nav], [data-goto], [data-pfilter], [data-ofilter], [data-act]');
     if (!el) return;
     const d = el.dataset;
-    if (d.role) {
-      S.acting = null;
-      S.role = d.role;
-      save();
-      render();
-      return;
-    }
-    if (d.lang) {
-      S.lang = d.lang; save(); render();
-      if (LIVE && S.me && !S.acting) liveTry(() => api('/me/language', { method: 'PUT', body: { language: d.lang === 'zh' ? 'zh-hans' : 'ru' } }));
-      return;
-    }
-    if (d.nav) { S.view[S.role] = d.nav; save(); render(); $('#main').focus({ preventScroll: true }); window.scrollTo(0, 0); return; }
+    if (d.nav) { S.view = d.nav; save(); render(); $('#main').focus({ preventScroll: true }); window.scrollTo(0, 0); return; }
     if (d.goto) {
-      S.view[S.role] = d.goto;
+      S.view = d.goto;
       if (d.ofilter) S.ofilter = d.ofilter;
       if (d.pfilter) S.pfilter = d.pfilter;
-      save(); render(); window.scrollTo(0, 0);
+      save(); render();
       return;
     }
     if (d.pfilter) { S.pfilter = d.pfilter; save(); render(); return; }
     if (d.ofilter) { S.ofilter = d.ofilter; save(); render(); return; }
-
     switch (d.act) {
       case 'close-drawer': closeDrawer(); break;
       case 'add-product': openProductForm(null); break;
       case 'edit-product': openProductForm(d.id); break;
       case 'add-tier': readForm(); draft.tiers.push(['', '']); $('#drawerBody').innerHTML = productFormHTML(); break;
       case 'del-tier': readForm(); draft.tiers.splice(Number(d.i), 1); $('#drawerBody').innerHTML = productFormHTML(); break;
-      case 'translate-form': {
+      case 'translate': {
         readForm();
-        const ru = await translate(draft.zh);
-        if (ru) { draft.ru = ru; $('#drawerBody').innerHTML = productFormHTML(); } else toast('Перевод доступен в превью на claude.ai, впишите название вручную');
-        break;
-      }
-      case 'import': openImport(); break;
-      case 'team-translate': {
-        readForm();
-        if (!draft.zh) { toast('Сначала впишите название на китайском'); $('#fZh').focus(); break; }
+        if (!draft.zh) { toast('Сначала впишите название у поставщика'); $('#fZh').focus(); break; }
         // Описание переводим, только если в нём есть иероглифы: русское не трогаем.
-        const desc = /[\u4e00-\u9fff]/.test(draft.desc) ? draft.desc : '';
+        const desc = /[一-鿿]/.test(draft.desc) ? draft.desc : '';
         toast('Перевожу…');
         const res = await liveTry(() => api('/translate', { method: 'POST', body: { items: [{ zh: draft.zh, desc }] } }));
         if (!res) break;
@@ -1284,16 +758,9 @@
         toast('Переведено, проверьте перед сохранением');
         break;
       }
-      case 'del-post': {
-        if (!window.confirm('Удалить пост из ленты?')) break;
-        if (await liveTry(() => api(`/posts/${d.id}`, { method: 'DELETE' }))) {
-          S.posts = S.posts.filter((x) => String(x.id) !== d.id);
-          render(); toast('Пост удалён');
-        }
-        break;
-      }
+      case 'import': openImport(); break;
       case 'template': {
-        if (!LIVE) { toast(t('import.noDownload')); break; }
+        if (!LIVE) { toast('В превью скачивание отключено, в рабочей версии скачается шаблон Excel'); break; }
         const res = await liveTry(() => api('/template'));
         if (!res) break;
         const a = document.createElement('a');
@@ -1303,105 +770,65 @@
         setTimeout(() => URL.revokeObjectURL(a.href), 2000);
         break;
       }
+      case 'ordered':
+        if (await orderAction(d.id, 'confirm')) toast('Отмечено: заказано у поставщика');
+        break;
+      case 'out-of-stock':
+        if (!window.confirm('Товара нет у поставщика? Эта часть заказа отменится, деньги за неё вернём покупателю.')) break;
+        if (await orderAction(d.id, 'cancel')) toast('Часть заказа отменена, деньги вернём покупателю');
+        break;
       case 'copy-purchase': {
         const text = $('#puText').value;
-        try { await navigator.clipboard.writeText(text); toast('Скопировано, вставьте в WeChat поставщику'); } catch (e) { $('#puText').select(); toast('Выделено: нажмите Ctrl+C'); }
+        try { await navigator.clipboard.writeText(text); toast('Скопировано, вставьте в WeChat поставщику'); } catch (err) { $('#puText').select(); toast('Выделено: нажмите Ctrl+C'); }
         break;
       }
       case 'purchase-ordered': {
-        const pu = S.live.purchase;
-        const res = await liveTry(() => api('/purchase/ordered', { method: 'POST', body: { orders: pu.orders } }));
+        if (!LIVE) {
+          const n = mine(S.orders).filter((o) => o.status === 'to_order').map((o) => { o.status = 'ordered'; return o; }).length;
+          save(); render(); toast(`Заказано: ${n}`);
+          break;
+        }
+        const res = await liveTry(() => api('/purchase/ordered', { method: 'POST', body: { orders: S.purchase.orders } }));
         if (!res) break;
-        S.orders = (await api('/orders')).map(mapOrder(supCode()));
-        await refreshPurchase();
-        render(); toast(`Заказано частей заказов: ${res.ordered}`);
+        await loadSupplier();
+        render(); toast(`Заказано: ${res.ordered}`);
         break;
       }
-      case 'confirm-order':
-        if (LIVE ? await liveOrder(d.num, 'confirm') : (setOrder(d.num, 'ship'), true)) toast(team() ? 'Отмечено: заказано у поставщика' : t('toast.confirmed'));
+      case 'del-post': {
+        if (!window.confirm('Удалить пост из ленты?')) break;
+        if (LIVE && !(await liveTry(() => api(`/posts/${d.id}`, { method: 'DELETE' })))) break;
+        S.posts = S.posts.filter((x) => String(x.id) !== String(d.id));
+        save(); render(); toast('Пост удалён');
         break;
-      case 'out-of-stock':
-        // Для команды это возврат денег покупателю: переспрашиваем.
-        if (team() && !window.confirm('Товара нет у поставщика? Эта часть заказа отменится, деньги за неё вернём покупателю.')) break;
-        if (LIVE ? await liveOrder(d.num, 'cancel') : (setOrder(d.num, 'cancelled'), true)) toast(team() ? 'Часть заказа отменена, деньги вернём покупателю' : t('toast.cancelled'));
+      }
+      case 'add-supplier': openSupplierForm(null); break;
+      case 'edit-supplier': openSupplierForm(d.code); break;
+      case 'open-supplier':
+        S.sup = d.code; S.view = 'products';
+        if (LIVE) await liveTry(loadSupplier);
+        save(); render();
         break;
       case 'logout':
         await liveTry(() => api('/logout', { method: 'POST' }));
-        S.me = null; S.acting = null;
-        render();
+        S.me = null; render();
         break;
-      case 'translate': {
-        const p = product(d.id);
-        el.disabled = true;
-        const ru = await translate(p.zh);
-        el.disabled = false;
-        if (ru) { p.ru = ru; save(); render(); } else toast('Перевод доступен в превью на claude.ai, впишите название вручную');
-        break;
-      }
-      case 'publish': {
-        const p = product(d.id);
-        const input = $(`[data-ru="${d.id}"]`);
-        if (input) p.ru = input.value.trim();
-        if (!p.ru) { toast('Сначала впишите русское название'); input && input.focus(); break; }
-        p.status = 'published'; p.reason = '';
-        save(); render(); toast(`Опубликовано: ${p.ru}`);
-        break;
-      }
-      case 'reject': {
-        const reason = $(`[data-reason="${d.id}"]`).value;
-        if (!reason) { toast('Выберите причину: поставщик увидит её на китайском'); $(`[data-reason="${d.id}"]`).focus(); break; }
-        const p = product(d.id);
-        p.status = 'rejected'; p.reason = reason;
-        save(); render(); toast('Отклонено, поставщик увидит причину');
-        break;
-      }
-      case 'act-as':
-        S.acting = d.code; S.role = 'supplier'; S.view.supplier = 'overview';
-        save(); render(); window.scrollTo(0, 0);
-        break;
-      case 'stop-acting':
-        S.acting = null; S.role = 'moderator'; S.view.moderator = 'suppliers';
-        save(); render();
-        break;
-      case 'toggle-sup': {
-        const s = supplier(d.code);
-        s.active = !s.active;
-        save(); render(); toast(s.active ? `${s.ru}: включён` : `${s.ru}: заблокирован, товары скрыты с витрины`);
-        break;
-      }
-      case 'invite': openInvite(); break;
       default: break;
     }
   });
-
-  const mapPurchase = (p) => ({ ...p, total_cny: num(p.total_cny), lines: p.lines.map((l) => ({ ...l, unit: num(l.unit) })) });
-  async function refreshPurchase() {
-    const p = await liveTry(() => api('/purchase'));
-    if (p) S.live.purchase = mapPurchase(p);
-  }
-  async function liveOrder(num, action, body) {
-    const o = S.orders.find((x) => x.num === num);
-    const res = await liveTry(() => api(`/orders/${o.id}/${action}`, { method: 'POST', body }));
-    if (!res) return false;
-    upsert(S.orders, mapOrder(supCode())(res));
-    await refreshPurchase();
-    render();
-    return true;
-  }
-
-  function setOrder(num, status) {
-    const o = S.orders.find((x) => x.num === num);
-    o.status = status;
-    delete S.buyerStatus[num];
-    save();
-    render();
-  }
 
   document.addEventListener('submit', async (e) => {
     const form = e.target;
     e.preventDefault();
     if (form.id === 'productForm') { submitProduct(); return; }
     if (form.id === 'importForm') { doImport(); return; }
+    if (form.id === 'postForm') { submitPost(); return; }
+    if (form.id === 'supplierForm') { submitSupplier(); return; }
+    if (form.dataset.shipForm) {
+      const input = form.querySelector('input');
+      if (!input.value.trim()) { toast('Укажите трек-номер'); input.focus(); return; }
+      if (await orderAction(form.dataset.shipForm, 'ship', { tracking: input.value.trim() })) toast('Отмечено: едет на склад');
+      return;
+    }
     if (form.id === 'loginForm') {
       const err = $('#loginErr');
       err.hidden = true;
@@ -1412,146 +839,46 @@
         err.hidden = false;
         return;
       }
-      await startSession();
-      return;
-    }
-    if (form.dataset.shipForm) {
-      const input = form.querySelector('input');
-      if (!input.value.trim()) { toast(t('err.tracking')); input.focus(); return; }
-      if (LIVE) {
-        if (await liveOrder(form.dataset.shipForm, 'ship', { tracking: input.value.trim() })) toast(t('toast.shipped'));
-        return;
-      }
-      const o = S.orders.find((x) => x.num === form.dataset.shipForm);
-      o.tracking = input.value.trim();
-      setOrder(o.num, 'shipped');
-      toast(t('toast.shipped'));
-      return;
-    }
-    if (form.id === 'postForm') {
-      if (team()) { teamPost(); return; }
-      const text = $('#poText').value.trim();
-      if (!text) { toast(t('err.required')); $('#poText').focus(); return; }
-      if (LIVE) {
-        const fd = new FormData();
-        fd.append('product', $('#poProduct').value);
-        fd.append('kind', $('#poKind').value);
-        fd.append('text', text);
-        const res = await liveTry(() => api('/posts', { method: 'POST', form: fd }));
-        if (!res) return;
-        S.posts.unshift(mapPost(supCode())(res));
-        render(); toast(t('fac.sent'));
-        return;
-      }
-      S.posts.unshift({ sup: supCode(), pid: $('#poProduct').value, kind: $('#poKind').value, text });
-      save(); render(); toast(t('fac.sent'));
-      return;
-    }
-    if (form.id === 'shopForm') {
-      const s = supplier();
-      if (LIVE) {
-        const body = {
-          name_zh: L() === 'zh' ? $('#sName').value.trim() : s.zh, city: $('#sCity').value.trim(), about: $('#sAbout').value.trim(),
-          wechat: $('#sWechat').value.trim(), phone: $('#sPhone').value.trim(), payout_details: $('#sPayout').value.trim(),
-        };
-        const res = await liveTry(() => api('/shop', { method: 'PUT', body }));
-        if (!res) return;
-        Object.assign(s, { zh: res.name_zh || res.name, cityRu: res.city, cityZh: res.city, about: res.about, wechat: res.wechat, phone: res.phone, payout: res.payout_details });
-        if (!S.acting && $('#sLang').value !== S.lang) {
-          S.lang = $('#sLang').value;
-          await liveTry(() => api('/me/language', { method: 'PUT', body: { language: S.lang === 'zh' ? 'zh-hans' : 'ru' } }));
-        }
-        render(); toast(t('toast.saved'));
-        return;
-      }
-      if (L() === 'zh') { s.zh = $('#sName').value.trim() || s.zh; s.cityZh = $('#sCity').value.trim(); } else { s.ru = $('#sName').value.trim() || s.ru; s.cityRu = $('#sCity').value.trim(); }
-      s.about = $('#sAbout').value.trim();
-      s.payout = $('#sPayout').value.trim();
-      s.wechat = $('#sWechat').value.trim();
-      s.phone = $('#sPhone').value.trim();
-      if (!S.acting) S.lang = $('#sLang').value;
-      save(); render(); toast(t('toast.saved'));
-      return;
-    }
-    if (form.id === 'pricingForm') {
-      const pr = S.pricing;
-      pr.markup = Math.max(0, Number($('#prMarkup').value) || 0);
-      pr.retailFee = Math.max(0, Number($('#prRetail').value) || 0);
-      pr.optFee = Math.max(0, Number($('#prOpt').value) || 0);
-      save(); render(); toast('Сохранено, цены пересчитаны');
-      return;
-    }
-    if (form.id === 'inviteForm') {
-      const ru = $('#iRu').value.trim();
-      if (!ru) { toast('Впишите название'); $('#iRu').focus(); return; }
-      const code = `s${Date.now().toString(36)}`;
-      S.suppliers.push({ code, ru, zh: $('#iZh').value.trim() || ru, cityRu: $('#iCity').value.trim(), cityZh: '', about: '', wechat: $('#iWechat').value.trim(), phone: '', fact: [18, 25], active: true, base: 0, week: [0, 0, 0, 0, 0, 0, 0] });
-      save(); closeDrawer(); render(); toast(`Поставщик «${ru}» создан`);
+      await liveTry(startSession);
     }
   });
 
-  document.addEventListener('change', (e) => {
+  document.addEventListener('change', async (e) => {
     const el = e.target;
+    if (el.id === 'supPick') {
+      S.sup = el.value;
+      if (LIVE) await liveTry(loadSupplier);
+      save(); render();
+      return;
+    }
     if (el.id === 'fPhoto' && el.files[0]) {
       readForm();
       draftFile = el.files[0];
-      const reader = new FileReader();
-      reader.onload = () => { draft.img = reader.result; $('#drawerBody').innerHTML = productFormHTML(); };
-      reader.readAsDataURL(el.files[0]);
+      draft.img = URL.createObjectURL(el.files[0]);
+      $('#drawerBody').innerHTML = productFormHTML();
       return;
     }
     if ((el.id === 'importFile' || el.id === 'importPhotos') && el.files[0]) { el.closest('.drop').querySelector('b').textContent = el.files[0].name; return; }
     if (el.id === 'poImages') { postPreview(el.files); return; }
-    if (el.dataset.actAs !== undefined) { S.acting = el.value; startSession(); return; }
-    if (el.dataset.tier !== undefined) { draft.tiers[Number(el.dataset.tier)][Number(el.dataset.k)] = el.value; return; }
-    if (el.dataset.factory) {
-      const f = factory();
-      f[el.dataset.factory] = el.type === 'checkbox' ? el.checked : el.value;
-      if (LIVE) {
-        liveTry(() => api('/factory', { method: 'PUT', body: { new_items: !!f.newItems, weekly: !!f.weekly, restock: !!f.restock, per_day: Number(f.perDay) } }))
-          .then((res) => res && toast(t('fac.saved')));
-        return;
-      }
-      save(); toast(t('fac.saved'));
-      return;
-    }
-    if (el.dataset.mf) { S.mfilter[el.dataset.mf] = el.value; save(); render(); return; }
-    if (el.dataset.bstatus) {
-      S.buyerStatus[el.dataset.bstatus] = el.value;
-      save(); toast('Статус для покупателя обновлён');
-      return;
-    }
-    if (el.dataset.ru) { product(el.dataset.ru).ru = el.value.trim(); save(); return; }
-    if (el.dataset.ship) {
-      const m = S.pricing.ship[Number(el.dataset.ship)];
-      const v = Math.max(1, Number(el.value) || 1);
-      if (el.dataset.k === 'perKg') m.perKg = v; else m.days[el.dataset.k === 'd0' ? 0 : 1] = v;
-      save(); render();
-    }
+    if (el.dataset.tier !== undefined) { draft.tiers[Number(el.dataset.tier)][Number(el.dataset.k)] = el.value; }
   });
-
-  // Поиск по товарам у модератора: пересчитываем после паузы, чтобы не терять фокус на каждой букве.
-  let qTimer;
   document.addEventListener('input', (e) => {
-    if (e.target.id !== 'mq') return;
-    clearTimeout(qTimer);
-    qTimer = setTimeout(() => {
-      S.mfilter.q = e.target.value;
-      save(); render();
-      const q = $('#mq');
-      q.focus(); q.setSelectionRange(q.value.length, q.value.length);
-    }, 300);
+    if (e.target.id === 'pSearch') {
+      S.q = e.target.value;
+      const pos = e.target.selectionStart;
+      render();
+      const input = $('#pSearch');
+      input.focus();
+      input.setSelectionRange(pos, pos);
+    }
   });
-
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#drawer').hidden) closeDrawer(); });
 
+  /* ---------- Старт ---------- */
   if (LIVE) {
     render();
     api('/me').then((me) => { S.me = me; return startSession(); }).catch(() => { S.me = null; render(); });
   } else {
-    // Ссылка вида seller.html#moderator сразу открывает панель модерации.
-    if (location.hash === '#moderator') { S.role = 'moderator'; S.acting = null; }
-    if (location.hash === '#supplier') { S.role = 'supplier'; S.acting = null; }
     render();
   }
 })();

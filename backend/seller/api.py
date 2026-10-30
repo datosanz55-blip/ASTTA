@@ -1,9 +1,8 @@
-"""API кабинета поставщика (/api/seller/...). Вход по сессии, запись только с CSRF-токеном.
+"""API кабинета команды (/api/seller/...). Вход по сессии, запись только с CSRF-токеном.
 
-Каталоги поставщиков загружает команда ASTTA (основатели и модераторы с правом catalog.change_supplier):
-она открывает кабинет любого поставщика, передав его код в заголовке X-Act-As, пишет по-русски
-и публикует сразу. Вход для самого поставщика остаётся: он видит и меняет только свой магазин,
-а его правки проходят модерацию. Покупателей поставщик не видит: в заказах только товары и количество.
+Поставщики из Китая в систему не заходят: они только источник товара. Каталоги, заказы у поставщиков
+и посты ведёт команда TT и основатели (суперпользователи и группа «Модераторы»). Код поставщика,
+с чьим каталогом работаем, передаётся в заголовке X-Act-As.
 """
 
 import datetime as dt
@@ -11,61 +10,49 @@ from decimal import Decimal
 
 from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
-from django.db.models import Count, F, Sum
+from django.db.models import Count, F, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.text import slugify
 from ninja import File, Form, Router, Schema
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
-from ninja.security import django_auth
+from ninja.security import SessionAuth
 
 from assistant import yandex
 from assistant.services import translate_cards
 from catalog.images import ImageError, prepare_image
 from catalog.importer import build_template, import_catalog, unique_slug
-from catalog.models import (
-    Category,
-    FactorySettings,
-    PostImage,
-    PriceTier,
-    Product,
-    ProductImage,
-    Supplier,
-    SupplierPost,
-)
+from catalog.models import Category, PostImage, PriceTier, Product, ProductImage, Supplier, SupplierPost
 from config.throttles import per_ip
-from orders.models import OrderItem, Payout, SupplierOrder
-from orders.services import SupplierOrderError, mark_ordered, purchase_for, supplier_action, unpaid_received
-
-router = Router(tags=["Кабинет поставщика"], auth=django_auth)
+from orders.models import OrderItem, SupplierOrder
+from orders.services import SupplierOrderError, mark_ordered, purchase_for, supplier_action
 
 MAX_POST_IMAGES = 10
-LANGUAGES = {"ru", "zh-hans"}
 
 
 def can_act(user):
-    return user.is_superuser or user.has_perm("catalog.change_supplier")
+    return user.is_authenticated and (user.is_superuser or user.has_perm("catalog.change_supplier"))
 
 
-def is_team(request):
-    """Команда ASTTA работает за поставщика: пишет по-русски и публикует без модерации."""
-    return can_act(request.user) and not request.user.is_supplier
+class TeamAuth(SessionAuth):
+    """Пускаем только команду: основателей и модераторов."""
+
+    def authenticate(self, request, key):
+        user = super().authenticate(request, key)
+        return user if user and can_act(user) else None
+
+
+router = Router(tags=["Кабинет команды"], auth=TeamAuth())
 
 
 def current_supplier(request) -> Supplier:
-    user = request.user
-    if user.is_supplier and not user.is_superuser:
-        if not user.supplier.is_active:
-            raise HttpError(403, "Магазин заблокирован, напишите менеджеру TT / 店铺已被停用，请联系 TT 经理")
-        return user.supplier
-    if can_act(user):
-        code = request.headers.get("X-Act-As", "")
-        supplier = Supplier.objects.filter(code=code).first() if code else None
-        if supplier is None:
-            raise HttpError(400, "Выберите поставщика")
-        return supplier
-    raise HttpError(403, "Нет доступа к кабинету поставщика")
+    code = request.headers.get("X-Act-As", "")
+    supplier = Supplier.objects.filter(code=code).first() if code else None
+    if supplier is None:
+        raise HttpError(400, "Выберите поставщика")
+    return supplier
 
 
 def image_url(request, product):
@@ -83,38 +70,25 @@ class LoginIn(Schema):
 class SupplierBrief(Schema):
     code: str
     name: str
-    name_zh: str
 
 
 class MeOut(Schema):
     username: str
-    language: str
-    is_supplier: bool
-    can_act: bool
-    supplier: SupplierBrief | None
-    suppliers: list[SupplierBrief]
     ai: bool
+    suppliers: list[SupplierBrief]
 
 
 def me_out(user):
-    acting = can_act(user) and not user.is_supplier
-    return {
-        "username": user.get_username(),
-        "language": user.language,
-        "is_supplier": user.is_supplier,
-        "can_act": acting,
-        "supplier": user.supplier if user.is_supplier else None,
-        "suppliers": list(Supplier.objects.all()) if acting else [],
-        "ai": yandex.enabled(),
-    }
+    return {"username": user.get_username(), "ai": yandex.enabled(),
+            "suppliers": list(Supplier.objects.filter(is_active=True))}
 
 
 @router.post("/login", auth=None, response=MeOut, throttle=[per_ip("seller_login", "10/m")],
-             summary="Вход поставщика или модератора")
+             summary="Вход команды")
 def login_view(request, payload: LoginIn):
     user = authenticate(request, username=payload.username.strip(), password=payload.password)
-    if user is None or not (user.is_supplier or can_act(user)):
-        raise HttpError(401, "Неверный логин или пароль / 用户名或密码错误")
+    if user is None or not can_act(user):
+        raise HttpError(401, "Неверный логин или пароль")
     login(request, user)
     return me_out(user)
 
@@ -125,57 +99,37 @@ def logout_view(request):
     return {"ok": True}
 
 
-@router.get("/me", response=MeOut, summary="Кто вошёл")
+@router.get("/me", response=MeOut, summary="Кто вошёл и с какими поставщиками работаем")
 def me(request):
-    if not (request.user.is_supplier or can_act(request.user)):
-        raise HttpError(403, "Нет доступа к кабинету поставщика")
     return me_out(request.user)
-
-
-class LanguageIn(Schema):
-    language: str
-
-
-@router.put("/me/language", summary="Язык кабинета")
-def set_language(request, payload: LanguageIn):
-    if payload.language not in LANGUAGES:
-        raise HttpError(400, "Язык: ru или zh-hans")
-    request.user.language = payload.language
-    request.user.save(update_fields=["language"])
-    return {"language": payload.language}
 
 
 # ---------- Обзор ----------
 
-@router.get("/overview", summary="Цифры для главной кабинета")
+@router.get("/overview", summary="Цифры для главной кабинета по поставщику")
 def overview(request):
     supplier = current_supplier(request)
     orders = SupplierOrder.objects.filter(supplier=supplier)
-    today = timezone.localdate()
-    days = [today - dt.timedelta(days=i) for i in range(6, -1, -1)]
-    per_day = dict(orders.filter(created_at__date__gte=days[0]).values_list("created_at__date")
-                   .annotate(n=Count("id")).values_list("created_at__date", "n"))
+    counts = dict(orders.values_list("status").annotate(n=Count("id")).values_list("status", "n"))
+    products = dict(Product.objects.filter(supplier=supplier).values_list("status").annotate(n=Count("id"))
+                    .values_list("status", "n"))
     return {
-        "today": per_day.get(today, 0),
-        "week": [per_day.get(day, 0) for day in days],
-        "week_labels": [day.strftime("%d.%m") for day in days],
-        "pending_cny": _pending_sum(supplier),
+        "to_order": counts.get(SupplierOrder.Status.TO_ORDER, 0),
+        "ordered": counts.get(SupplierOrder.Status.ORDERED, 0),
+        "shipped": counts.get(SupplierOrder.Status.SHIPPED, 0),
+        "received_week": orders.filter(status=SupplierOrder.Status.RECEIVED,
+                                       received_at__gte=timezone.now() - dt.timedelta(days=7)).count(),
+        "published": products.get(Product.Status.PUBLISHED, 0),
+        "drafts": sum(n for status, n in products.items() if status != Product.Status.PUBLISHED),
+        "posts": supplier.posts.filter(status=SupplierPost.Status.PUBLISHED).count(),
     }
-
-
-def _pending_sum(supplier):
-    """Сколько юаней поставщик получит в ближайшую выплату: заказы, принятые складом и ещё не оплаченные."""
-    total = Decimal("0")
-    for so in unpaid_received(supplier).prefetch_related("items"):
-        total += so.amount_cny
-    return total
 
 
 # ---------- Товары ----------
 
 class ProductIn(Schema):
+    ru: str
     zh: str = ""
-    ru: str = ""
     sku: str = ""
     cat: str
     price: Decimal
@@ -187,52 +141,41 @@ class ProductIn(Schema):
     src: str = ""
     sizes: str = ""
     colors: str = ""
+    publish: bool = True
 
 
 def product_out(request, p, orders_count=0):
-    team = is_team(request)
     return {
-        # Пока модератор не перевёл, title_ru совпадает с китайским: в форме поставщика показываем пустое поле.
-        "id": p.pk, "slug": p.slug, "sku": p.sku, "zh": p.title_zh,
-        "ru": p.title_ru if team or p.title_ru != p.title_zh else "",
+        "id": p.pk, "slug": p.slug, "sku": p.sku, "ru": p.title_ru, "zh": p.title_zh,
         "cat": p.category.slug, "price": p.price_cny, "sale": p.sale_percent, "kg": p.weight_kg, "bulky": p.bulky,
         "tiers": [[t.min_qty, t.price_cny] for t in sorted(p.tiers.all(), key=lambda t: t.min_qty)],
-        "status": p.status, "reason": p.moderation_note,
-        "desc": p.description_ru if team else p.description_zh, "src": p.source_url,
-        "sizes": p.sizes, "colors": p.colors,
+        "status": p.status, "desc": p.description_ru, "src": p.source_url, "sizes": p.sizes, "colors": p.colors,
         "img": image_url(request, p), "photos": len(p.images.all()), "orders": orders_count,
     }
 
 
-def _my_products(supplier):
+def _products(supplier):
     return (Product.objects.filter(supplier=supplier).select_related("category")
             .prefetch_related("tiers", "images").order_by("-updated_at"))
 
 
-@router.get("/products", summary="Мои товары")
+@router.get("/products", summary="Товары поставщика")
 def products(request):
     supplier = current_supplier(request)
     counts = dict(OrderItem.objects.filter(product__supplier=supplier).values_list("product")
                   .annotate(n=Count("order", distinct=True)).values_list("product", "n"))
-    return [product_out(request, p, counts.get(p.pk, 0)) for p in _my_products(supplier)]
+    return [product_out(request, p, counts.get(p.pk, 0)) for p in _products(supplier)]
 
 
 def _save_product(request, supplier, product, payload: ProductIn):
-    team = is_team(request)
     errors = {}
-    # Команда пишет по-русски, китайское название по желанию. Поставщик наоборот.
-    if team and not payload.ru.strip():
+    if not payload.ru.strip():
         errors["ru"] = "required"
-    if not team and not payload.zh.strip():
-        errors["zh"] = "required"
     if payload.price <= 0:
         errors["price"] = "positive"
     if payload.kg <= 0:
         errors["kg"] = "positive"
     tiers = sorted({q: c for q, c in payload.tiers if q > 0 and c > 0}.items())
-    # Без оптовых ступеней товар продаётся только в розницу. Поставщик указывает опт обязательно.
-    if not tiers and not team:
-        errors["tiers"] = "required"
     if not 0 <= payload.sale <= 90:
         errors["sale"] = "range"
     category = Category.objects.filter(slug=payload.cat).first()
@@ -245,40 +188,31 @@ def _save_product(request, supplier, product, payload: ProductIn):
         raise HttpError(422, str(errors))
 
     with transaction.atomic():
-        is_new = product is None
-        if is_new:
+        if product is None:
             product = Product(supplier=supplier, slug=unique_slug(supplier, sku or "item"))
         product.category = category
+        product.title_ru = payload.ru.strip()
         product.title_zh = payload.zh.strip()
-        if team:
-            product.title_ru = payload.ru.strip()
-            product.description_ru = payload.desc.strip()
-            product.sku = sku
-            product.source_url = payload.src.strip()
-            product.sizes = payload.sizes.strip()
-            product.colors = payload.colors.strip()
-            product.status = Product.Status.PUBLISHED
-        else:
-            # Без русского названия в карточке пока китайское, модератор переведёт перед публикацией.
-            product.title_ru = payload.ru.strip() or (product.title_ru if not is_new else "") or product.title_zh
-            product.description_zh = payload.desc.strip()
-            if is_new:
-                product.sku = sku
-            # Любая правка поставщика снова проходит модерацию.
-            product.status = Product.Status.MODERATION
+        product.description_ru = payload.desc.strip()
+        product.sku = sku
+        product.source_url = payload.src.strip()
+        product.sizes = payload.sizes.strip()
+        product.colors = payload.colors.strip()
         product.price_cny = payload.price
         product.sale_percent = payload.sale
         product.weight_kg = payload.kg
         product.bulky = payload.bulky
+        # Черновик не виден покупателям: пригодится, пока ждём фото или цену от поставщика.
+        product.status = Product.Status.PUBLISHED if payload.publish else Product.Status.DRAFT
         product.moderation_note = ""
         product.full_clean(exclude=["slug"])
         product.save()
         product.tiers.all().delete()
         PriceTier.objects.bulk_create([PriceTier(product=product, min_qty=q, price_cny=c) for q, c in tiers])
-    return product_out(request, _my_products(supplier).get(pk=product.pk))
+    return product_out(request, _products(supplier).get(pk=product.pk))
 
 
-@router.post("/products", summary="Добавить товар (от команды сразу на сайт, от поставщика на модерацию)")
+@router.post("/products", summary="Добавить товар")
 def create_product(request, payload: ProductIn):
     return _save_product(request, current_supplier(request), None, payload)
 
@@ -294,7 +228,7 @@ def _photo(file: UploadedFile):
     try:
         return prepare_image(file.read(), file.name or "photo")
     except ImageError as exc:
-        raise HttpError(400, f"{exc} / 不是图片文件或文件太大") from exc
+        raise HttpError(400, str(exc)) from exc
 
 
 @router.post("/products/{product_id}/image", summary="Загрузить главное фото товара")
@@ -305,10 +239,7 @@ def upload_image(request, product_id: int, file: UploadedFile = File(...)):
     with transaction.atomic():
         product.images.update(position=F("position") + 1)
         ProductImage.objects.create(product=product, image=content, position=0)
-        if not is_team(request):
-            product.status = Product.Status.MODERATION
-            product.save(update_fields=["status", "updated_at"])
-    return product_out(request, _my_products(supplier).get(pk=product.pk))
+    return product_out(request, _products(supplier).get(pk=product.pk))
 
 
 class TranslateItem(Schema):
@@ -322,9 +253,6 @@ class TranslateIn(Schema):
 
 @router.post("/translate", summary="Перевести китайские названия и описания на русский (YandexGPT)")
 def translate(request, payload: TranslateIn):
-    current_supplier(request)
-    if not is_team(request):
-        raise HttpError(403, "Переводит команда ASTTA")
     if not payload.items or len(payload.items) > 50:
         raise HttpError(422, "От 1 до 50 товаров за раз")
     try:
@@ -339,10 +267,7 @@ def translate(request, payload: TranslateIn):
 @router.post("/import", summary="Загрузить каталог: Excel и/или ZIP с фото по артикулам")
 def import_view(request, file: UploadedFile | None = File(None), photos: UploadedFile | None = File(None),
                 publish: Form[bool] = False, translate: Form[bool] = False):
-    supplier = current_supplier(request)
-    # Сразу на сайт может выложить только команда, у поставщика товары идут на модерацию.
-    result = import_catalog(file, supplier, photos=photos, publish=publish and is_team(request),
-                            translate=translate and is_team(request))
+    result = import_catalog(file, current_supplier(request), photos=photos, publish=publish, translate=translate)
     return {"ok": result.ok, "created": result.created, "updated": result.updated, "photos": result.photos,
             "translated": result.translated, "errors": result.errors, "warnings": result.warnings}
 
@@ -355,7 +280,7 @@ def template(request):
     return response
 
 
-# ---------- Заказы ----------
+# ---------- Заказы у поставщика ----------
 
 class ShipIn(Schema):
     tracking: str
@@ -366,33 +291,32 @@ def supplier_order_out(request, so):
         "id": so.pk, "num": so.order.number, "date": timezone.localtime(so.created_at).strftime("%d.%m %H:%M"),
         "mode": so.order.mode, "status": so.status, "tracking": so.tracking,
         "items": [{
-            "product": item.product_id, "zh": item.product.title_zh, "ru": item.title,
+            "product": item.product_id, "ru": item.title, "zh": item.product.title_zh, "sku": item.product.sku,
             "img": image_url(request, item.product),
             "size": item.size, "color": item.color, "qty": item.qty, "unit": item.unit_cny,
         } for item in so.items.all()],
     }
 
 
-def _my_orders(supplier):
+def _orders(supplier):
     # Неоплаченные заказы не показываем: заказывать у поставщика можно только после оплаты.
     return (SupplierOrder.objects.filter(supplier=supplier).exclude(status=SupplierOrder.Status.PENDING)
             .select_related("order").prefetch_related("items__product__images"))
 
 
-@router.get("/orders", summary="Заказы поставщику (последние 200)")
+@router.get("/orders", summary="Заказы у поставщика (последние 200)")
 def orders(request):
-    supplier = current_supplier(request)
-    return [supplier_order_out(request, so) for so in _my_orders(supplier)[:200]]
+    return [supplier_order_out(request, so) for so in _orders(current_supplier(request))[:200]]
 
 
 def _act(request, order_id, action, tracking=""):
     supplier = current_supplier(request)
-    so = get_object_or_404(_my_orders(supplier), pk=order_id)
+    so = get_object_or_404(_orders(supplier), pk=order_id)
     try:
         supplier_action(so, action, tracking, author=request.user)
     except SupplierOrderError as exc:
         raise HttpError(409, str(exc)) from exc
-    return supplier_order_out(request, _my_orders(supplier).get(pk=so.pk))
+    return supplier_order_out(request, _orders(supplier).get(pk=so.pk))
 
 
 @router.post("/orders/{order_id}/confirm", summary="Заказано у поставщика")
@@ -405,11 +329,16 @@ def cancel_order(request, order_id: int):
     return _act(request, order_id, "cancel")
 
 
+@router.post("/orders/{order_id}/ship", summary="Поставщик отправил на склад TT")
+def ship_order(request, order_id: int, payload: ShipIn):
+    return _act(request, order_id, "ship", payload.tracking)
+
+
 class OrderIdsIn(Schema):
     orders: list[int]
 
 
-@router.get("/purchase", summary="Что заказать у поставщика: сводка и сообщение на китайском")
+@router.get("/purchase", summary="Что заказать у поставщика: сводка и сообщение для WeChat")
 def purchase(request):
     p = purchase_for(current_supplier(request))
     return {
@@ -425,98 +354,12 @@ def purchase_ordered(request, payload: OrderIdsIn):
     return {"ordered": mark_ordered(current_supplier(request), payload.orders, author=request.user)}
 
 
-@router.post("/orders/{order_id}/ship", summary="Отправлено на склад TT")
-def ship_order(request, order_id: int, payload: ShipIn):
-    return _act(request, order_id, "ship", payload.tracking)
-
-
-# ---------- Выплаты ----------
-
-@router.get("/payouts", summary="Выплаты в юанях")
-def payouts(request):
-    supplier = current_supplier(request)
-    items = (Payout.objects.filter(supplier=supplier).annotate(orders=Count("supplier_orders"))
-             .order_by("-created_at")[:50])
-    paid = Payout.objects.filter(supplier=supplier, status=Payout.Status.PAID).aggregate(s=Sum("amount_cny"))["s"]
-    return {
-        "pending_cny": _pending_sum(supplier),
-        "paid_total_cny": paid or Decimal("0"),
-        "payout_details": supplier.payout_details,
-        "items": [{
-            "date": timezone.localtime(p.paid_at or p.created_at).strftime("%d.%m.%Y"), "orders": p.orders,
-            "amount": p.amount_cny, "status": p.status,
-        } for p in items],
-    }
-
-
-# ---------- Магазин ----------
-
-class ShopIn(Schema):
-    name_zh: str = ""
-    city: str = ""
-    about: str = ""
-    wechat: str = ""
-    phone: str = ""
-    payout_details: str = ""
-
-
-def shop_out(s):
-    return {
-        "code": s.code, "name": s.name, "name_zh": s.name_zh, "city": s.city, "about": s.about, "wechat": s.wechat,
-        "phone": s.phone, "payout_details": s.payout_details,
-        "fact": [s.fact_days_min, s.fact_days_max] if s.fact_days_min and s.fact_days_max else None,
-    }
-
-
-@router.get("/shop", summary="Настройки магазина")
-def shop(request):
-    return shop_out(current_supplier(request))
-
-
-@router.put("/shop", summary="Сохранить настройки магазина")
-def save_shop(request, payload: ShopIn):
-    supplier = current_supplier(request)
-    # Русское название видят покупатели, его меняет только модератор.
-    for field in ("name_zh", "city", "about", "wechat", "phone", "payout_details"):
-        setattr(supplier, field, getattr(payload, field).strip())
-    supplier.full_clean()
-    supplier.save()
-    return shop_out(supplier)
-
-
-# ---------- Контент-завод ----------
-
-class FactoryIn(Schema):
-    new_items: bool
-    weekly: bool
-    restock: bool
-    per_day: int
-
+# ---------- Посты ----------
 
 class PostIn(Schema):
     product: int | None = None
     kind: str = SupplierPost.Kind.NEW
-    text: str
-
-
-def factory_out(f):
-    return {"new_items": f.new_items, "weekly": f.weekly, "restock": f.restock, "per_day": f.per_day}
-
-
-@router.get("/factory", summary="Настройки контент-завода")
-def factory(request):
-    settings_, _ = FactorySettings.objects.get_or_create(supplier=current_supplier(request))
-    return factory_out(settings_)
-
-
-@router.put("/factory", summary="Сохранить настройки контент-завода")
-def save_factory(request, payload: FactoryIn):
-    settings_, _ = FactorySettings.objects.get_or_create(supplier=current_supplier(request))
-    settings_.new_items, settings_.weekly, settings_.restock = payload.new_items, payload.weekly, payload.restock
-    settings_.per_day = payload.per_day
-    settings_.full_clean()
-    settings_.save()
-    return factory_out(settings_)
+    text: str = ""
 
 
 def post_out(request, post):
@@ -534,7 +377,7 @@ def posts(request):
     return [post_out(request, p) for p in supplier.posts.prefetch_related("images")[:50]]
 
 
-@router.post("/posts", summary="Пост в ленту: текст и до 10 фото")
+@router.post("/posts", summary="Пост в ленту: текст и до 10 фото, сразу публикуется")
 def create_post(request, payload: Form[PostIn], images: list[UploadedFile] | None = File(None)):
     supplier = current_supplier(request)
     product = None
@@ -545,18 +388,13 @@ def create_post(request, payload: Form[PostIn], images: list[UploadedFile] | Non
     text = payload.text.strip()
     images = images or []
     if not text and not images:
-        raise HttpError(422, "Добавьте текст или фото / 内容不能为空")
+        raise HttpError(422, "Добавьте текст или фото")
     if len(images) > MAX_POST_IMAGES:
         raise HttpError(422, f"Не больше {MAX_POST_IMAGES} фото в посте")
     contents = [_photo(f) for f in images]
-    team = is_team(request)
     with transaction.atomic():
-        # Пост команды сразу в ленте и на русском. Пост поставщика ждёт перевода и модерации.
-        post = SupplierPost.objects.create(
-            supplier=supplier, product=product, kind=payload.kind, author=request.user,
-            text="" if team else text, text_ru=text if team else "",
-            status=SupplierPost.Status.PUBLISHED if team else SupplierPost.Status.MODERATION,
-        )
+        post = SupplierPost.objects.create(supplier=supplier, product=product, kind=payload.kind, author=request.user,
+                                           text_ru=text, status=SupplierPost.Status.PUBLISHED)
         for position, content in enumerate(contents):
             PostImage.objects.create(post=post, image=content, position=position)
     return post_out(request, post)
@@ -564,12 +402,74 @@ def create_post(request, payload: Form[PostIn], images: list[UploadedFile] | Non
 
 @router.delete("/posts/{post_id}", summary="Удалить пост")
 def delete_post(request, post_id: int):
-    supplier = current_supplier(request)
-    post = get_object_or_404(SupplierPost, pk=post_id, supplier=supplier)
-    if not is_team(request) and post.status == SupplierPost.Status.PUBLISHED:
-        raise HttpError(403, "Опубликованный пост удаляет модератор")
+    post = get_object_or_404(SupplierPost, pk=post_id, supplier=current_supplier(request))
     files = [(img.image.storage, img.image.name) for img in post.images.all()]
     post.delete()
     for storage, name in files:
         storage.delete(name)
     return {"ok": True}
+
+
+# ---------- Поставщики ----------
+
+class SupplierIn(Schema):
+    name: str
+    city: str = ""
+    about: str = ""
+    wechat: str = ""
+    phone: str = ""
+    pay: str = ""
+    is_active: bool = True
+
+
+def supplier_out(s):
+    return {
+        "code": s.code, "name": s.name, "city": s.city, "about": s.about, "wechat": s.wechat, "phone": s.phone,
+        "pay": s.payout_details, "is_active": s.is_active,
+        "published": getattr(s, "published", 0), "drafts": getattr(s, "drafts", 0),
+        "to_order": getattr(s, "to_order", 0),
+    }
+
+
+def _suppliers():
+    return Supplier.objects.annotate(
+        published=Count("products", filter=Q(products__status=Product.Status.PUBLISHED), distinct=True),
+        drafts=Count("products", filter=~Q(products__status=Product.Status.PUBLISHED), distinct=True),
+        to_order=Count("supplier_orders", filter=Q(supplier_orders__status=SupplierOrder.Status.TO_ORDER),
+                       distinct=True),
+    )
+
+
+def _fill_supplier(supplier, payload: SupplierIn):
+    if not payload.name.strip():
+        raise HttpError(422, "Впишите название поставщика")
+    supplier.name = payload.name.strip()
+    for field, value in (("city", payload.city), ("about", payload.about), ("wechat", payload.wechat),
+                         ("phone", payload.phone), ("payout_details", payload.pay)):
+        setattr(supplier, field, value.strip())
+    supplier.is_active = payload.is_active
+    supplier.full_clean()
+    supplier.save()
+
+
+@router.get("/suppliers", summary="Поставщики: откуда берём товар")
+def suppliers(request):
+    return [supplier_out(s) for s in _suppliers().order_by("-is_active", "name")]
+
+
+@router.post("/suppliers", summary="Добавить поставщика")
+def create_supplier(request, payload: SupplierIn):
+    base = slugify(payload.name)[:40] or "sup"
+    code, n = base, 2
+    while Supplier.objects.filter(code=code).exists():
+        code, n = f"{base}-{n}", n + 1
+    supplier = Supplier(code=code)
+    _fill_supplier(supplier, payload)
+    return supplier_out(_suppliers().get(pk=supplier.pk))
+
+
+@router.put("/suppliers/{code}", summary="Изменить поставщика")
+def update_supplier(request, code: str, payload: SupplierIn):
+    supplier = get_object_or_404(Supplier, code=code)
+    _fill_supplier(supplier, payload)
+    return supplier_out(_suppliers().get(pk=supplier.pk))

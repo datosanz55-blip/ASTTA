@@ -2,17 +2,14 @@
 
 import datetime as dt
 import json
-import secrets
 from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
-from django.contrib.auth.models import Group
 from django.core.files import File
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from accounts.models import User
 from accounts.roles import setup_roles
 from catalog.models import Category, PriceTier, Product, ProductImage, Supplier
 from orders.services import CartLine, create_order, mark_paid
@@ -50,8 +47,6 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--orders", action="store_true", help="создать демо-заказы")
-        parser.add_argument("--users", action="store_true",
-                            help="создать вход в кабинет для каждого поставщика (пароли выводятся один раз)")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -101,16 +96,4 @@ class Command(BaseCommand):
                 # Последний заказ оставляем неоплаченным, остальные уже ждут выкупа у поставщика.
                 if n < len(DEMO_ORDERS) - 1:
                     mark_paid(order, note="Демо: оплата получена")
-        if options["users"]:
-            group = Group.objects.get(name="Поставщики")
-            for code, supplier in suppliers.items():
-                username = f"{code}_supplier"
-                password = secrets.token_urlsafe(9)
-                user, _ = User.objects.get_or_create(username=username, defaults={"role": User.Role.SUPPLIER})
-                user.role, user.supplier, user.language = User.Role.SUPPLIER, supplier, "zh-hans"
-                user.set_password(password)
-                user.save()
-                user.groups.add(group)
-                self.stdout.write(f"  {supplier.name}: логин {username}, пароль {password}")
-
         self.stdout.write(self.style.SUCCESS(f"Готово: {len(data['products'])} товаров"))

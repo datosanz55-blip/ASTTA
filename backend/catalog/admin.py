@@ -7,7 +7,7 @@ from django.urls import path
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
-from catalog.importer import build_template, import_catalog, unique_slug
+from catalog.importer import build_template, import_catalog
 from catalog.models import (
     Category,
     FactorySettings,
@@ -18,10 +18,6 @@ from catalog.models import (
     Supplier,
     SupplierPost,
 )
-
-
-def is_supplier(request):
-    return getattr(request.user, "is_supplier", False) and not request.user.is_superuser
 
 
 @admin.register(Category)
@@ -116,46 +112,20 @@ class ProductAdmin(ModelAdmin):
         (_("Цена и доставка"), {"fields": ("price_cny", "sale_percent", "weight_kg", "bulky", "is_new")}),
         (_("Размеры и цвета"), {"fields": ("sizes", "colors", "size_grid")}),
     )
-    supplier_readonly = ("supplier", "slug", "status", "moderation_note")
+    prepopulated_fields = {"slug": ("title_ru",)}
 
-    # Поставщик видит и меняет только свои товары, а публикует их модератор.
     def get_queryset(self, request):
-        qs = super().get_queryset(request).select_related("supplier", "category")
-        return qs.filter(supplier=request.user.supplier) if is_supplier(request) else qs
-
-    def get_readonly_fields(self, request, obj=None):
-        return self.supplier_readonly if is_supplier(request) else ()
-
-    def get_prepopulated_fields(self, request, obj=None):
-        return {} if is_supplier(request) else {"slug": ("title_ru",)}
-
-    def get_list_filter(self, request):
-        return ("status", "category") if is_supplier(request) else self.list_filter
-
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        if is_supplier(request):
-            actions.pop("publish", None)
-            actions.pop("reject", None)
-        return actions
-
-    def save_model(self, request, obj, form, change):
-        if is_supplier(request):
-            obj.supplier = request.user.supplier
-            obj.status = Product.Status.MODERATION
-            if not obj.slug:
-                obj.slug = unique_slug(obj.supplier, obj.sku or obj.title_zh or "item")
-        super().save_model(request, obj, form, change)
+        return super().get_queryset(request).select_related("supplier", "category")
 
     @admin.action(description=_("Опубликовать"))
     def publish(self, request, queryset):
         updated = queryset.update(status=Product.Status.PUBLISHED, moderation_note="")
         self.message_user(request, _("Опубликовано: %(n)s") % {"n": updated})
 
-    @admin.action(description=_("Отклонить"))
+    @admin.action(description=_("Снять с сайта"))
     def reject(self, request, queryset):
-        updated = queryset.update(status=Product.Status.REJECTED)
-        self.message_user(request, _("Отклонено: %(n)s") % {"n": updated}, messages.WARNING)
+        updated = queryset.update(status=Product.Status.DRAFT)
+        self.message_user(request, _("Снято с сайта: %(n)s") % {"n": updated}, messages.WARNING)
 
     def get_urls(self):
         return [
@@ -172,21 +142,19 @@ class ProductAdmin(ModelAdmin):
     def import_view(self, request):
         if not self.has_add_permission(request):
             return redirect("admin:catalog_product_changelist")
-        supplier = request.user.supplier if is_supplier(request) else None
-        if not supplier and request.POST.get("supplier"):
-            supplier = Supplier.objects.filter(pk=request.POST["supplier"]).first()
+        chosen = request.POST.get("supplier")
+        supplier = Supplier.objects.filter(pk=chosen).first() if chosen else None
         result = None
         if request.method == "POST" and (request.FILES.get("file") or request.FILES.get("photos")):
             if supplier is None:
                 messages.error(request, _("Выберите поставщика"))
             else:
-                # Сразу на сайт выкладывает только команда, у поставщика товары идут на модерацию.
-                publish = bool(request.POST.get("publish")) and not is_supplier(request)
-                translate = bool(request.POST.get("translate")) and not is_supplier(request)
+                publish = bool(request.POST.get("publish"))
+                translate = bool(request.POST.get("translate"))
                 result = import_catalog(request.FILES.get("file"), supplier, photos=request.FILES.get("photos"),
                                         publish=publish, translate=translate)
                 if result.ok:
-                    where = _("Товары уже на сайте.") if publish else _("Товары ушли на модерацию.")
+                    where = _("Товары уже на сайте.") if publish else _("Товары сохранены черновиками.")
                     messages.success(request, _("Загружено: новых %(c)s, обновлено %(u)s, фото %(p)s. %(where)s")
                                      % {"c": result.created, "u": result.updated, "p": result.photos, "where": where})
                     for warning in result.warnings:
@@ -197,6 +165,6 @@ class ProductAdmin(ModelAdmin):
             "title": _("Загрузка каталога из Excel"),
             "opts": self.model._meta,
             "result": result,
-            "suppliers": None if is_supplier(request) else Supplier.objects.filter(is_active=True),
+            "suppliers": Supplier.objects.filter(is_active=True),
         }
         return TemplateResponse(request, "admin/catalog/product/import.html", context)

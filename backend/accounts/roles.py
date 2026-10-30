@@ -1,4 +1,4 @@
-"""Группы прав для ролей. Поставщик работает только со своими товарами (это ограничение в админке каталога).
+"""Группы прав для команды. Поставщики из Китая в систему не заходят: каталоги ведёт команда.
 
 Основатели работают как суперпользователи (createsuperuser): им доступно всё, включая создание аккаунтов.
 """
@@ -22,12 +22,6 @@ ROLE_PERMISSIONS = {
         *_all("assistant", "knowledgearticle"),
         "assistant.view_ailog",
         "accounts.view_user",
-    ],
-    "Поставщики": [
-        "catalog.view_product", "catalog.add_product", "catalog.change_product",
-        "catalog.view_pricetier", "catalog.add_pricetier", "catalog.change_pricetier", "catalog.delete_pricetier",
-        "catalog.view_productimage", "catalog.add_productimage", "catalog.change_productimage",
-        "catalog.delete_productimage", "catalog.view_category",
     ],
     "Агенты": [
         "orders.view_order", "orders.change_order",

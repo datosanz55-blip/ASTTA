@@ -2,7 +2,7 @@ import os
 import zipfile
 from io import BytesIO
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from PIL import Image
 
 from catalog.importer import build_template, import_catalog
@@ -134,3 +134,16 @@ def test_broken_photo_loads_nothing(supplier, shoes):
 def test_nothing_to_import(supplier):
     assert not import_catalog(None, supplier).ok
     assert not import_catalog(None, supplier, photos=BytesIO(b"not zip")).ok
+
+
+def test_old_template_is_rejected(supplier, shoes):
+    wb = Workbook()
+    wb.active.append(["Артикул", "Название", "Категория", "Цена у поставщика, ¥", "Вес в упаковке, кг",
+                      "Опт: от шт.:цена ¥; … (можно пусто)", "Крупногабарит (да/нет)"])
+    wb.active.append(["S-1", "Тапки", "shoes", 10, 0.3, "", "нет"])
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    result = import_catalog(buffer, supplier)
+    assert not result.ok and "свежий шаблон" in result.errors[0]
+    assert not Product.objects.exists()

@@ -103,10 +103,9 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# Поставщики из Китая видят кабинет на китайском, остальные на русском.
+# Работает только команда, интерфейс на русском.
 LANGUAGE_CODE = "ru"
-LANGUAGES = [("ru", _("Русский")), ("zh-hans", _("中文")), ("en", _("English"))]
-LOCALE_PATHS = [BASE_DIR / "locale"]
+LANGUAGES = [("ru", _("Русский"))]
 TIME_ZONE = "Europe/Moscow"
 USE_I18N = True
 USE_TZ = True
@@ -152,7 +151,7 @@ UNFOLD = {
     "SITE_TITLE": "ASTTA",
     "SITE_HEADER": "ASTTA",
     "SITE_SYMBOL": "storefront",
-    "SHOW_LANGUAGES": True,
+    "SHOW_LANGUAGES": False,
     "COLORS": {
         "primary": {
             "50": "250 253 231",
