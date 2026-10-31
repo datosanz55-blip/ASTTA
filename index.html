@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASTTA Shop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="ASTTA — маркетплейс поставщиков TT Логистики: товары из Китая с ценой под ключ в рублях и оптом в юанях.">
+<meta name="theme-color" content="#070b09">
+<link rel="icon" href="assets/img/brand/logo-mark.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div class="splash" id="splash" aria-hidden="true">
+  <div class="splash__bg"></div>
+  <div class="splash__half splash__half--l"><div class="splash__lines"></div></div>
+  <div class="splash__half splash__half--r"><div class="splash__lines"></div></div>
+  <span class="splash__flash"></span>
+  <div class="splash__logo">
+    <span class="splash__halo"></span>
+    <img class="splash__mark" src="assets/img/brand/logo-mark.png" alt="" width="256" height="250">
+    <img class="splash__word" src="assets/img/brand/logo-word.png" alt="" width="600" height="99">
+    <span class="splash__sub">Marketplace</span>
+  </div>
+  <div class="splash__bar"><i></i></div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-bag" viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4v-9Z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+    <symbol id="i-feed" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="10" rx="2"/><path d="M4 18h16M4 21h10"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20Z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 18.5V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8l-3 2.5Z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-arrow-ur" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.7-4 3.8 1 5.4L12 16.3 7.2 19l1-5.4-4-3.8 5.4-.7L12 4Z"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 12.5V5a1 1 0 0 1 1-1h7.5L20 11.5 12.5 19 4 12.5Z"/><circle cx="8.5" cy="8.5" r="1.3"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4V8Z"/><circle cx="12" cy="13" r="3.3"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16"/></symbol>
+    <symbol id="i-agent" viewBox="0 0 24 24"><circle cx="12" cy="9" r="4"/><path d="M5 20c.8-3.4 3.6-5 7-5s6.2 1.6 7 5"/><path d="M7.5 9a4.5 4.5 0 0 1 9 0v2.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 9.5h4l3 3.5v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></symbol>
+    <symbol id="i-plane" viewBox="0 0 24 24"><path d="M3 13.5 21 6l-4.5 13-4-5.5L3 13.5Z"/><path d="m12.5 13.5 4-4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><circle cx="16.5" cy="8" r="2.6"/><path d="M15.5 13.3c2.6-.3 4.6 1 5.1 3.7"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.8 10l6.2 2-6.2 2L12 20.5 10.2 14 4 12l6.2-2L12 3.5Z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 8 4v10l-8 4-8-4V7l8-4Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M10 8.5v7l6-3.5-6-3.5Z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M14 5 21 12l-7 7v-4c-5 0-8 1.5-11 5 1-5.5 4-10 11-11V5Z"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4.5L6 21V4Z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4V9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4V9Z"/><path d="m17 9 5 6M22 9l-5 6"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="1.5"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 4 3 11l7 2.5L12.5 21 21 4Z"/><path d="m10 13.5 4.5-4.5"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="topbar__in">
+    <a class="brand" href="#home" aria-label="ASTTA — на главную">
+      <img class="brand__mark" src="assets/img/brand/logo-mark.png" alt="" width="36" height="35">
+      <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="112" height="18">
+    </a>
+
+    <nav class="topnav" aria-label="Разделы">
+      <a href="#catalog" data-nav="catalog">Каталог</a>
+      <a href="#catalog" data-filter="sale">Акции</a>
+      <a href="#trends" data-nav="trends">Тренды</a>
+      <a href="#feed" data-nav="feed">Лента</a>
+      <a href="#profile" data-nav="profile">Профиль</a>
+    </nav>
+
+    <div class="mode mode--top" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
+      <span class="mode__thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
+      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
+    </div>
+
+    <div class="topbar__actions">
+      <button class="topbtn topbtn--ai" type="button" data-ai-open aria-label="ASTTA AI"><span>AI</span><svg class="ic"><use href="#i-spark"/></svg></button>
+      <button class="topbtn" id="searchBtn" type="button" aria-label="Поиск"><span>Поиск</span><svg class="ic"><use href="#i-search"/></svg></button>
+      <a class="topbtn" href="#cart" aria-label="Корзина"><span>Корзина</span><svg class="ic"><use href="#i-bag"/></svg><b class="count" data-cart-count hidden>0</b></a>
+      <button class="menubtn" id="menuBtn" type="button" aria-label="Открыть меню" aria-controls="menu" aria-expanded="false"><svg class="ic"><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<div class="subbar">
+  <div class="subbar__in">
+    <div class="mode" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
+      <span class="mode__thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
+      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
+    </div>
+    <p class="rate"><span class="mono">1 ¥ = <b data-rate>11,40</b> ₽</span></p>
+  </div>
+</div>
+
+<main id="app">
+
+  <!-- ГЛАВНАЯ -->
+  <section class="view" data-view="home" aria-label="Главная">
+
+    <section class="hero" id="hero" aria-roledescription="карусель" aria-label="Главное">
+      <span class="hero__vword" aria-hidden="true">ASTTA</span>
+      <div class="hero__visual">
+        <div class="hero__media">
+          <img class="is-on" src="assets/img/hero-parka.jpg" alt="Парень в куртке-парке" width="1000" height="1250">
+          <img src="assets/img/hero-leopard.jpg" alt="Парень в рубашке и солнцезащитных очках" width="1000" height="1250" loading="lazy">
+          <img src="assets/img/hero-denim.jpg" alt="Девушка в джинсовой куртке и худи" width="1000" height="1250" loading="lazy">
+        </div>
+        <div class="hero__meta">
+          <span class="hero__tag" id="heroTag">Новинки</span>
+          <div class="hero__count" aria-hidden="true"><b id="heroNum">01</b><i></i><span>03</span></div>
+        </div>
+      </div>
+      <div class="hero__copy">
+        <div class="hero__texts">
+          <div class="htext is-on">
+            <h1>Китай<br>ближе.</h1>
+            <p>Цены в рублях сразу с доставкой.</p>
+          </div>
+          <div class="htext">
+            <h2>Без<br>сюрпризов.</h2>
+            <p>Фото со склада до отправки.</p>
+          </div>
+          <div class="htext">
+            <h2>Опт для<br>своих.</h2>
+            <p>Цены в юанях от 5 штук.</p>
+          </div>
+        </div>
+        <div class="hero__cta">
+          <a class="btn btn--lime" href="#catalog">В каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a>
+          <a class="btn btn--text" href="#link">По ссылке <span class="dot" aria-hidden="true"></span></a>
+        </div>
+      </div>
+      <div class="hero__dots" role="tablist" aria-label="Слайды">
+        <button type="button" role="tab" aria-label="Слайд 1" aria-selected="true"></button>
+        <button type="button" role="tab" aria-label="Слайд 2" aria-selected="false"></button>
+        <button type="button" role="tab" aria-label="Слайд 3" aria-selected="false"></button>
+      </div>
+    </section>
+
+    <div class="perkband">
+      <div class="perkband__strip">
+        <ul class="perks" aria-label="Почему ASTTA">
+          <li><svg class="ic"><use href="#i-tag"/></svg><span>Цена<br>под ключ</span></li>
+          <li><svg class="ic"><use href="#i-camera"/></svg><span>Фото<br>со склада</span></li>
+          <li><svg class="ic"><use href="#i-route"/></svg><span>Трекинг<br>до двери</span></li>
+          <li><svg class="ic"><use href="#i-agent"/></svg><span>Живой<br>агент</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="ai" id="ai" aria-labelledby="aiTitle">
+      <img class="ai__art" src="assets/img/ai-art.webp" width="594" height="526" alt="" aria-hidden="true">
+      <span class="ai__badge"><svg class="ic"><use href="#i-spark"/></svg>ASTTA AI</span>
+      <h2 id="aiTitle">Скажи, что нужно.<br>Соберу корзину.</h2>
+      <div class="aitabs" role="tablist" aria-label="Режим ASTTA AI">
+        <button type="button" role="tab" data-ai-tab="ask" aria-selected="true">Подобрать</button>
+        <button type="button" role="tab" data-ai-tab="build" aria-selected="false">Build</button>
+        <button type="button" role="tab" data-ai-tab="solve" aria-selected="false">Solve</button>
+      </div>
+      <div class="aipane" data-ai-pane="ask">
+        <p class="ai__sub">Подберу из каталога, а чего нет — найду под заказ в Китае и проверю совместимость.</p>
+        <form class="ai__form" id="aiForm" novalidate>
+          <label class="sr" for="aiInput">Запрос для ASTTA AI</label>
+          <input id="aiInput" type="text" autocomplete="off" placeholder="Что подобрать и за сколько?">
+          <button class="roundbtn" type="submit" aria-label="Подобрать"><svg class="ic"><use href="#i-arrow"/></svg></button>
+        </form>
+        <div class="ai__chips">
+          <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ на осень до 15 000 ₽</button>
+          <button class="chip" type="button" data-ai-ask="Подарок парню до 5 000 ₽">Подарок парню до 5 000 ₽</button>
+          <button class="chip" type="button" data-ai-ask="Собери игровой компьютер за 70 000 ₽">Игровой ПК за 70 000 ₽</button>
+        </div>
+      </div>
+      <form class="aipane build" data-ai-pane="solve" id="solveForm" novalidate hidden>
+        <p class="ai__sub">Не знаете, как называется деталь? Снимите фото или короткое видео поломки — определю проблему и предложу запчасти или мастера.</p>
+        <label class="solve__drop" for="solveFile">
+          <svg class="ic"><use href="#i-camera"/></svg>
+          <span id="solveName">Фото или видео проблемы</span>
+          <input id="solveFile" type="file" accept="image/*,video/*">
+        </label>
+        <img class="solve__preview" id="solvePreview" alt="" hidden>
+        <label class="field"><span>Что случилось</span><input id="solveText" type="text" autocomplete="off" placeholder="Например: дверца шкафа перекосилась и не закрывается"></label>
+        <button class="btn btn--lime" type="submit"><svg class="ic"><use href="#i-spark"/></svg>Разобраться</button>
+      </form>
+      <form class="aipane build" data-ai-pane="build" id="buildForm" novalidate hidden>
+        <p class="ai__sub">Опишите цель, и я соберу полный комплект: все зоны, всё совместимо, в рамках бюджета.</p>
+        <div class="build__goals" role="radiogroup" aria-label="Цель">
+          <button class="chip" type="button" data-build-goal="Игровая комната" aria-pressed="true">Игровая комната</button>
+          <button class="chip" type="button" data-build-goal="Домашний офис" aria-pressed="false">Домашний офис</button>
+          <button class="chip" type="button" data-build-goal="Спальня" aria-pressed="false">Спальня</button>
+          <button class="chip" type="button" data-build-goal="Гардероб на осень" aria-pressed="false">Гардероб на осень</button>
+        </div>
+        <label class="field"><span>Или своя цель</span><input id="buildGoal" type="text" autocomplete="off" value="Игровая комната" placeholder="Например: кухня в съёмной квартире"></label>
+        <div class="build__budget">
+          <div class="build__row"><span>Бюджет</span><output id="buildOut">1 000 €</output></div>
+          <input id="buildRange" type="range" min="100" max="5000" step="50" value="1000" aria-label="Бюджет">
+          <div class="build__cur" role="radiogroup" aria-label="Валюта">
+            <button type="button" data-build-cur="eur" aria-pressed="true">€</button>
+            <button type="button" data-build-cur="rub" aria-pressed="false">₽</button>
+          </div>
+        </div>
+        <button class="btn btn--lime" type="submit"><svg class="ic"><use href="#i-spark"/></svg>Собрать комплект</button>
+      </form>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><div class="block__title"><h2>Подборки</h2><p class="block__lead">Выбирай по интересам: стиль, выгодные предложения и всё, что нужно, в одном месте.</p></div><a href="#catalog" class="more">Весь каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><h2>ASTTA Trends</h2><a href="#trends" class="more">Смотреть <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="reels" id="reelRail"></div>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><h2>Акции дня</h2><a href="#catalog" class="more" data-filter="sale">Все <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="rail" id="saleRail"></div>
+    </section>
+
+    <section class="banner" id="link">
+      <div class="banner__copy">
+        <h2>Любой товар<br>по ссылке или фото.</h2>
+        <p>С Poizon, Taobao или 1688. Сразу посчитаем цену с доставкой и оформим заказ, а агент проверит товар перед выкупом.</p>
+        <form class="linkform" id="linkForm" novalidate>
+          <label class="sr" for="linkInput">Ссылка на товар</label>
+          <input id="linkInput" name="link" type="url" inputmode="url" placeholder="Вставьте ссылку" autocomplete="off">
+          <button class="btn btn--black" type="submit">Узнать цену</button>
+        </form>
+        <span class="linkor" aria-hidden="true">или</span>
+        <button class="linkform__photo" type="button" data-photo-order><svg class="ic"><use href="#i-camera"/></svg>Загрузить фото или скриншот</button>
+      </div>
+      <figure class="banner__media"><img src="assets/img/banner-hoodie.jpg" alt="Человек в сером худи" width="900" height="1000" loading="lazy"></figure>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><h2>Категории</h2></div>
+      <div class="cats" id="homeCats"></div>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><h2>Совместный опт</h2><span class="hint">Берём партию вместе по оптовой цене</span></div>
+      <div class="groups" id="groups"></div>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><h2>Хиты</h2><a href="#catalog" class="more">Смотреть всё <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="grid" id="popular"></div>
+    </section>
+
+    <section class="block">
+      <div class="block__head"><h2>Лента</h2><a href="#feed" class="more">Открыть <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
+      <div class="feed feed--preview" id="feedPreview"></div>
+    </section>
+
+    <section class="community">
+      <h2>Дропы и скидки<br>в Telegram.</h2>
+      <button class="btn btn--lime" type="button" data-telegram>Подписаться <svg class="ic"><use href="#i-send"/></svg></button>
+    </section>
+  </section>
+
+  <!-- КАТАЛОГ -->
+  <section class="view" data-view="catalog" aria-label="Каталог" hidden>
+    <div class="pagehead">
+      <h1>Каталог</h1>
+      <p class="pagehead__sub" data-mode-text="Цены в рублях с доставкой|Цены за штуку в юанях"></p>
+    </div>
+    <div class="toolbar">
+      <label class="search">
+        <svg class="ic"><use href="#i-search"/></svg>
+        <input id="q" type="search" placeholder="Кроссовки, диван, наушники…" autocomplete="off" aria-label="Поиск по каталогу">
+      </label>
+      <label class="sort">
+        <span class="sr">Сортировка</span>
+        <select id="sort">
+          <option value="pop">Популярные</option>
+          <option value="cheap">Дешевле</option>
+          <option value="fast">Быстрее</option>
+          <option value="rating">Рейтинг</option>
+        </select>
+      </label>
+    </div>
+    <div class="chips" id="catChips" role="toolbar" aria-label="Категории"></div>
+    <div class="grid" id="catalogGrid"></div>
+    <p class="empty" id="catalogEmpty" hidden>Ничего не нашли. Попробуйте <a href="#link">заказ по ссылке</a>.</p>
+  </section>
+
+  <!-- ЛЕНТА -->
+  <section class="view" data-view="trends" aria-label="ASTTA Trends" hidden>
+    <div class="trends" id="trends">
+      <div class="trends__top">
+        <nav class="trends__tabs" aria-label="Разделы роликов"><span aria-current="page">Тренды</span><a href="#feed">Лента</a></nav>
+        <button class="trends__add" type="button" data-trend-upload aria-label="Опубликовать ролик"><svg class="ic"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="trends__scroll" id="trendsScroll"></div>
+    </div>
+  </section>
+
+  <section class="view" data-view="feed" aria-label="Лента" hidden>
+    <div class="pagehead"><h1>Лента</h1><p class="pagehead__sub">Новинки и поступления от поставщиков</p></div>
+    <div class="stories" id="stories"></div>
+    <div class="chips" id="feedChips" role="toolbar" aria-label="Фильтр ленты"></div>
+    <div class="feed" id="feedList"></div>
+  </section>
+
+  <!-- КОРЗИНА -->
+  <section class="view" data-view="cart" aria-label="Корзина" hidden>
+    <div class="pagehead"><h1>Корзина</h1></div>
+    <div id="cart"></div>
+  </section>
+
+  <!-- ПРОФИЛЬ -->
+  <section class="view" data-view="profile" aria-label="Профиль" hidden>
+    <div class="pagehead">
+      <h1>Профиль</h1>
+      <p class="pagehead__sub">Заказы, семья, подарки и мерки</p>
+    </div>
+    <div id="profileBody"></div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot__in">
+    <a class="brand" href="#home" aria-label="ASTTA — на главную">
+      <img class="brand__mark" src="assets/img/brand/logo-mark.png" alt="" width="36" height="35">
+      <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="112" height="18">
+    </a>
+    <p>Демо-версия. Товары, цены, курс и отзывы здесь примеры.</p>
+  </div>
+</footer>
+
+<nav class="tabbar" aria-label="Навигация">
+  <a href="#home" data-nav="home"><svg class="ic"><use href="#i-home"/></svg><span>Главная</span></a>
+  <a href="#catalog" data-nav="catalog"><svg class="ic"><use href="#i-grid"/></svg><span>Каталог</span></a>
+  <a href="#trends" data-nav="trends"><svg class="ic"><use href="#i-play"/></svg><span>Тренды</span></a>
+  <a href="#cart" data-nav="cart"><svg class="ic"><use href="#i-bag"/></svg><span>Корзина</span><b class="count" data-cart-count hidden>0</b></a>
+  <a href="#profile" data-nav="profile"><svg class="ic"><use href="#i-user"/></svg><span>Профиль</span></a>
+</nav>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-label="Подробности" tabindex="-1">
+    <button class="iconbtn sheet__close" type="button" data-close aria-label="Закрыть"><svg class="ic"><use href="#i-close"/></svg></button>
+    <div class="sheet__body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="drawer" id="menu" hidden>
+  <div class="drawer__backdrop" data-close-menu></div>
+  <aside class="drawer__panel" aria-label="Меню">
+    <div class="drawer__head">
+      <a class="brand" href="#home" data-close-menu aria-label="ASTTA — на главную">
+        <img class="brand__mark" src="assets/img/brand/logo-mark.png" alt="" width="36" height="35">
+        <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="112" height="18">
+      </a>
+      <button class="iconbtn" type="button" data-close-menu aria-label="Закрыть меню"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <nav class="drawer__nav" id="menuCats"></nav>
+    <div class="drawer__links">
+      <a href="#link" data-close-menu>Заказ по ссылке</a>
+      <a href="#feed" data-close-menu>Лента поставщиков</a>
+      <a href="#profile" data-close-menu>Профиль</a>
+      <button type="button" data-open-chat data-close-menu>Написать агенту</button>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="assets/js/app.js"></script>
+</body>
+</html>

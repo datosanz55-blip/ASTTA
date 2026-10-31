@@ -1,0 +1,19 @@
+{% extends 'unfold/layouts/unauthenticated.html' %}
+{% load unfold %}
+
+{% block content %}
+    {% include "unfold/helpers/unauthenticated_title.html" with title="Код из приложения" subtitle="Второй шаг входа в ASTTA" %}
+    <p class="mb-6 text-sm">Откройте Яндекс Ключ или Google Authenticator и введите шесть цифр для ASTTA.</p>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% include "unfold/helpers/field.html" with field=form.code %}
+        <div class="flex flex-col gap-3 mt-6">
+            {% component "unfold/components/button.html" with submit=1 variant="primary" class="w-full" %}Войти{% endcomponent %}
+        </div>
+    </form>
+    <form method="post" action="{% url 'admin:logout' %}" class="mt-4">
+        {% csrf_token %}
+        <button type="submit" class="text-sm underline">Выйти и войти под другим логином</button>
+    </form>
+{% endblock %}

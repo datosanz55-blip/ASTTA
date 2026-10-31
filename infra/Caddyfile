@@ -1,0 +1,54 @@
+# Вход на сервер: HTTPS-сертификат Let's Encrypt выпускается и продлевается сам.
+# Сайт для покупателей (index.html + assets) и сервер (API, админка) живут на одном домене,
+# поэтому браузеру не нужны CORS-разрешения, а cookie админки не уходят на другие сайты.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+
+	# Каталог с архивом фото — до 1 ГБ за раз.
+	request_body {
+		max_size 1GB
+	}
+
+	# Фото товаров, постов и склада. Только картинки: даже если загрузят что-то другое, браузер
+	# не выполнит это как страницу или скрипт.
+	handle /media/* {
+		root * /srv
+		header Content-Security-Policy "default-src 'none'; img-src 'self'; sandbox"
+		header Cache-Control "public, max-age=2592000"
+		file_server
+	}
+
+	@server path /api/* /{$DJANGO_ADMIN_URL}/* /static/* /healthz
+	handle @server {
+		reverse_proxy backend:8000 {
+			# Загрузка каталога с 300 фото обрабатывается около минуты.
+			transport http {
+				response_header_timeout 180s
+			}
+		}
+	}
+
+	# Всё остальное — сайт для покупателей.
+	handle {
+		root * /srv/site
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
