@@ -40,8 +40,8 @@ class Order(models.Model):
     paid_at = models.DateTimeField(_("оплачен"), null=True, blank=True)
     # Если у поставщика не оказалось товара, деньги за эту часть заказа возвращаем.
     refund_rub = models.DecimalField(_("к возврату, ₽"), max_digits=12, decimal_places=2, default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("изменён"), auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -73,7 +73,7 @@ class Payout(models.Model):
                                  related_name="payouts")
     amount_cny = models.DecimalField(_("сумма, ¥"), max_digits=12, decimal_places=2)
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.PENDING)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
     paid_at = models.DateTimeField(_("выплачено"), null=True, blank=True)
 
     class Meta:
@@ -97,7 +97,7 @@ class SupplierOrder(models.Model):
         RECEIVED = "received", _("Принято складом")
         CANCELLED = "cancelled", _("Отменено: нет в наличии")
 
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="supplier_orders")
+    order = models.ForeignKey(Order, verbose_name=_("заказ"), on_delete=models.CASCADE, related_name="supplier_orders")
     # Пустой поставщик — заказ по ссылке или фото: агент сам выкупает товар на площадке (Poizon, Taobao…).
     supplier = models.ForeignKey("catalog.Supplier", verbose_name=_("поставщик"), on_delete=models.PROTECT,
                                  related_name="supplier_orders", null=True, blank=True)
@@ -108,8 +108,8 @@ class SupplierOrder(models.Model):
     tracking = models.CharField(_("трек-номер до склада"), max_length=64, blank=True)
     payout = models.ForeignKey(Payout, verbose_name=_("выплата"), null=True, blank=True, on_delete=models.SET_NULL,
                                related_name="supplier_orders")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("изменён"), auto_now=True)
     received_at = models.DateTimeField(_("принято складом"), null=True, blank=True)
 
     class Meta:
@@ -174,7 +174,7 @@ class OrderEvent(models.Model):
     weight_kg = models.DecimalField(_("фактический вес, кг"), max_digits=7, decimal_places=3, null=True,
                                     blank=True)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]

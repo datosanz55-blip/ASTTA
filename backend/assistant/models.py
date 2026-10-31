@@ -11,7 +11,7 @@ class KnowledgeArticle(models.Model):
     keywords = models.CharField(_("другие слова, которыми спрашивают"), max_length=300, blank=True,
                                 help_text=_("Например: доставка, сроки, когда приедет"))
     is_active = models.BooleanField(_("используется"), default=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(_("изменён"), auto_now=True)
 
     class Meta:
         ordering = ["title"]
@@ -38,7 +38,7 @@ class AiLog(models.Model):
     helpful = models.BooleanField(_("ответ помог"), null=True, blank=True)
     tokens = models.PositiveIntegerField(_("токены"), default=0)
     error = models.CharField(_("ошибка"), max_length=300, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]

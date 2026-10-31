@@ -189,7 +189,8 @@ class OrderAdmin(ModelAdmin):
     """Отслеживание заказов. Каждое изменение статуса — событие в истории: покупатель видит его как трекинг.
     Фото со склада и фактический вес добавляются строкой в «Историю заказа» внизу карточки."""
 
-    list_display = ("number", "status_label", "what", "contact", "total_rub", "refund_rub", "created")
+    list_display = ("num", "status_label", "what", "contact", "total_rub", "refund_rub", "created")
+    list_display_links = ("num",)
     list_filter = ("status", "mode", "agent")
     search_fields = ("number", "contact", "name", "items__title")
     date_hierarchy = "created_at"
@@ -210,6 +211,10 @@ class OrderAdmin(ModelAdmin):
     @display(description=_("статус"), ordering="status", label=STATUS_COLORS)
     def status_label(self, obj):
         return obj.get_status_display()
+
+    @admin.display(description=_("номер"), ordering="number")
+    def num(self, obj):
+        return format_html('<span style="white-space:nowrap">{}</span>', obj.number)
 
     @admin.display(description=_("создан"), ordering="created_at")
     def created(self, obj):

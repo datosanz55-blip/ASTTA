@@ -59,7 +59,7 @@ class LinkRequest(models.Model):
     agent = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("агент"), null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="link_requests")
     agent_note = models.TextField(_("ответ агента"), blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -55,7 +55,7 @@ class Supplier(models.Model):
     fact_days_min = models.PositiveSmallIntegerField(_("факт. срок от, дн."), null=True, blank=True)
     fact_days_max = models.PositiveSmallIntegerField(_("факт. срок до, дн."), null=True, blank=True)
     is_active = models.BooleanField(_("активен"), default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
@@ -111,8 +111,8 @@ class Product(models.Model):
     rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     reviews_count = models.PositiveIntegerField(default=0)
     sold_count = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("изменён"), auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -206,7 +206,7 @@ class SupplierPost(models.Model):
         PUBLISHED = "published", _("Опубликован")
         REJECTED = "rejected", _("Отклонён")
 
-    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name="posts")
+    supplier = models.ForeignKey(Supplier, verbose_name=_("поставщик"), on_delete=models.CASCADE, related_name="posts")
     product = models.ForeignKey(Product, verbose_name=_("товар"), on_delete=models.CASCADE, related_name="posts",
                                 null=True, blank=True)
     kind = models.CharField(_("тип"), max_length=16, choices=Kind.choices, default=Kind.NEW)
@@ -215,7 +215,7 @@ class SupplierPost(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("автор"), null=True, blank=True,
                                on_delete=models.SET_NULL, related_name="+")
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.MODERATION)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
