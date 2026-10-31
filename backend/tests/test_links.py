@@ -9,7 +9,7 @@ from PIL import Image
 from accounts.models import User
 from links.models import LinkRequest, Marketplace
 from links.services import estimate, find_in_catalog, parse_link
-from pricing.models import CommissionRule
+from pricing.models import CommissionRule, PricingConfig
 from tests.conftest import make_product
 
 
@@ -47,7 +47,18 @@ def test_find_same_product_in_catalog(supplier, shoes, pricing_setup):
     assert hidden and find_in_catalog(parse_link("https://detail.1688.com/offer/777.html")) is None
 
 
+def test_estimate_by_link_rate_and_flat_logistics(pricing_setup):
+    # Как просили: ¥601 со скрина Poizon × 13 ₽ + 1000 ₽ логистики = 8813 → 8810 ₽.
+    e = estimate(Decimal("601"), 1, Marketplace.objects.get(code="poizon"))
+    assert (e.rate, e.goods_rub, e.delivery_rub, e.fee_rub) == (13, 7813, 1000, 0)
+    assert e.total_rub == 8810
+    assert estimate(Decimal("601"), 2).total_rub == 17630  # 15626 + 2000
+
+
 def test_estimate_uses_category_weight_marketplace_and_commission(supplier, shoes, pricing_setup):
+    config = PricingConfig.load()
+    config.link_rate = config.link_delivery_rub = None  # пустые поля — считаем как каталог
+    config.save()
     make_product(supplier, shoes, "a", 100, "1.2", [])
     make_product(supplier, shoes, "b", 100, "1.6", [])
     poizon = Marketplace.objects.get(code="poizon")
@@ -79,7 +90,7 @@ def test_lookup_and_estimate_api(supplier, shoes, pricing_setup):
 
     data = client.post("/api/link/estimate", {"price_cny": "199", "qty": 2, "marketplace": "taobao",
                                               "category": "shoes"}, content_type="application/json").json()
-    assert data["weight_kg"] == "0.70" and data["total_rub"]
+    assert data["total_rub"] == "7170"  # 199 × 2 × 13 + 1000 × 2 = 7174 → до 10 ₽
     bad = client.post("/api/link/estimate", {"price_cny": "0"}, content_type="application/json")
     assert bad.status_code == 422
 

@@ -19,7 +19,7 @@ class ShippingMethodAdmin(ModelAdmin):
 
 @admin.register(PricingConfig)
 class PricingConfigAdmin(ModelAdmin):
-    list_display = ("__str__", "retail_fee", "wholesale_fee", "rate_markup")
+    list_display = ("__str__", "retail_fee", "wholesale_fee", "rate_markup", "link_rate", "link_delivery_rub")
 
     def has_add_permission(self, request):
         return not PricingConfig.objects.exists()

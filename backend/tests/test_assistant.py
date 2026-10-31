@@ -167,7 +167,7 @@ def test_photo_reading_api(ai, supplier, shoes, pricing_setup):
     assert (Decimal(data["price_cny"]), data["category"]) == (Decimal("899"), "shoes")
     assert data["understood"] and not data["handoff"] and data["request_id"] is None
     assert data["similar"][0]["slug"] == "sneaker"
-    assert data["estimate"]["weight_kg"] == "1.20"
+    assert data["estimate"]["total_rub"] == "12690"  # 899 × 13 + 1000 = 12 687 → до 10 ₽
     ocr_request = calls[0][1]
     assert ocr_request["languageCodes"] == ["zh", "ru", "en"] and ocr_request["mimeType"] == "JPEG"
     assert AiLog.objects.filter(kind="photo").count() == 1
@@ -241,6 +241,18 @@ def test_photo_not_understood_goes_to_manager(ai, supplier, shoes, pricing_setup
     assert (data["understood"], data["handoff"]) == (False, True)
     assert LinkRequest.objects.get(pk=data["request_id"]).text.startswith("Фото без ссылки")
     assert AiLog.objects.get(kind="photo").handoff is True
+
+
+def test_screenshot_with_only_price_is_counted_at_once(ai, supplier, shoes, pricing_setup):
+    # Скрин Poizon: видна только цена ¥601, что за вещь — не поняли. Всё равно считаем сразу, без менеджера.
+    replies = ai[1]
+    replies.extend([{"textAnnotation": {"fullText": "¥601\n到手价", "blocks": [{"lines": [
+        {"text": "¥601", "boundingBox": {"vertices": [{"x": "0", "y": "0"}, {"x": "0", "y": "90"}]}},
+        {"text": "到手价", "boundingBox": {"vertices": [{"x": "0", "y": "100"}, {"x": "0", "y": "120"}]}},
+    ]}]}}, gpt({"title_ru": "", "category": "", "price_cny": None, "keywords": []})])
+    data = Client().post("/api/link/photo", {"photo": jpeg(), "marketplace": "poizon"}).json()
+    assert data["understood"] and not data["handoff"] and data["request_id"] is None
+    assert data["estimate"]["total_rub"] == "8810"  # 601 × 13 + 1000 = 8813
 
 
 def test_photo_when_yandex_fails_goes_to_manager(ai, supplier, shoes, pricing_setup):

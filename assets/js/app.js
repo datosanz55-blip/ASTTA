@@ -6,6 +6,9 @@
   const EUR = 95;             // ₽ за 1 €, демо-значение для бюджета в евро
   const FEE_RETAIL = 0.05;    // сервисный сбор ASTTA с розничной продажи
   const FEE_OPT = 0.03;       // сервисный сбор ASTTA с оптовой продажи
+  // Заказ по ссылке или фото: цена с площадки по своему курсу плюс логистика за штуку (в админке меняются).
+  const LINK_RATE = 13;       // ₽ за 1 ¥
+  const LINK_DELIVERY = 1000; // ₽ за штуку
   const SHIP = {
     auto:  { name: 'Авто', perKg: 420, days: [18, 25], icon: 'truck' },
     air:   { name: 'Авиа', perKg: 980, days: [8, 12], icon: 'plane' },
@@ -1640,11 +1643,6 @@ ${aiCatalogJSON()}
   // На сервере то же самое делают /api/link/lookup, /api/link/estimate и /api/link/requests.
   // Из сообщения «поделиться» (Taobao, Poizon и др.) берём первую ссылку.
   const extractUrl = (text) => (text.match(/https?:\/\/[^\s<>"'，。、】」）)]+/i) || [text])[0];
-  // Вес не знаем: берём средний вес товаров этой категории в каталоге, как сервер.
-  function catWeight(cat) {
-    const items = PRODUCTS.filter((p) => p.cat === cat);
-    return items.length ? items.reduce((sum, p) => sum + p.kg, 0) / items.length : 1;
-  }
   let linkCalc = null;
   function openLinkCalc(text) {
     const url = extractUrl(text);
@@ -1658,10 +1656,9 @@ ${aiCatalogJSON()}
         <div class="grid2">
           <label class="field"><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Например, 299"></label>
           <label class="field"><span>Количество</span><input id="lcQty" type="number" min="1" max="10000" step="1" inputmode="numeric" value="1"></label>
-          <label class="field"><span>Что это</span><select id="lcCat">${CATS.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
-          <label class="field"><span>Размер, цвет (если есть)</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off"></label>
+          <label class="field field--full"><span>Размер, цвет (если есть)</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off"></label>
         </div>
-        <label class="field"><span>Фото или скриншот товара (необязательно)</span><input id="lcPhoto" type="file" accept="image/*"></label>
+        <label class="field"><span>Или скриншот с ценой: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>
         <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
         <div id="lcSum"></div>
         <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username"></label>
@@ -1678,18 +1675,34 @@ ${aiCatalogJSON()}
       box.innerHTML = '<div class="sum"><div class="sum__note">Впишите цену в юанях, и здесь появится расчёт.</div></div>';
       return;
     }
-    const cat = $('#lcCat').value;
-    const kg = catWeight(cat);
-    const ship = SHIP[cat === 'furniture' ? 'cargo' : 'auto'];
-    const goods = price * qty * RATE;
-    const delivery = kg * ship.perKg * qty;
-    const fee = goods * FEE_RETAIL;
-    box.innerHTML = `<div class="sum">
-      <div class="sum__row"><span>Товар · ${cny(price * qty)}</span><span>${rub(goods + fee)}</span></div>
-      <div class="sum__row"><span>Доставка · ${ship.name.toLowerCase()}, около ${(kg * qty).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} кг</span><span>${rub(delivery)}</span></div>
-      <div class="sum__row sum__row--total"><span>Примерно</span><span>${rub(round10(goods + delivery + fee))}</span></div>
-      <div class="sum__note">Вес взяли средний для категории «${esc(CATS.find((c) => c.id === cat).name)}». ${linkCalc.platform === 'Poizon' ? 'У Poizon бывает своя надбавка за проверку подлинности: агент учтёт её в точной цене.' : 'Доставку по Китаю до склада агент добавит в точной цене.'}</div>
+    box.innerHTML = linkSumHTML(price, qty);
+  }
+  function linkTotal(price, qty = 1) { return round10(price * qty * LINK_RATE + LINK_DELIVERY * qty); }
+  function linkSumHTML(price, qty = 1) {
+    return `<div class="sum">
+      <div class="sum__row"><span>Товар · ${cny(price * qty)} по ${LINK_RATE} ₽</span><span>${rub(price * qty * LINK_RATE)}</span></div>
+      <div class="sum__row"><span>Логистика · ${rub(LINK_DELIVERY)} за штуку</span><span>${rub(LINK_DELIVERY * qty)}</span></div>
+      <div class="sum__row sum__row--total"><span>Примерно</span><span>${rub(linkTotal(price, qty))}</span></div>
+      <div class="sum__note">Расчёт предварительный: точную цену агент подтвердит после проверки продавца и наличия.</div>
     </div>`;
+  }
+  // Цена со скриншота. В превью на claude.ai картинку читает Claude, на сервере — Yandex Vision + YandexGPT.
+  async function readPricePhoto(file) {
+    const sample = await aiSample();
+    if (!sample) return null;
+    try {
+      const limits = await sample.limits();
+      if (!limits || !limits.images) return null;
+      const data = await sample.json(
+        'Это скриншот товара с китайской площадки (Poizon/Dewu, Taobao, 1688, Pinduoduo). Найди цену, которую покупатель платит за товар, '
+        + 'в юанях (обычно самая крупная цифра со знаком ¥ или 元; не зачёркнутая и не цена доставки) и коротко назови товар по-русски. '
+        + 'Ответь только JSON: {"price_cny": число или null, "title_ru": "название или пустая строка"}. Если цены не видно, price_cny = null.',
+        { images: [file], modelTier: 'quick' });
+      const price = Number(data && data.price_cny);
+      return price > 0 ? { price, title: String(data.title_ru || '') } : null;
+    } catch (e) {
+      return null; // нет разрешения или ошибка: дальше путь через менеджера
+    }
   }
   function sendLinkRequest() {
     const input = $('#lcContact');
@@ -1705,15 +1718,18 @@ ${aiCatalogJSON()}
       'Приняла заявку. Проверю продавца и пришлю точную цену в рублях с доставкой в течение 15 минут.');
   }
 
-  // Товар по фото. На сервере /api/link/photo: узнали товар и цену — сразу расчёт, не узнали — заявка менеджеру.
-  // В превью распознавания нет, поэтому показываем путь «не узнали»: менеджер уточнит и пришлёт цену.
+  // Товар по фото. Видим цену — сразу считаем «¥ × 13 ₽ + 1000 ₽», цены нет — уточняет менеджер.
+  // На сервере цену читает Yandex Vision (/api/link/photo), в превью — Claude через sample с картинкой.
   function openPhotoOrder() {
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">Товар по фото</h2>
-      <p class="note">Пришлите фото или скриншот с Poizon, Taobao, 1688. Если узнаем товар и цену, сразу посчитаем. Если нет — уточним у менеджера и пришлём цену в чате.</p>
+      <p class="note">Пришлите скриншот с Poizon, Taobao, 1688. Увидим цену — сразу посчитаем. Не увидим — уточним у менеджера и пришлём цену в чате.</p>
       <form class="stack" id="photoOrderForm" novalidate>
         <label class="field"><span>Фото или скриншот</span><input id="poPhoto" type="file" accept="image/*"></label>
         <img class="linkcalc__photo" id="poPreview" alt="" hidden>
+        <p class="note" id="poStatus" hidden></p>
+        <label class="field"><span>Цена на скриншоте, ¥</span><input id="poPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Заполним сами, если увидим"></label>
+        <div id="poSum"></div>
         <label class="field"><span>Размер, цвет, количество (если важно)</span><input id="poNote" placeholder="42, чёрный, 1 шт." autocomplete="off"></label>
         <label class="field"><span>Телефон или Telegram</span><input id="poContact" autocomplete="tel" placeholder="+7 … или @username"></label>
         <button class="btn btn--lime btn--wide" type="submit">Отправить</button>
@@ -1727,9 +1743,35 @@ ${aiCatalogJSON()}
     input.closest('.field').classList.toggle('is-error', bad);
     if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
     const note = $('#poNote').value.trim();
+    const price = Number($('#poPrice').value);
+    const title = photoTitle;
     closeSheet();
     openChat();
-    sendChat(`Фото товара${note ? ` (${note})` : ''}`, 'Не узнали товар на фото — уточню у менеджера и пришлю цену в чате.');
+    if (price > 0) {
+      sendChat(`Фото товара${title ? `: ${title}` : ''}, ${cny(price)}${note ? ` (${note})` : ''}`,
+        `Посчитала: примерно ${rub(linkTotal(price))} с логистикой (${cny(price)} по ${LINK_RATE} ₽ + ${rub(LINK_DELIVERY)}). Проверю продавца и наличие и подтвержу цену.`);
+    } else {
+      sendChat(`Фото товара${note ? ` (${note})` : ''}`, 'Не увидела цену на фото — уточню у менеджера и пришлю цену в чате.');
+    }
+  }
+  let photoTitle = '';
+  function photoSumOut() {
+    const price = Number($('#poPrice').value);
+    $('#poSum').innerHTML = price > 0 ? linkSumHTML(price) : '';
+  }
+  async function onPricePhoto(file, priceInput, statusEl, after) {
+    photoTitle = '';
+    if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Смотрим на цену…'; }
+    const found = await readPricePhoto(file);
+    if (!document.contains(priceInput)) return;
+    if (found) {
+      priceInput.value = found.price;
+      photoTitle = found.title;
+      if (statusEl) statusEl.textContent = `Увидели цену ${cny(found.price)}${found.title ? ` · ${found.title}` : ''}. Если ошиблись, поправьте.`;
+    } else if (statusEl) {
+      statusEl.textContent = 'Цену не увидели: впишите её сами или отправьте как есть — уточним у менеджера.';
+    }
+    after();
   }
 
   /* ---------- Шторка, меню, уведомления ---------- */
@@ -2182,16 +2224,19 @@ ${aiCatalogJSON()}
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
-    if (t.id === 'lcPrice' || t.id === 'lcQty' || t.id === 'lcCat') linkCalcOut();
+    if (t.id === 'lcPrice' || t.id === 'lcQty') linkCalcOut();
+    if (t.id === 'poPrice') photoSumOut();
     if (t.id === 'poPhoto') {
       const file = t.files[0];
       const pv = $('#poPreview');
       if (file && file.type.startsWith('image/')) { pv.src = URL.createObjectURL(file); pv.hidden = false; } else pv.hidden = true;
+      if (file && file.type.startsWith('image/')) onPricePhoto(file, $('#poPrice'), $('#poStatus'), photoSumOut);
     }
     if (t.id === 'lcPhoto') {
       const file = t.files[0];
       const pv = $('#lcPreview');
       if (file && file.type.startsWith('image/')) { pv.src = URL.createObjectURL(file); pv.hidden = false; } else pv.hidden = true;
+      if (file && file.type.startsWith('image/')) onPricePhoto(file, $('#lcPrice'), null, linkCalcOut);
     }
     if (t.id === 'solveFile') {
       const file = t.files[0];

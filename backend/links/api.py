@@ -196,8 +196,8 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
             reading = read_photo(data)
         except (ValueError, yandex.AIError):
             reading = None  # Яндекс не ответил: не мучаем покупателя, передаём фото менеджеру
-    # Узнали товар, только если есть и цена, и понятно, что это за вещь. Иначе вручную считает менеджер.
-    understood = bool(reading and reading.price_cny and (reading.title_ru or reading.category))
+    # Видим цену — сразу считаем, даже если не поняли, что за вещь. Цены нет — считает менеджер вручную.
+    understood = bool(reading and reading.price_cny)
     result = None
     if understood:
         try:

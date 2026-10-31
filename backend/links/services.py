@@ -15,6 +15,7 @@ from django.db.models import Avg
 
 from catalog.models import Category, Product
 from links.models import Marketplace
+from pricing.models import PricingConfig
 from pricing.services import PricingContext, round10
 
 URL_RE = re.compile(r"https?://[^\s<>\"'，。、】」）)]+", re.IGNORECASE)
@@ -102,23 +103,32 @@ def category_weight(category: Category | None) -> Decimal | None:
 
 def estimate(price_cny: Decimal, qty: int = 1, marketplace: Marketplace | None = None,
              category: Category | None = None, weight_kg: Decimal | None = None, bulky: bool = False) -> Estimate:
-    """Предварительная цена под ключ: как у товаров каталога, плюс доставка по Китаю и надбавка площадки."""
-    ctx = PricingContext()
-    method = ctx.default_shipping(bulky)
-    notes = []
-    if weight_kg:
-        weight_source = "указан"
-    elif (weight_kg := category_weight(category)) is not None:
-        weight_source = f"средний вес товаров «{category.name_ru}» у нас в каталоге"
+    """Предварительная цена под ключ по цене с площадки.
+
+    Если в настройках цены задан курс для заказа по ссылке, считаем просто: цена × этот курс + логистика за штуку
+    (сбор уже в курсе). Иначе как товары каталога: курс ЦБ с надбавкой, доставка по весу, сервисный сбор.
+    Надбавка площадки и доставка по Китаю добавляются в обоих случаях.
+    """
+    config = PricingConfig.load()
+    simple = config.link_rate is not None
+    ctx = PricingContext(config=config, rate=config.link_rate) if simple else PricingContext(config=config)
+    notes = ["Цена предварительная: точную пришлёт агент после проверки товара и продавца."]
+    if config.link_delivery_rub is not None:
+        weight_kg = weight_kg or Decimal("0")
+        weight_source = "логистика за штуку из настроек цены"
+        delivery = config.link_delivery_rub * qty
     else:
-        weight_kg, weight_source = DEFAULT_WEIGHT_KG, "не знаем вес, считаем 1 кг"
+        if weight_kg:
+            weight_source = "указан"
+        elif (weight_kg := category_weight(category)) is not None:
+            weight_source = f"средний вес товаров «{category.name_ru}» у нас в каталоге"
+        else:
+            weight_kg, weight_source = DEFAULT_WEIGHT_KG, "не знаем вес, считаем 1 кг"
+        delivery = weight_kg * ctx.default_shipping(bulky).rub_per_kg * qty
     goods = price_cny * qty * ctx.rate
     china = (marketplace.china_delivery_cny if marketplace else Decimal("0")) * ctx.rate
     extra = goods * (marketplace.extra_fee if marketplace else Decimal("0"))
-    fee = goods * ctx.fee_share(None, category.pk if category else None, "retail")
-    notes.append("Цена предварительная: точную пришлёт агент после проверки товара и продавца.")
-    if marketplace is None:
-        notes.append("Площадку не узнали: доставку по Китаю агент посчитает отдельно.")
+    fee = Decimal("0") if simple else goods * ctx.fee_share(None, category.pk if category else None, "retail")
     return Estimate(price_cny=price_cny, qty=qty, rate=ctx.rate, weight_kg=weight_kg, weight_source=weight_source,
                     goods_rub=goods, china_delivery_rub=china, marketplace_fee_rub=extra,
-                    delivery_rub=weight_kg * method.rub_per_kg * qty, fee_rub=fee, notes=notes)
+                    delivery_rub=delivery, fee_rub=fee, notes=notes)

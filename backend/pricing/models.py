@@ -61,6 +61,14 @@ class PricingConfig(models.Model):
                                       validators=[MinValueValidator(0), MaxValueValidator(1)],
                                       help_text=_("0.02 = курс ЦБ + 2% на колебания между оплатой и выкупом"))
 
+    # Заказ по ссылке и по фото: простой расчёт «цена × свой курс + логистика за штуку».
+    link_rate = models.DecimalField(_("курс для заказа по ссылке и фото, ₽ за ¥"), max_digits=8, decimal_places=4,
+                                    null=True, blank=True, default=Decimal("13"),
+                                    help_text=_("Пусто — считать по курсу ЦБ с надбавкой и сбором, как каталог"))
+    link_delivery_rub = models.DecimalField(_("логистика для заказа по ссылке и фото, ₽ за штуку"), max_digits=10,
+                                            decimal_places=2, null=True, blank=True, default=Decimal("1000"),
+                                            help_text=_("Пусто — по весу и тарифу доставки"))
+
     class Meta:
         verbose_name = _("настройки цены")
         verbose_name_plural = _("настройки цены")
