@@ -40,3 +40,22 @@ jobs:
         run: DJANGO_DEBUG=1 python manage.py makemigrations --check --dry-run
       - name: Tests
         run: pytest
+      - name: Production settings pass Django deploy checks
+        run: >-
+          DJANGO_DEBUG=0 DJANGO_ALLOWED_HOSTS=astta.ru
+          DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"
+          python manage.py check --deploy --fail-level WARNING
+      - name: No known vulnerabilities in dependencies
+        run: pip install pip-audit && pip-audit -r requirements.txt
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker-compose is valid
+        run: cp infra/.env.example infra/.env && docker compose -f infra/docker-compose.yml --env-file infra/.env config --quiet
+      - name: Caddyfile is valid
+        run: >-
+          docker run --rm -v "$PWD/infra/Caddyfile:/etc/caddy/Caddyfile:ro"
+          -e SITE_DOMAIN=astta.ru -e ACME_EMAIL=ops@astta.ru -e DJANGO_ADMIN_URL=team-test
+          caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile

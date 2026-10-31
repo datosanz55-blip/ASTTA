@@ -1,7 +1,30 @@
-# Всё приложение на одном сервере: база, Redis, API с админкой, фоновые задачи.
+# Всё приложение на одном сервере: HTTPS (Caddy), сайт, API с админкой, база, Redis, фоновые задачи, бэкапы.
 # Запуск: cp infra/.env.example infra/.env, заполнить, затем
 #   docker compose -f infra/docker-compose.yml --env-file infra/.env up -d --build
+# Наружу открыты только 80 и 443 (Caddy). База, Redis и сервер доступны лишь внутри Docker.
 services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      DJANGO_ADMIN_URL: ${DJANGO_ADMIN_URL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../index.html:/srv/site/index.html:ro
+      - ../assets:/srv/site/assets:ro
+      - media:/srv/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -30,6 +53,8 @@ services:
       POSTGRES_HOST: db
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /app/media
+      # Перед сервером один прокси — Caddy: лимиты и список IP админки считают адрес, который он дописал.
+      NUM_PROXIES: "1"
     volumes:
       - media:/app/media
     depends_on:
@@ -38,19 +63,56 @@ services:
       redis:
         condition: service_started
     command: sh -c "python manage.py migrate --noinput && python manage.py setup_roles && gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 3 --access-logfile - --no-control-socket --timeout 180"
-    ports:
-      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   worker:
     <<: *backend
     command: celery -A config worker --loglevel=info --concurrency=2
-    ports: []
+    healthcheck:
+      disable: true
 
   beat:
     <<: *backend
     command: celery -A config beat --loglevel=info --schedule /tmp/celerybeat-schedule
-    ports: []
+    healthcheck:
+      disable: true
+
+  # Каждую ночь копия базы, по понедельникам — архив фото. Хранится 14 копий базы и 4 архива фото
+  # в папке infra/backups на этом же сервере: их нужно ещё копировать в другое место (см. README).
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./backups:/backups
+      - media:/media:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          day=$$(date +%F)
+          pg_dump -h db -U "$$POSTGRES_USER" -Fc "$$POSTGRES_DB" > "/backups/db-$$day.dump.part" \
+            && mv "/backups/db-$$day.dump.part" "/backups/db-$$day.dump"
+          if [ "$$(date +%u)" = "1" ]; then tar -czf "/backups/media-$$day.tar.gz" -C /media .; fi
+          find /backups -name 'db-*.dump' -mtime +14 -delete
+          find /backups -name 'media-*.tar.gz' -mtime +28 -delete
+          sleep 86400
+        done
 
 volumes:
   pgdata:
   media:
+  caddy_data:
+  caddy_config:

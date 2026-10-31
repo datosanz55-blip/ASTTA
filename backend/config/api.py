@@ -3,11 +3,13 @@ from ninja import NinjaAPI
 
 from assistant.api import router as assistant_router
 from catalog.api import router as catalog_router
+from config.throttles import per_ip
 from links.api import router as links_router
 from orders.api import router as orders_router
 from pricing.api import router as pricing_router
 
-api = NinjaAPI(title="ASTTA API", version="1", urls_namespace="api")
+# Общий лимит на любой адрес API, у ручек с заказами и ИИ свои, строже.
+api = NinjaAPI(title="ASTTA API", version="1", urls_namespace="api", throttle=[per_ip("api", "300/m")])
 api.add_router("/", catalog_router)
 api.add_router("/", pricing_router)
 api.add_router("/orders", orders_router)

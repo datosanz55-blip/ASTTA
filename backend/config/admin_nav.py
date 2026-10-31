@@ -73,6 +73,8 @@ NAVIGATION = [
     {"title": _("Доступ"), "separator": True, "items": [
         _item(_("Пользователи"), "group", "admin:accounts_user_changelist", "accounts.view_user"),
         _item(_("Группы прав"), "admin_panel_settings", "admin:auth_group_changelist", "auth.view_group"),
+        _item(_("Приложения для входа (2FA)"), "phonelink_lock", "admin:otp_totp_totpdevice_changelist",
+              "otp_totp.view_totpdevice"),
     ]},
 ]
 

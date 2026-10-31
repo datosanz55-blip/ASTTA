@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
     "accounts",
     "catalog",
     "pricing",
@@ -53,6 +55,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "accounts.security.AdminGuardMiddleware",
     "accounts.middleware.UserLanguageMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -138,10 +142,42 @@ CELERY_BEAT_SCHEDULE = {
     "cancel-unpaid-orders": {"task": "orders.tasks.cancel_unpaid_orders", "schedule": 60 * 60},
 }
 
+# Защита админки (подробно в accounts/security.py).
+ADMIN_URL = env("DJANGO_ADMIN_URL", "admin").strip("/") + "/"
+# После входа по прямой ссылке на страницу входа открываем админку, а не /accounts/profile/.
+LOGIN_URL = "/" + ADMIN_URL + "login/"
+LOGIN_REDIRECT_URL = "/" + ADMIN_URL
+ADMIN_ALLOWED_IPS = env_list("ADMIN_ALLOWED_IPS")
+TESTING = bool(env("PYTEST_VERSION"))
+# Под тестами второй шаг и редирект на https выключены, их проверяют отдельные тесты.
+ADMIN_REQUIRE_2FA = env_bool("ADMIN_REQUIRE_2FA", not DEBUG and not TESTING)
+LOGIN_FAIL_LIMIT = int(env("LOGIN_FAIL_LIMIT", "5"))
+LOGIN_LOCK_MINUTES = int(env("LOGIN_LOCK_MINUTES", "15"))
+OTP_TOTP_ISSUER = "ASTTA"
+# Сколько прокси стоит перед сервером (Caddy — один). От этого зависит, чей адрес считают лимиты:
+# без прокси адрес берём из соединения, иначе — тот, что дописал наш прокси.
+NUM_PROXIES = int(env("NUM_PROXIES", "0"))
+NINJA_NUM_PROXIES = NUM_PROXIES
+
+# Сессия сотрудника живёт 12 часов, cookie недоступны скриптам.
+SESSION_COOKIE_AGE = 60 * 60 * 12
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+X_FRAME_OPTIONS = "DENY"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = env_bool("DJANGO_SSL_REDIRECT", not TESTING)
+    SECURE_HSTS_SECONDS = int(env("DJANGO_HSTS_SECONDS", str(60 * 60 * 24 * 365)))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    # Проверка «жив ли сервер» ходит внутри Docker по http, её не перенаправляем.
+    SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
+# В список HSTS preload браузеров домен попадает почти навсегда: включим, когда домен и поддомены устоятся.
+SILENCED_SYSTEM_CHECKS = ["security.W021"]
 
 UNFOLD = {
     "SITE_TITLE": "ASTTA",

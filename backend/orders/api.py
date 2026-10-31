@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Status
 from ninja.errors import HttpError
 
+from config.throttles import per_ip
 from orders.models import Order
 from orders.services import CartLine, OrderError, create_order
 
@@ -75,7 +76,8 @@ def order_out(request, order: Order) -> dict:
     }
 
 
-@router.post("", response={201: OrderOut}, summary="Оформить заказ (оплата сразу, потом выкуп у поставщика)")
+@router.post("", response={201: OrderOut}, throttle=[per_ip("order", "20/h")],
+             summary="Оформить заказ (оплата сразу, потом выкуп у поставщика)")
 def place_order(request, payload: OrderIn):
     if payload.mode not in Order.Mode.values:
         raise HttpError(400, "mode: retail или wholesale")
@@ -91,7 +93,8 @@ def place_order(request, payload: OrderIn):
     return Status(201, order_out(request, order))
 
 
-@router.get("/{token}", response=OrderOut, summary="Заказ и трекинг по токену")
+@router.get("/{token}", response=OrderOut, throttle=[per_ip("order_track", "120/m")],
+             summary="Заказ и трекинг по токену")
 def get_order(request, token: UUID):
     order = get_object_or_404(Order.objects.prefetch_related("items", "events"), token=token)
     return order_out(request, order)
