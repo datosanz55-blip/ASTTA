@@ -98,8 +98,11 @@ class SupplierOrder(models.Model):
         CANCELLED = "cancelled", _("Отменено: нет в наличии")
 
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="supplier_orders")
+    # Пустой поставщик — заказ по ссылке или фото: агент сам выкупает товар на площадке (Poizon, Taobao…).
     supplier = models.ForeignKey("catalog.Supplier", verbose_name=_("поставщик"), on_delete=models.PROTECT,
-                                 related_name="supplier_orders")
+                                 related_name="supplier_orders", null=True, blank=True)
+    marketplace = models.ForeignKey("links.Marketplace", verbose_name=_("площадка (заказ по ссылке)"), null=True,
+                                    blank=True, on_delete=models.PROTECT, related_name="supplier_orders")
     status = models.CharField(_("статус у поставщика"), max_length=16, choices=Status.choices,
                               default=Status.PENDING)
     tracking = models.CharField(_("трек-номер до склада"), max_length=64, blank=True)
@@ -116,7 +119,13 @@ class SupplierOrder(models.Model):
         constraints = [models.UniqueConstraint(fields=["order", "supplier"], name="one_supplier_order_per_order")]
 
     def __str__(self):
-        return f"{self.order} · {self.supplier}"
+        return f"{self.order} · {self.vendor}"
+
+    @property
+    def vendor(self) -> str:
+        if self.supplier_id:
+            return str(self.supplier)
+        return f"по ссылке · {self.marketplace}" if self.marketplace_id else "по ссылке"
 
     @property
     def amount_cny(self):
@@ -129,7 +138,11 @@ class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     supplier_order = models.ForeignKey(SupplierOrder, on_delete=models.CASCADE, related_name="items", null=True,
                                        blank=True)
-    product = models.ForeignKey("catalog.Product", verbose_name=_("товар"), on_delete=models.PROTECT)
+    # У заказа по ссылке или фото товара в каталоге нет: вместо него ссылка и скриншот покупателя.
+    product = models.ForeignKey("catalog.Product", verbose_name=_("товар"), on_delete=models.PROTECT, null=True,
+                                blank=True)
+    source_url = models.URLField(_("ссылка на товар"), max_length=1000, blank=True)
+    photo = models.ImageField(_("скриншот покупателя"), upload_to="orders/links/%Y/%m/", blank=True)
     title = models.CharField(_("название на момент заказа"), max_length=160)
     size = models.CharField(_("размер"), max_length=32, blank=True)
     color = models.CharField(_("цвет"), max_length=40, blank=True)

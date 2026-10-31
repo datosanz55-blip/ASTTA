@@ -356,7 +356,20 @@ main {
 .linkform input::placeholder { color: rgba(10, 15, 11, .55); }
 .linkform input:focus { box-shadow: inset 0 0 0 2px var(--on-lime); }
 .linkform .btn { min-height: 56px; }
-.linkform__photo { margin-top: 12px; padding: 0; border: 0; background: none; color: var(--on-lime); font: inherit; font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* Ссылка и фото — два равных способа: кнопка фото той же высоты и ширины, что и строка со ссылкой. */
+.linkor { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 520px; margin: -6px 0; color: var(--on-lime); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; opacity: .6; }
+.linkor::before, .linkor::after { content: ''; flex: 1; height: 1.5px; background: currentColor; opacity: .35; }
+.linkform__photo {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: 520px; min-height: 56px;
+  padding: 0 20px; border: 0; border-radius: 999px; background: transparent; box-shadow: inset 0 0 0 2px var(--on-lime);
+  color: var(--on-lime); font: 600 15px/1.2 var(--font-display); letter-spacing: .04em; text-transform: uppercase; cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.linkform__photo .ic { width: 20px; height: 20px; }
+.linkform__photo:hover { background: var(--on-lime); color: var(--lime); }
+.linkform__photo:focus-visible { outline: 2px solid var(--on-lime); outline-offset: 3px; }
+.order__link { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+.order__link .ic { flex: none; width: 18px; height: 18px; margin-top: 1px; }
 .banner__media { margin: 0; border-radius: var(--r-md); overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%; }
 .banner__media img { width: 100%; height: 100%; object-fit: cover; }
 

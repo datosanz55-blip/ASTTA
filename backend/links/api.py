@@ -13,6 +13,8 @@ from catalog.models import Category
 from config.throttles import per_ip
 from links.models import LinkRequest, Marketplace
 from links.services import estimate, find_in_catalog, parse_link
+from orders.api import OrderOut, order_out
+from orders.services import OrderError, create_link_order
 from pricing.services import PricingError
 
 router = Router(tags=["Заказ по ссылке"])
@@ -65,6 +67,18 @@ class RequestIn(Schema):
     color: str = ""
     category: str = ""
     contact: str
+    comment: str = ""
+
+
+class LinkOrderIn(Schema):
+    text: str = ""
+    price_cny: Decimal | None = None
+    qty: int = 1
+    size: str = ""
+    color: str = ""
+    title: str = ""
+    contact: str
+    name: str = ""
     comment: str = ""
 
 
@@ -171,6 +185,29 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
         "id": item.pk, "estimate": _estimate_out(result) if result else None,
         "product": _card(request, product, _pricing_context()) if product else None,
     })
+
+
+@router.post("/order", response={201: OrderOut}, throttle=[per_ip("link_order", "20/h")],
+             summary="Сразу заказать товар по ссылке или скриншоту: оплата по расчёту, агент сверит цену до выкупа")
+def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile | None = File(None)):
+    info = parse_link(payload.text)
+    if payload.text.strip() and not info.url:
+        raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")
+    content = None
+    if photo is not None:
+        try:
+            content = prepare_image(photo.read(), photo.name or "photo")
+        except ImageError as exc:
+            raise HttpError(400, str(exc)) from exc
+    try:
+        order = create_link_order(
+            payload.price_cny, payload.qty, payload.contact, url=info.url, photo=content, title=payload.title,
+            size=payload.size, color=payload.color, marketplace=info.marketplace, name=payload.name,
+            comment=payload.comment, buyer=request.user if request.user.is_authenticated else None,
+        )
+    except OrderError as exc:
+        raise HttpError(422, str(exc)) from exc
+    return Status(201, order_out(request, order))
 
 
 HANDOFF = "Не узнали товар на фото — уточним у менеджера и пришлём цену в чате."

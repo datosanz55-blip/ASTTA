@@ -236,14 +236,15 @@
 
     <section class="banner" id="link">
       <div class="banner__copy">
-        <h2>Любой товар<br>по ссылке.</h2>
-        <p>С 1688, Taobao или Poizon. Агент пришлёт цену в рублях за 15 минут.</p>
+        <h2>Любой товар<br>по ссылке или фото.</h2>
+        <p>С Poizon, Taobao или 1688. Сразу посчитаем цену с доставкой и оформим заказ, а агент проверит товар перед выкупом.</p>
         <form class="linkform" id="linkForm" novalidate>
           <label class="sr" for="linkInput">Ссылка на товар</label>
           <input id="linkInput" name="link" type="url" inputmode="url" placeholder="Вставьте ссылку" autocomplete="off">
           <button class="btn btn--black" type="submit">Узнать цену</button>
         </form>
-        <button class="linkform__photo" type="button" data-photo-order>Нет ссылки? Пришлите фото или скриншот</button>
+        <span class="linkor" aria-hidden="true">или</span>
+        <button class="linkform__photo" type="button" data-photo-order><svg class="ic"><use href="#i-camera"/></svg>Загрузить фото или скриншот</button>
       </div>
       <figure class="banner__media"><img src="assets/img/banner-hoodie.jpg" alt="Человек в сером худи" width="900" height="1000" loading="lazy"></figure>
     </section>

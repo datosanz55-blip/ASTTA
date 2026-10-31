@@ -3,6 +3,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
+from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin, TabularInline
 
@@ -25,8 +27,8 @@ class OrderItemInline(TabularInline):
     model = OrderItem
     extra = 0
     can_delete = False
-    readonly_fields = ("product", "title", "size", "color", "qty", "unit_cny", "shipping_code", "goods_rub",
-                       "delivery_rub", "fee_rub", "fee_share", "total_rub")
+    readonly_fields = ("product", "title", "source_url", "photo", "size", "color", "qty", "unit_cny",
+                       "shipping_code", "goods_rub", "delivery_rub", "fee_rub", "fee_share", "total_rub")
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -45,8 +47,8 @@ class SupplierOrderInline(TabularInline):
     model = SupplierOrder
     extra = 0
     can_delete = False
-    fields = ("supplier", "status", "tracking", "received_at", "payout")
-    readonly_fields = ("supplier", "status", "received_at", "payout")
+    fields = ("supplier", "marketplace", "status", "tracking", "received_at", "payout")
+    readonly_fields = ("supplier", "marketplace", "status", "received_at", "payout")
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -105,10 +107,26 @@ class OrderAdmin(ModelAdmin):
 class SupplierOrderAdmin(ModelAdmin):
     """Выкуп у поставщиков: сводный заказ поставщику, трек до склада, приёмка на складе TT."""
 
-    list_display = ("order", "supplier", "status", "tracking", "received_at", "payout")
-    list_filter = ("status", "supplier")
+    list_display = ("order", "vendor_name", "status", "tracking", "received_at", "payout")
+    list_filter = ("status", ("supplier", admin.EmptyFieldListFilter), "supplier", "marketplace")
     search_fields = ("order__number", "tracking")
-    readonly_fields = ("order", "supplier", "status", "payout", "received_at", "created_at", "updated_at")
+    readonly_fields = ("order", "supplier", "marketplace", "what_to_buy", "status", "payout", "received_at",
+                       "created_at", "updated_at")
+
+    @admin.display(description=_("поставщик"))
+    def vendor_name(self, obj):
+        return obj.vendor
+
+    @admin.display(description=_("что выкупить"))
+    def what_to_buy(self, obj):
+        # Для заказа по ссылке агенту нужны ссылка, скриншот и цена, которую назвал покупатель: сверить перед выкупом.
+        return format_html_join(mark_safe("<br>"), "{} · {} · {} шт. · ¥{} {} {}", (
+            (item.title, " ".join(filter(None, [item.size, item.color])) or "—", item.qty, item.unit_cny,
+             format_html('<a href="{}" target="_blank" rel="noopener">ссылка</a>', item.source_url)
+             if item.source_url else "",
+             format_html('<a href="{}" target="_blank" rel="noopener">скриншот</a>', item.photo.url)
+             if item.photo else "")
+            for item in obj.items.all()))
     actions = ["ordered", "out_of_stock", "receive"]
     change_list_template = "admin/orders/supplierorder/change_list.html"
 

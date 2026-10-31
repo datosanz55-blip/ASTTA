@@ -132,3 +132,55 @@ def test_link_request_admin_page(supplier, shoes, pricing_setup):
     ticket = LinkRequest.objects.get()
     page = client.get(f"/admin/links/linkrequest/{ticket.pk}/change/")
     assert page.status_code == 200 and "1688" in page.content.decode()
+
+
+def test_order_by_link_is_paid_like_any_order(pricing_setup, django_user_model):
+    from orders.models import Order, SupplierOrder
+    from orders.services import create_payouts, mark_paid, supplier_action
+
+    client = Client()
+    resp = client.post("/api/link/order", {"text": "Смотри https://m.dewu.com/x?spuId=42", "price_cny": "601",
+                                           "size": "42", "contact": "@buyer"})
+    assert resp.status_code == 201, resp.content
+    data = resp.json()
+    # Та же формула, что в расчёте: 601 × 13 + 1000 = 8813 → 8810 ₽, оплата сразу.
+    assert (data["status"], data["total_rub"]) == ("awaiting_payment", "8810.00")
+    assert data["items"][0]["title"] == "Товар по ссылке · Poizon" and data["items"][0]["size"] == "42"
+    order = Order.objects.get(number=data["number"])
+    part = order.supplier_orders.get()
+    assert part.supplier is None and part.marketplace.code == "poizon" and str(part).endswith("по ссылке · Poizon")
+    item = part.items.get()
+    assert item.product is None and item.source_url == "https://m.dewu.com/x?spuId=42"
+
+    admin = Client()
+    admin.force_login(django_user_model.objects.create_superuser("boss", password="pw-123456!"))
+    page = admin.get(f"/admin/orders/supplierorder/{part.pk}/change/").content.decode()
+    assert "https://m.dewu.com/x?spuId=42" in page and "¥601" in page  # агенту видно, что и по какой цене выкупать
+
+    mark_paid(order)
+    part.refresh_from_db()
+    assert part.status == SupplierOrder.Status.TO_ORDER  # агент видит задание «выкупить» в админке
+    supplier_action(part, "confirm")
+    supplier_action(part, "ship", "SF123")
+    part.refresh_from_db()
+    part.status = SupplierOrder.Status.RECEIVED
+    part.save()
+    assert create_payouts() == []  # на площадке платим сами, выплат поставщику нет
+
+
+def test_order_by_screenshot_needs_price_and_contact(pricing_setup):
+    buffer = BytesIO()
+    Image.new("RGB", (800, 600), "white").save(buffer, "JPEG")
+    buffer.seek(0)
+    buffer.name = "screen.jpg"
+    client = Client()
+    resp = client.post("/api/link/order", {"price_cny": "120", "qty": 2, "contact": "+7 900", "photo": buffer,
+                                           "title": "Кроссовки Nike"})
+    assert resp.status_code == 201, resp.content
+    data = resp.json()
+    assert data["total_rub"] == "5120.00"  # 120 × 2 × 13 + 2000
+    assert data["items"][0]["title"] == "Кроссовки Nike"
+    assert client.post("/api/link/order", {"text": "https://x.com/a", "contact": "@b"}).status_code == 422  # нет цены
+    assert client.post("/api/link/order", {"text": "https://x.com/a", "price_cny": "5", "contact": " "}
+                       ).status_code == 422
+    assert client.post("/api/link/order", {"price_cny": "5", "contact": "@b"}).status_code == 422  # ни ссылки, ни фото

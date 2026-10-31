@@ -15,6 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from catalog.models import Product
+from links.services import estimate
 from orders.models import Order, OrderEvent, OrderItem, Payout, SupplierOrder
 from pricing.services import PricingContext, PricingError, quote, round10
 
@@ -119,6 +120,48 @@ def create_order(lines: list[CartLine], contact: str, mode: str = "retail", ship
     return order
 
 
+LINK_TITLE = "Товар по ссылке"
+
+
+def create_link_order(price_cny: Decimal | None, qty: int, contact: str, *, url: str = "", photo=None,
+                      title: str = "", size: str = "", color: str = "", marketplace=None, name: str = "",
+                      comment: str = "", buyer=None) -> Order:
+    """Заказ товара по ссылке или скриншоту: покупатель платит сразу по расчёту «¥ × курс + логистика».
+
+    Цену называет покупатель (или мы прочитали её со скриншота), поэтому перед выкупом агент сверяет её на площадке:
+    дороже — пишет покупателю, нет товара — отменяет часть заказа, деньги идут «к возврату».
+    """
+    if not contact.strip():
+        raise OrderError("Укажите телефон или Telegram")
+    if not url and not photo:
+        raise OrderError("Нужна ссылка на товар или скриншот")
+    if price_cny is None or not Decimal("0") < price_cny <= Decimal("1000000"):
+        raise OrderError("Нужна цена товара в юанях: впишите её или пришлите скриншот с ценой")
+    if not 1 <= qty <= MAX_QTY:
+        raise OrderError(f"Количество от 1 до {MAX_QTY}")
+    try:
+        e = estimate(price_cny, qty, marketplace)
+    except PricingError as exc:
+        raise OrderError(str(exc)) from exc
+    with transaction.atomic():
+        order = Order.objects.create(contact=contact.strip()[:64], name=name.strip()[:80], comment=comment.strip(),
+                                     buyer=buyer, rate=e.rate, total_rub=Decimal(e.total_rub).quantize(Decimal("0.01")))
+        part = SupplierOrder.objects.create(order=order, marketplace=marketplace)
+        goods = e.goods_rub + e.china_delivery_rub + e.marketplace_fee_rub
+        OrderItem.objects.create(
+            order=order, supplier_order=part, product=None, source_url=url, photo=photo or "",
+            title=(title.strip() or (f"{LINK_TITLE} · {marketplace.name}" if marketplace else LINK_TITLE))[:160],
+            size=size.strip()[:32], color=color.strip()[:40], qty=qty, unit_cny=price_cny, shipping_code="link",
+            goods_rub=goods.quantize(Decimal("0.01")), delivery_rub=e.delivery_rub.quantize(Decimal("0.01")),
+            fee_rub=e.fee_rub.quantize(Decimal("0.01")), total_rub=e.total_rub,
+        )
+        OrderEvent.objects.create(order=order, status=Order.Status.AWAITING_PAYMENT,
+                                  note=f"Заказ по ссылке оформлен. После оплаты агент сверит цену и наличие "
+                                       f"на площадке и выкупит товар. Если цена окажется выше, напишем до выкупа; "
+                                       f"нет товара — вернём деньги. Цена держится {UNPAID_HOURS} часа.")
+    return order
+
+
 def set_status(order: Order, status: str, note: str = "", photo=None, weight_kg=None, author=None) -> OrderEvent:
     with transaction.atomic():
         order.status = status
@@ -192,7 +235,9 @@ def supplier_action(so: SupplierOrder, action: str, tracking: str = "", author=N
     if action == "ship" and not tracking:
         raise SupplierOrderError("Укажите трек-номер / 请填写快递单号")
     with transaction.atomic():
-        so = SupplierOrder.objects.select_for_update().select_related("order", "supplier").get(pk=so.pk)
+        # Поставщика у заказа по ссылке нет (внешнее соединение), поэтому блокируем только саму часть заказа.
+        so = (SupplierOrder.objects.select_for_update(of=("self",))
+              .select_related("order", "supplier", "marketplace").get(pk=so.pk))
         if so.status not in allowed:
             raise SupplierOrderError(f"Заказ уже в статусе «{so.get_status_display()}»")
         so.status = target
@@ -205,11 +250,11 @@ def supplier_action(so: SupplierOrder, action: str, tracking: str = "", author=N
             refund = min(refund, order.total_rub - order.refund_rub)
             order.refund_rub += refund
             order.save(update_fields=["refund_rub", "updated_at"])
-            note = f"{so.supplier}: нет в наличии, вернём {refund:.0f} ₽"
+            note = f"{so.vendor}: нет в наличии, вернём {refund:.0f} ₽"
         elif action == "confirm":
-            note = f"{so.supplier}: заказано у поставщика"
+            note = f"{so.vendor}: заказано у поставщика"
         else:
-            note = f"{so.supplier}: отправлено на склад TT, трек {so.tracking}"
+            note = f"{so.vendor}: отправлено на склад TT, трек {so.tracking}"
         OrderEvent.objects.create(order=order, status=order.status, note=note, author=author)
         _advance(order, author)
     return so
@@ -355,7 +400,7 @@ def create_payouts() -> list[Payout]:
     payouts = []
     with transaction.atomic():
         pending = (SupplierOrder.objects.select_for_update()
-                   .filter(status=SupplierOrder.Status.RECEIVED, payout__isnull=True)
+                   .filter(status=SupplierOrder.Status.RECEIVED, payout__isnull=True, supplier__isnull=False)
                    .prefetch_related("items"))
         by_supplier = {}
         for so in pending:
