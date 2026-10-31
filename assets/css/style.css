@@ -345,7 +345,6 @@ main {
   scroll-margin-top: 90px;
 }
 .banner__copy { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; position: relative; z-index: 1; }
-.banner__tag { padding: 7px 12px; border-radius: 999px; background: var(--on-lime); color: var(--lime); font: 600 12px/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
 .banner h2 { font: 700 clamp(44px, 12.5vw, 104px)/.98 var(--font-display); text-transform: uppercase; letter-spacing: -.01em; }
 .banner p { font-size: 17px; max-width: 34ch; opacity: .8; }
 .linkform { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 520px; }
