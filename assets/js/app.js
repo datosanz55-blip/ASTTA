@@ -615,7 +615,7 @@
         <div class="sum__row"><span>Доставка</span><span>${rub(t.delivery)}</span></div>
         ${t.proof ? `<div class="sum__row"><span>ASTTA Proof, проверка</span><span>${rub(t.proof)}</span></div>` : ''}
         <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(t.total)}</span></div>
-        <p class="sum__note">Платите после того, как агент подтвердит заказ.</p>
+        <p class="sum__note">Оплата сразу при заказе. Нет товара у поставщика — вернём деньги за него.</p>
       </div>`;
     root.innerHTML = `<div class="cart">
       <div class="cartlist">${rows}</div>
@@ -633,14 +633,17 @@
     const t = cartTotals();
     return `<div class="stack">
       <h2 class="sheet__title">Оформить</h2>
-      <p class="note">Агент проверит наличие и размеры и напишет вам. Платить сейчас не нужно.</p>
+      <p class="note">После оплаты сразу заказываем у поставщика. Если товара не окажется, вернём деньги за него.</p>
       <form class="stack" id="checkoutForm" novalidate>
         <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" required></label>
         <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
-        <button class="btn btn--lime btn--wide" type="submit">Отправить агенту</button>
+        <button class="btn btn--lime btn--wide" type="submit">Перейти к оплате</button>
       </form>
     </div>`;
   }
+
+  // Номер как на сервере: A-000123.
+  const orderNum = () => `A-${String(1200 + Math.floor(Math.random() * 8000)).padStart(6, '0')}`;
 
   function submitCheckout() {
     const input = $('#ckContact');
@@ -651,14 +654,13 @@
     if (bad && !err) { err = document.createElement('small'); err.className = 'field__err'; err.textContent = 'Укажите телефон или Telegram'; field.append(err); }
     if (!bad && err) err.remove();
     if (bad) { input.focus(); return; }
-    const first = byId[cart()[0].id];
-    const num = `ASTTA-${SUPPLIERS[first.sup].short}-${String(24200 + Math.floor(Math.random() * 700))}`;
+    const num = orderNum();
     const t = cartTotals();
     state.orders.unshift({
-      num, date: 'сегодня', items: cart().map((i) => i.id), total: t.total, ship: state.ship, now: 0, fresh: true,
+      num, date: 'сегодня', items: cart().map((i) => i.id), total: t.total, ship: state.ship, now: 0, fresh: true, unpaid: true,
       stages: [
-        { t: 'Агент проверяет наличие и размеры', d: 'ответ в течение 15 минут' },
-        { t: 'Выкуп у поставщика', d: 'после вашей оплаты' },
+        { t: 'Ждёт оплаты', d: 'цена держится 24 часа' },
+        { t: 'Заказываем у поставщика', d: 'нет товара — вернём деньги за него' },
         { t: 'Склад в Китае: фото и вес', d: '' },
         { t: 'Отправка в Россию', d: '' },
         { t: 'Пункт выдачи', d: '' },
@@ -668,17 +670,12 @@
     store.save();
     updateCartCount();
     renderCart();
-    openSheet(`<div class="success">
-      <span class="success__ic">${icon('check')}</span>
-      <h2 class="sheet__title">Заказ ${num} у агента</h2>
-      <p>Мария из TT Логистики проверит наличие и размеры и напишет в течение 15 минут. Платите после её подтверждения.</p>
-      <div class="buyrow"><a class="btn btn--lime" href="#profile" data-close>Мой заказ</a><button class="btn btn--ghost" type="button" data-open-chat>Чат с агентом</button></div>
-    </div>`, { narrow: true });
+    openPaySheet(num, `<div class="sum__row"><span>Товары и доставка</span><span>${rub(t.total)}</span></div>`, t.total);
   }
 
   /* ---------- Профиль: заказы / кабинет ---------- */
   function orderHTML(o) {
-    const status = o.delivered ? '<span class="pill">Получен</span>' : (o.unpaid ? '<span class="pill pill--go">Ждёт оплаты</span>' : (o.link ? '<span class="pill pill--go">Выкупаем</span>' : (o.fresh ? '<span class="pill pill--go">Ждёт агента</span>' : '<span class="pill pill--go">В пути</span>')));
+    const status = o.delivered ? '<span class="pill">Получен</span>' : (o.unpaid ? '<span class="pill pill--go">Ждёт оплаты</span>' : (o.fresh ? '<span class="pill pill--go">Выкупаем</span>' : '<span class="pill pill--go">В пути</span>'));
     const stages = o.stages.map((s, i) => {
       const cls = i < o.now || o.delivered ? 'is-done' : (i === o.now ? 'is-now' : '');
       const photo = s.photo ? `<button class="tl__photo" type="button" data-photo="${s.photo}" data-caption="${esc(s.t)}"><img src="${img(s.photo)}" alt="" width="84" height="60" loading="lazy"><span>${esc(s.note)}</span></button>` : '';
@@ -1780,7 +1777,7 @@ ${aiCatalogJSON()}
   }
   function placeLinkOrder({ title, url, price, qty, note }) {
     const total = linkTotal(price, qty);
-    const num = `A-${String(1200 + Math.floor(Math.random() * 8000)).padStart(6, '0')}`;
+    const num = orderNum();
     state.orders.unshift({
       num, date: 'сегодня', items: [], link: { title, url }, total, ship: 'auto', now: 0, fresh: true, unpaid: true,
       stages: [
@@ -1792,18 +1789,22 @@ ${aiCatalogJSON()}
       ],
     });
     store.save();
+    openPaySheet(num, `
+        <div class="sum__row"><span>${esc(title)}${note ? ` · ${esc(note)}` : ''}</span><span>${qty} шт</span></div>
+        <div class="sum__row"><span>Товар · ${cny(price * qty)} по ${LINK_RATE} ₽</span><span>${rub(price * qty * LINK_RATE)}</span></div>
+        <div class="sum__row"><span>Логистика</span><span>${rub(LINK_DELIVERY * qty)}</span></div>`, total,
+      'Перед выкупом агент сверит цену и наличие. Окажется дороже — напишем до выкупа, и вы решите: доплатить или вернуть деньги. Нет товара — вернём деньги полностью.');
+  }
+  function openPaySheet(num, rows, total, note = '') {
     closeSheet();
     openSheet(`<div class="stack">
       <h2 class="sheet__title">Заказ ${num}</h2>
-      <div class="sum">
-        <div class="sum__row"><span>${esc(title)}${note ? ` · ${esc(note)}` : ''}</span><span>${qty} шт</span></div>
-        <div class="sum__row"><span>Товар · ${cny(price * qty)} по ${LINK_RATE} ₽</span><span>${rub(price * qty * LINK_RATE)}</span></div>
-        <div class="sum__row"><span>Логистика</span><span>${rub(LINK_DELIVERY * qty)}</span></div>
+      <div class="sum">${rows}
         <div class="sum__row sum__row--total"><span>К оплате</span><span>${rub(total)}</span></div>
-        <div class="sum__note">Перед выкупом агент сверит цену и наличие. Окажется дороже — напишем до выкупа, и вы решите: доплатить или вернуть деньги. Нет товара — вернём деньги полностью.</div>
+        ${note ? `<div class="sum__note">${note}</div>` : ''}
       </div>
       <button class="btn btn--lime btn--wide" type="button" data-pay-link="${num}">Оплатить ${rub(total)}</button>
-      <p class="note">В превью деньги не списываются: оплата картой и СБП появится после подключения эквайринга.</p>
+      <p class="note">В превью деньги не списываются: оплата картой и СБП появится после подключения эквайринга. Не оплатите сейчас — заказ ждёт в профиле 24 часа.</p>
     </div>`, { narrow: true });
   }
   function payLinkOrder(num) {
@@ -1812,7 +1813,7 @@ ${aiCatalogJSON()}
     openSheet(`<div class="success">
       <span class="success__ic">${icon('check')}</span>
       <h2 class="sheet__title">Заказ ${num} оплачен</h2>
-      <p>Агент сверит цену и наличие на площадке и выкупит товар. Если что-то не так, напишет вам до выкупа.</p>
+      <p>${o && o.link ? 'Агент сверит цену и наличие на площадке и выкупит товар. Если что-то не так, напишет вам до выкупа.' : 'Уже заказываем у поставщика. Когда товар приедет на склад в Китае, пришлём фото и вес.'}</p>
       <div class="buyrow"><a class="btn btn--lime" href="#profile" data-close>Мой заказ</a><button class="btn btn--ghost" type="button" data-open-chat>Чат с агентом</button></div>
     </div>`, { narrow: true });
   }

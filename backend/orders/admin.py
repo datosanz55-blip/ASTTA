@@ -1,13 +1,17 @@
+from django import forms
 from django.contrib import admin, messages
+from django.core.files.uploadedfile import UploadedFile
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
-from django.urls import path
+from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin, TabularInline
+from unfold.decorators import display
 
+from catalog.images import ImageError, prepare_image
 from catalog.models import Supplier
 from orders.models import Order, OrderEvent, OrderItem, Payout, SupplierOrder
 from orders.services import (
@@ -19,36 +23,156 @@ from orders.services import (
     mark_paid,
     mark_received,
     purchase_for,
+    set_status,
     supplier_action,
 )
 
+S = Order.Status
+STATUS_COLORS = {
+    S.AWAITING_PAYMENT.label: "warning", S.PAID.label: "info", S.PURCHASED.label: "info",
+    S.AT_WAREHOUSE.label: "info", S.SHIPPED.label: "primary", S.BORDER.label: "primary",
+    S.IN_RUSSIA.label: "primary", S.READY.label: "success", S.DELIVERED.label: "success", S.CANCELLED.label: "danger",
+}
+# Дальше склада в Китае статусы ведёт агент: обычно сразу всей партией, поэтому это действия над списком.
+MOVES = [
+    (S.SHIPPED, "Отправлен в Россию"),
+    (S.BORDER, "На границе"),
+    (S.IN_RUSSIA, "Приехал в Россию"),
+    (S.READY, "В пункте выдачи"),
+    (S.DELIVERED, "Получен покупателем"),
+]
+MOVABLE = {S.PAID, S.PURCHASED, S.AT_WAREHOUSE, S.SHIPPED, S.BORDER, S.IN_RUSSIA, S.READY}
+
+
+def _move_action(status, label):
+    def action(modeladmin, request, queryset):
+        done, skipped = 0, []
+        for order in queryset:
+            if order.status not in MOVABLE or order.status == status:
+                skipped.append(f"{order.number}: «{order.get_status_display()}»")
+                continue
+            set_status(order, status, author=request.user)
+            done += 1
+        _report(modeladmin, request, done, skipped, _("Статус «%(s)s»") % {"s": label})
+
+    action.__name__ = f"move_{status}"
+    return admin.action(description=_("Статус → %(s)s") % {"s": label})(action)
+
 
 class OrderItemInline(TabularInline):
+    """Что заказано. Цена зафиксирована в момент заказа, поэтому здесь ничего не меняется."""
+
     model = OrderItem
     extra = 0
     can_delete = False
-    readonly_fields = ("product", "title", "source_url", "photo", "size", "color", "qty", "unit_cny",
-                       "shipping_code", "goods_rub", "delivery_rub", "fee_rub", "fee_share", "total_rub")
+    fields = ("title", "where", "size", "color", "qty", "unit_cny", "total_rub")
+    readonly_fields = fields
 
     def has_add_permission(self, request, obj=None):
         return False
 
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description=_("товар или ссылка"))
+    def where(self, obj):
+        if obj.product_id:
+            return format_html('<a href="{}">{}</a>', reverse("admin:catalog_product_change", args=[obj.product_id]),
+                               _("в каталоге"))
+        links = [format_html('<a href="{}" target="_blank" rel="noopener">{}</a>', obj.source_url, _("ссылка"))
+                 if obj.source_url else "",
+                 format_html('<a href="{}" target="_blank" rel="noopener">{}</a>', obj.photo.url, _("скриншот"))
+                 if obj.photo else ""]
+        return format_html_join(" · ", "{}", ((x,) for x in links if x)) or "—"
+
 
 class OrderEventInline(TabularInline):
-    """Агент добавляет событие: новый статус, фото со склада, фактический вес."""
+    """История заказа как её видит покупатель. Прошлые события не правятся и не удаляются."""
 
     model = OrderEvent
+    extra = 0
+    can_delete = False
+    verbose_name_plural = _("история заказа")
+    fields = ("when", "status", "note", "photo_preview", "weight_kg", "who")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description=_("когда"))
+    def when(self, obj):
+        return timezone.localtime(obj.created_at).strftime("%d.%m.%Y %H:%M")
+
+    @admin.display(description=_("кто"))
+    def who(self, obj):
+        return obj.author or _("система")
+
+    @admin.display(description=_("фото со склада"))
+    def photo_preview(self, obj):
+        if not obj.photo:
+            return "—"
+        return format_html('<a href="{0}" target="_blank" rel="noopener"><img src="{0}" alt="" '
+                           'style="width:72px;height:72px;object-fit:cover;border-radius:8px"></a>', obj.photo.url)
+
+
+AGENT_STATUSES = [S.AT_WAREHOUSE, S.SHIPPED, S.BORDER, S.IN_RUSSIA, S.READY, S.DELIVERED]
+
+
+class NewEventForm(forms.ModelForm):
+    class Meta:
+        model = OrderEvent
+        fields = ("status", "note", "photo", "weight_kg")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Оплату, выкуп и отмену ставят кнопки и действия, здесь только движение заказа после склада.
+        self.fields["status"].choices = [("", _("— новый статус —"))] + [(s.value, s.label) for s in AGENT_STATUSES]
+        self.fields["status"].initial = ""
+
+    def clean_photo(self):
+        photo = self.cleaned_data.get("photo")
+        if isinstance(photo, UploadedFile):
+            try:
+                return prepare_image(photo.read(), photo.name or "photo")
+            except ImageError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return photo
+
+
+class NewEventInline(TabularInline):
+    """Новое событие: статус, комментарий для покупателя, фото со склада, фактический вес."""
+
+    model = OrderEvent
+    form = NewEventForm
     extra = 1
-    fields = ("status", "note", "photo", "weight_kg", "author", "created_at")
-    readonly_fields = ("author", "created_at")
+    max_num = 1
+    can_delete = False
+    verbose_name = _("новое событие")
+    verbose_name_plural = _("добавить событие в историю")
+    fields = ("status", "note", "photo", "weight_kg")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).none()
 
 
 class SupplierOrderInline(TabularInline):
     model = SupplierOrder
     extra = 0
     can_delete = False
-    fields = ("supplier", "marketplace", "status", "tracking", "received_at", "payout")
-    readonly_fields = ("supplier", "marketplace", "status", "received_at", "payout")
+    # Трек вписывают в самой части заказа: там же она переходит в «отправлено на склад».
+    fields = ("part", "status", "tracking", "received_at", "payout")
+    readonly_fields = fields
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description=_("у кого"))
+    def part(self, obj):
+        return format_html('<a href="{}">{}</a>', reverse("admin:orders_supplierorder_change", args=[obj.pk]),
+                           obj.vendor)
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -62,12 +186,42 @@ def _report(modeladmin, request, done, failed, label):
 
 @admin.register(Order)
 class OrderAdmin(ModelAdmin):
-    list_display = ("number", "status", "mode", "contact", "total_rub", "paid_at", "refund_rub", "agent", "created_at")
+    """Отслеживание заказов. Каждое изменение статуса — событие в истории: покупатель видит его как трекинг.
+    Фото со склада и фактический вес добавляются строкой в «Историю заказа» внизу карточки."""
+
+    list_display = ("number", "status_label", "what", "contact", "total_rub", "refund_rub", "created")
     list_filter = ("status", "mode", "agent")
-    search_fields = ("number", "contact", "name")
-    readonly_fields = ("number", "token", "rate", "total_rub", "paid_at", "refund_rub", "created_at", "updated_at")
-    inlines = [OrderItemInline, SupplierOrderInline, OrderEventInline]
-    actions = ["paid", "cancel"]
+    search_fields = ("number", "contact", "name", "items__title")
+    date_hierarchy = "created_at"
+    list_per_page = 50
+    readonly_fields = ("number", "status_label", "rate", "total_rub", "paid_at", "refund_rub", "created_at",
+                       "updated_at")
+    fieldsets = (
+        (None, {"fields": ("number", "status_label", "contact", "name", "comment", "agent")}),
+        (_("Деньги"), {"fields": ("mode", "rate", "total_rub", "paid_at", "refund_rub")}),
+        (_("Служебное"), {"fields": ("created_at", "updated_at"), "classes": ["collapse"]}),
+    )
+    inlines = [OrderItemInline, SupplierOrderInline, OrderEventInline, NewEventInline]
+    actions = ["paid", "cancel", *[_move_action(status, label) for status, label in MOVES]]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("items")
+
+    @display(description=_("статус"), ordering="status", label=STATUS_COLORS)
+    def status_label(self, obj):
+        return obj.get_status_display()
+
+    @admin.display(description=_("создан"), ordering="created_at")
+    def created(self, obj):
+        return timezone.localtime(obj.created_at).strftime("%d.%m.%Y %H:%M")
+
+    @admin.display(description=_("что заказано"))
+    def what(self, obj):
+        items = list(obj.items.all())
+        if not items:
+            return "—"
+        first = f"{items[0].title} × {items[0].qty}"
+        return f"{first} и ещё {len(items) - 1}" if len(items) > 1 else first
 
     def save_formset(self, request, form, formset, change):
         events = formset.save(commit=False)

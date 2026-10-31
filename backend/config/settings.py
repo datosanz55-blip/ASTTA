@@ -41,7 +41,6 @@ INSTALLED_APPS = [
     "catalog",
     "pricing",
     "orders",
-    "seller",
     "links",
     "assistant",
 ]
@@ -112,9 +111,6 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-# Фронтенд кабинета поставщика (seller.html и assets/) лежит в корне репозитория, в Docker — в /frontend.
-FRONTEND_DIR = Path(env("FRONTEND_DIR", BASE_DIR.parent))
-STATICFILES_DIRS = [FRONTEND_DIR / "assets"]
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", BASE_DIR / "media"))
 STORAGES = {
@@ -152,6 +148,7 @@ UNFOLD = {
     "SITE_HEADER": "ASTTA",
     "SITE_SYMBOL": "storefront",
     "SHOW_LANGUAGES": False,
+    "SIDEBAR": {"show_search": True, "show_all_applications": False, "navigation": "config.admin_nav.navigation"},
     "COLORS": {
         "primary": {
             "50": "250 253 231",

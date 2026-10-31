@@ -20,8 +20,13 @@
 
   <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4">
     {% csrf_token %}
+    {% if not suppliers %}
+      <p class="border border-amber-300 bg-amber-50 text-amber-900 rounded-default p-4 dark:bg-amber-950 dark:text-amber-200">
+        {% translate "Сначала заведите поставщика: от его имени товары появятся на сайте." %}
+        <a class="underline font-medium" href="{% url 'admin:catalog_supplier_add' %}">{% translate "Добавить поставщика" %}</a></p>
+    {% endif %}
     {% if suppliers %}
-      <label class="flex flex-col gap-1">{% translate "Поставщик" %}
+      <label class="flex flex-col gap-1">{% translate "Поставщик" %} <a class="underline text-sm w-fit" href="{% url 'admin:catalog_supplier_add' %}">{% translate "+ новый поставщик" %}</a>
         <select name="supplier" required class="border border-base-200 rounded-default px-3 py-2">
           {% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
         </select>

@@ -164,14 +164,3 @@ def test_admin_marks_paid_and_purchase_page(moderator_client, hoodie):
     moderator_client.post(f"/admin/orders/supplierorder/{so.pk}/change/", {"tracking": "YT777"})
     so.refresh_from_db()
     assert (so.status, so.tracking) == (SupplierOrder.Status.SHIPPED, "YT777")
-
-
-def test_cabinet_purchase_summary(moderator_client, hoodie):
-    order = create_order([CartLine("hoodie", 1, "S", "белый")], contact="@b")
-    mark_paid(order)
-    data = moderator_client.get("/api/seller/purchase", HTTP_X_ACT_AS="jj").json()
-    assert data["total_qty"] == 1 and "卫衣" in data["text_zh"]
-    resp = moderator_client.post("/api/seller/purchase/ordered", {"orders": data["orders"]},
-                                 content_type="application/json", HTTP_X_ACT_AS="jj")
-    assert resp.json() == {"ordered": 1}
-    assert moderator_client.get("/api/seller/purchase", HTTP_X_ACT_AS="jj").json()["text_zh"] == ""

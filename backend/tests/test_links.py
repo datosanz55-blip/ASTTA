@@ -115,13 +115,11 @@ def test_request_with_photo_creates_ticket(supplier, shoes, pricing_setup):
 
 def test_rate_limits_do_not_share_counter(supplier, shoes, pricing_setup):
     client = Client()
-    for _ in range(15):
+    for _ in range(25):
         client.post("/api/link/lookup", {"text": "https://item.taobao.com/item.htm?id=1"},
                     content_type="application/json")
-    # Пятнадцать поисков по ссылке не должны закрывать вход в кабинет (лимит 10 в минуту у входа свой).
-    login = client.post("/api/seller/login", {"username": "nobody", "password": "x"},
-                        content_type="application/json")
-    assert login.status_code == 401
+    # 25 поисков по ссылке не должны закрывать заявки агенту (у них свой лимит, 20 в час).
+    assert client.post("/api/link/requests", {"contact": "@b"}).status_code == 422
 
 
 def test_link_request_admin_page(supplier, shoes, pricing_setup):

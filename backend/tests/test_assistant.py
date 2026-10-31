@@ -213,23 +213,20 @@ def test_import_translate_without_ai(settings, supplier, shoes):
     assert not Product.objects.exists()
 
 
-def test_cabinet_translate_for_team_only(ai, supplier, shoes):
+def test_admin_translate_action(ai, supplier, shoes):
     _, replies = ai
     setup_roles()
+    product = make_product(supplier, shoes, "hoodie", 80, 1, [], title_ru="卫衣", title_zh="加厚卫衣",
+                           description_zh="纯棉", status="draft")
     moderator = User.objects.create_user("mod", password="pw-123456!", is_staff=True)
     moderator.groups.add(Group.objects.get(name="Модераторы"))
     team = Client()
     team.force_login(moderator)
-    assert team.get("/api/seller/me").json()["ai"] is True
     replies.append(gpt({"items": [{"title": "Худи оверсайз", "description": "Плотный хлопок"}]}))
-    resp = team.post("/api/seller/translate", {"items": [{"zh": "加厚卫衣", "desc": "纯棉"}]},
-                     content_type="application/json", HTTP_X_ACT_AS="jj")
-    assert resp.json() == {"items": [{"ru": "Худи оверсайз", "desc": "Плотный хлопок"}]}
-    seller = User.objects.create_user("jj_supplier", password="pw-123456!", role="supplier", supplier=supplier)
-    own = Client()
-    own.force_login(seller)
-    assert own.post("/api/seller/translate", {"items": [{"zh": "卫衣"}]},
-                    content_type="application/json").status_code == 401  # поставщиков в кабинет не пускаем
+    resp = team.post("/admin/catalog/product/", {"action": "translate", "_selected_action": [product.pk]})
+    assert resp.status_code == 302
+    product.refresh_from_db()
+    assert (product.title_ru, product.description_ru) == ("Худи оверсайз", "Плотный хлопок")
 
 
 def test_photo_not_understood_goes_to_manager(ai, supplier, shoes, pricing_setup):
