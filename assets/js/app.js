@@ -244,6 +244,7 @@
     feed: 'all', feedSup: null,
     liked: new Set(), joined: new Set(),
     orders: [],
+    tg: null, // покупатель, вошедший через Telegram: { name, username }
     ptab: 'orders',
     measures: null,
     family: {
@@ -281,6 +282,7 @@
         if (d.measures && typeof d.measures === 'object') state.measures = d.measures;
         if (d.family && Array.isArray(d.family.items)) state.family = d.family;
         if (Array.isArray(d.pools)) state.pools = d.pools.filter((g) => byId[g.pid]);
+        if (d.tg && typeof d.tg.username === 'string') state.tg = { name: String(d.tg.name || ''), username: d.tg.username };
       } catch (e) { /* хранилище недоступно: работаем без него */ }
     },
     save() {
@@ -288,7 +290,7 @@
         localStorage.setItem('astta-demo', JSON.stringify({
           mode: state.mode, ship: state.ship, carts: state.carts,
           liked: [...state.liked], joined: [...state.joined],
-          measures: state.measures, family: state.family, pools: state.pools,
+          measures: state.measures, family: state.family, pools: state.pools, tg: state.tg,
         }));
       } catch (e) { /* ничего */ }
     },
@@ -635,7 +637,7 @@
       <h2 class="sheet__title">Оформить</h2>
       <p class="note">После оплаты сразу заказываем у поставщика. Если товара не окажется, вернём деньги за него.</p>
       <form class="stack" id="checkoutForm" novalidate>
-        <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" required></label>
+        <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}" required></label>
         <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
         <button class="btn btn--lime btn--wide" type="submit">Перейти к оплате</button>
       </form>
@@ -703,7 +705,46 @@
       orders: () => `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`,
       family: familyHTML, gifts: giftsHTML, size: measuresHTML,
     }[state.ptab]();
-    $('#profileBody').innerHTML = `<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
+    $('#profileBody').innerHTML = `${tgCardHTML()}<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
+  }
+
+  // Вход через Telegram. На сайте это официальная кнопка Telegram (/api/auth/telegram), в мини-приложении
+  // вход не нужен: Telegram сам передаёт, кто открыл. В прототипе вход демонстрационный.
+  const tgContact = () => (state.tg ? `@${state.tg.username}` : '');
+  function tgCardHTML() {
+    if (state.tg) {
+      return `<div class="tgcard tgcard--in">
+        <span class="tgcard__ava" aria-hidden="true">${esc((state.tg.name || state.tg.username).slice(0, 1).toUpperCase())}</span>
+        <div class="tgcard__txt"><b>${esc(state.tg.name || 'Вы')}</b><span>@${esc(state.tg.username)} · вход через Telegram</span></div>
+        <button class="linkbtn" type="button" data-tg-logout>Выйти</button>
+      </div>`;
+    }
+    return `<div class="tgcard">
+      <div class="tgcard__txt"><b>Войдите через Telegram</b><span>Заказы сохранятся в аккаунте, статусы придут сообщением. Пароль не нужен.</span></div>
+      <button class="tgbtn" type="button" data-tg-login>${TG_ICON}Войти через Telegram</button>
+    </div>`;
+  }
+  const TG_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21.9 4.3 18.6 19.9c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L5.9 13.4 1 11.9c-1.1-.3-1.1-1.1.2-1.6L20.6 2.8c.9-.3 1.7.2 1.3 1.5Z"/></svg>';
+  function openTgLogin() {
+    openSheet(`<div class="stack">
+      <h2 class="sheet__title">Вход через Telegram</h2>
+      <p class="note">На сайте откроется окно Telegram: подтвердите вход для ASTTA, и мы узнаем ваше имя и ник. Телефон Telegram не передаёт, пароль не нужен.</p>
+      <p class="note">Это демо: введите ник, чтобы посмотреть, как профиль выглядит после входа.</p>
+      <form class="stack" id="tgLoginForm" novalidate>
+        <label class="field"><span>Имя</span><input id="tgName" autocomplete="given-name" placeholder="Анна"></label>
+        <label class="field"><span>Ник в Telegram</span><input id="tgUser" autocomplete="username" placeholder="anna_v"></label>
+        <button class="tgbtn tgbtn--wide" type="submit">${TG_ICON}Подтвердить вход</button>
+      </form>
+    </div>`, { narrow: true });
+  }
+  function submitTgLogin() {
+    const user = $('#tgUser').value.trim().replace(/^@/, '');
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(user)) { toast('Ник в Telegram: латиница, цифры и _, от 3 символов'); $('#tgUser').focus(); return; }
+    state.tg = { name: $('#tgName').value.trim().slice(0, 40), username: user };
+    store.save();
+    closeSheet();
+    renderProfile();
+    toast(`Вы вошли как @${user}`);
   }
 
   /* ---------- ASTTA Family: общий список, бюджет, согласование, кто платит ---------- */
@@ -1659,7 +1700,7 @@ ${aiCatalogJSON()}
         <label class="field"><span>Или скриншот с ценой: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>
         <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
         <div id="lcSum"></div>
-        <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username"></label>
+        <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
         <div class="stack" id="lcActions"></div>
       </form></div>`);
     linkCalcOut();
@@ -1737,7 +1778,7 @@ ${aiCatalogJSON()}
         <label class="field"><span>Цена на скриншоте, ¥</span><input id="poPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Заполним сами, если увидим"></label>
         <div id="poSum"></div>
         <label class="field"><span>Размер, цвет, количество (если важно)</span><input id="poNote" placeholder="42, чёрный, 1 шт." autocomplete="off"></label>
-        <label class="field"><span>Телефон или Telegram</span><input id="poContact" autocomplete="tel" placeholder="+7 … или @username"></label>
+        <label class="field"><span>Телефон или Telegram</span><input id="poContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
         <div class="stack" id="poActions">${linkActionsHTML(0)}</div>
       </form></div>`, { narrow: true });
   }
@@ -2126,6 +2167,8 @@ ${aiCatalogJSON()}
       return;
     }
     if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
+    if (t.matches('[data-tg-login]')) { openTgLogin(); return; }
+    if (t.matches('[data-tg-logout]')) { state.tg = null; store.save(); renderProfile(); toast('Вы вышли'); return; }
     if (d.measures !== undefined) { state.ptab = 'size'; closeSheet(); go('profile'); return; }
     if (d.familyAdd) {
       state.family.items.unshift({ id: 'f' + Date.now(), pid: d.familyAdd, by: 'me', status: 'approved', payer: 'me' });
@@ -2407,6 +2450,7 @@ ${aiCatalogJSON()}
     if (f.id === 'linkCalcForm') { if (act === 'order') orderFromLinkCalc(); else sendLinkRequest(); return; }
     if (f.id === 'photoOrderForm') { if (act === 'order') orderFromPhoto(); else sendPhotoOrder(); return; }
     if (f.id === 'checkoutForm') { submitCheckout(); return; }
+    if (f.id === 'tgLoginForm') { submitTgLogin(); return; }
     if (f.id === 'chatForm') { const i = $('#chatInput'); sendChat(i.value); i.value = ''; return; }
   }
 

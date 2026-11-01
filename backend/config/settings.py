@@ -129,6 +129,12 @@ YANDEX_API_KEY = env("YANDEX_API_KEY", "")
 YANDEX_FOLDER_ID = env("YANDEX_FOLDER_ID", "")
 YANDEX_GPT_MODEL = env("YANDEX_GPT_MODEL", "yandexgpt/latest")
 
+# Вход покупателей через Telegram: бот создаётся в @BotFather, домен сайта задаётся там же командой /setdomain.
+TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", "")
+# Сколько живут подписанные Telegram данные входа, секунд.
+TELEGRAM_AUTH_MAX_AGE = int(env("TELEGRAM_AUTH_MAX_AGE", str(60 * 60 * 24)))
+
 # Общий кэш нужен, чтобы лимит попыток входа работал во всех процессах сервера.
 if env("REDIS_URL"):
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": env("REDIS_URL")}}

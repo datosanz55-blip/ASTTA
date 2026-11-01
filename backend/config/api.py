@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from ninja import NinjaAPI
 
+from accounts.api import router as accounts_router
 from assistant.api import router as assistant_router
 from catalog.api import router as catalog_router
 from config.throttles import per_ip
@@ -15,6 +16,7 @@ api.add_router("/", pricing_router)
 api.add_router("/orders", orders_router)
 api.add_router("/link", links_router)
 api.add_router("/ai", assistant_router)
+api.add_router("/", accounts_router)
 
 
 @api.exception_handler(ValidationError)

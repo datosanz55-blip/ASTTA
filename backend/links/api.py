@@ -4,6 +4,7 @@ from ninja import File, Form, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
+from accounts.api import buyer_contact, current_buyer
 from assistant import yandex
 from assistant.models import AiLog
 from assistant.services import read_photo
@@ -77,7 +78,7 @@ class LinkOrderIn(Schema):
     size: str = ""
     color: str = ""
     title: str = ""
-    contact: str
+    contact: str = ""
     name: str = ""
     comment: str = ""
 
@@ -199,11 +200,12 @@ def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile |
             content = prepare_image(photo.read(), photo.name or "photo")
         except ImageError as exc:
             raise HttpError(400, str(exc)) from exc
+    buyer = current_buyer(request)
     try:
         order = create_link_order(
-            payload.price_cny, payload.qty, payload.contact, url=info.url, photo=content, title=payload.title,
-            size=payload.size, color=payload.color, marketplace=info.marketplace, name=payload.name,
-            comment=payload.comment, buyer=request.user if request.user.is_authenticated else None,
+            payload.price_cny, payload.qty, buyer_contact(buyer, payload.contact), url=info.url, photo=content,
+            title=payload.title, size=payload.size, color=payload.color, marketplace=info.marketplace,
+            name=payload.name, comment=payload.comment, buyer=buyer,
         )
     except OrderError as exc:
         raise HttpError(422, str(exc)) from exc

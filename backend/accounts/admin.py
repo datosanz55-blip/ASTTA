@@ -7,9 +7,9 @@ from accounts.models import User
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
-    list_display = ("username", "role", "supplier", "phone", "language", "is_active")
+    list_display = ("username", "role", "telegram_username", "phone", "is_staff", "is_active")
     list_filter = ("role", "language", "is_active")
-    search_fields = ("username", "phone", "email")
+    search_fields = ("username", "phone", "email", "telegram_username", "telegram_id")
     fieldsets = BaseUserAdmin.fieldsets + (
-        ("ASTTA", {"fields": ("role", "supplier", "phone", "telegram_id", "language")}),
+        ("ASTTA", {"fields": ("role", "phone", "telegram_id", "telegram_username", "telegram_photo_url")}),
     )

@@ -13,6 +13,8 @@ class User(AbstractUser):
     role = models.CharField(_("роль"), max_length=16, choices=Role.choices, default=Role.BUYER)
     phone = models.CharField(_("телефон"), max_length=32, blank=True)
     telegram_id = models.BigIntegerField("Telegram ID", null=True, blank=True, unique=True)
+    telegram_username = models.CharField(_("ник в Telegram"), max_length=64, blank=True)
+    telegram_photo_url = models.URLField(_("аватар в Telegram"), max_length=500, blank=True)
     # Поставщик из Китая видит кабинет на китайском, если выбрал zh-hans.
     language = models.CharField(_("язык интерфейса"), max_length=8, default="ru",
                                 choices=[("ru", "Русский"), ("zh-hans", "中文"), ("en", "English")])

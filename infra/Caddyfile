@@ -11,9 +11,9 @@
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
 		Referrer-Policy "same-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin-allow-popups"
 		-Server
 	}
 
@@ -31,6 +31,7 @@
 		file_server
 	}
 
+	# API и админка: запрет встраивания в чужие страницы ставит сам сервер (X-Frame-Options: DENY).
 	@server path /api/* /{$DJANGO_ADMIN_URL}/* /static/* /healthz
 	handle @server {
 		reverse_proxy backend:8000 {
@@ -42,7 +43,11 @@
 	}
 
 	# Всё остальное — сайт для покупателей.
+	# CSP: скрипты только свои и Telegram (кнопка входа и мини-приложение), запросы только к нашему серверу.
+	# Встраивать сайт можно только самому себе и Telegram: так мини-приложение открывается в Telegram Web,
+	# а чужой сайт не может спрятать наши кнопки под своими (кликджекинг).
 	handle {
+		header Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://t.me https://telegram.org https://*.telegram.org; media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src https://oauth.telegram.org; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
 		root * /srv/site
 		try_files {path} /index.html
 		file_server

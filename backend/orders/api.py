@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Status
 from ninja.errors import HttpError
 
+from accounts.api import buyer_contact, current_buyer
 from config.throttles import per_ip
 from orders.models import Order
 from orders.services import CartLine, OrderError, create_order
@@ -22,7 +23,7 @@ class LineIn(Schema):
 
 class OrderIn(Schema):
     items: list[LineIn]
-    contact: str
+    contact: str = ""  # покупатель, вошедший через Telegram, может не заполнять
     name: str = ""
     comment: str = ""
     mode: str = "retail"
@@ -81,12 +82,12 @@ def order_out(request, order: Order) -> dict:
 def place_order(request, payload: OrderIn):
     if payload.mode not in Order.Mode.values:
         raise HttpError(400, "mode: retail или wholesale")
+    buyer = current_buyer(request)
     try:
         order = create_order(
             [CartLine(product=i.product, qty=i.qty, size=i.size, color=i.color) for i in payload.items],
-            contact=payload.contact, name=payload.name, comment=payload.comment, mode=payload.mode,
-            shipping=payload.shipping,
-            buyer=request.user if request.user.is_authenticated else None,
+            contact=buyer_contact(buyer, payload.contact), name=payload.name, comment=payload.comment,
+            mode=payload.mode, shipping=payload.shipping, buyer=buyer,
         )
     except OrderError as exc:
         raise HttpError(400, str(exc)) from exc
