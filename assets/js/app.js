@@ -715,7 +715,7 @@
     if (state.tg) {
       return `<div class="tgcard tgcard--in">
         <span class="tgcard__ava" aria-hidden="true">${esc((state.tg.name || state.tg.username).slice(0, 1).toUpperCase())}</span>
-        <div class="tgcard__txt"><b>${esc(state.tg.name || 'Вы')}</b><span>@${esc(state.tg.username)} · вход через Telegram</span></div>
+        <div class="tgcard__txt"><b>${esc(state.tg.name || 'Вы')}</b><span>@${esc(state.tg.username)} · статусы заказов пришлёт <a href="https://t.me/astta_shop_bot" target="_blank" rel="noopener">@astta_shop_bot</a></span></div>
         <button class="linkbtn" type="button" data-tg-logout>Выйти</button>
       </div>`;
     }
