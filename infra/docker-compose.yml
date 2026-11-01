@@ -53,6 +53,8 @@ services:
       POSTGRES_HOST: db
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /app/media
+      # Адрес сайта для кнопок бота и мини-приложения.
+      SITE_URL: https://${SITE_DOMAIN}
       # Перед сервером один прокси — Caddy: лимиты и список IP админки считают адрес, который он дописал.
       NUM_PROXIES: "1"
     volumes:

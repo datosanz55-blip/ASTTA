@@ -3,6 +3,7 @@ from ninja import NinjaAPI
 
 from accounts.api import router as accounts_router
 from assistant.api import router as assistant_router
+from bot.api import router as bot_router
 from catalog.api import router as catalog_router
 from config.throttles import per_ip
 from links.api import router as links_router
@@ -17,6 +18,7 @@ api.add_router("/orders", orders_router)
 api.add_router("/link", links_router)
 api.add_router("/ai", assistant_router)
 api.add_router("/", accounts_router)
+api.add_router("/tg", bot_router)
 
 
 @api.exception_handler(ValidationError)
