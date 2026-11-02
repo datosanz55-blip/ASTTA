@@ -3,11 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ASTTA Shop</title>
+<title>ASTTA — товары из Китая с доставкой в Россию</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="ASTTA — маркетплейс поставщиков TT Логистики: товары из Китая с ценой под ключ в рублях и оптом в юанях.">
+<meta name="description" content="ASTTA — товары из Китая с ценой в рублях сразу с доставкой: одежда, обувь, мебель, электроника. Заказ по ссылке с Poizon, Taobao и 1688 или по фото, оплата сразу, отслеживание до пункта выдачи.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://{{.Host}}/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ASTTA">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="ASTTA — товары из Китая с доставкой в Россию">
+<meta property="og:description" content="Цена в рублях сразу с доставкой. Заказ по ссылке с Poizon, Taobao, 1688 или по фото.">
+<meta property="og:url" content="https://{{.Host}}/">
+<meta property="og:image" content="https://{{.Host}}/assets/img/og-cover.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#070b09">
-<link rel="icon" href="assets/img/brand/logo-mark.png" type="image/png">
+<link rel="icon" href="public/favicon.ico" sizes="48x48">
+<link rel="icon" href="public/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="public/apple-touch-icon.png">
+<link rel="manifest" href="public/site.webmanifest">
+<link rel="preload" href="assets/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/oswald-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://{{.Host}}/#org", "name": "ASTTA", "url": "https://{{.Host}}/", "logo": "https://{{.Host}}/public/icon-512.png", "sameAs": ["https://t.me/astta_shop_bot"], "description": "Маркетплейс товаров из Китая от поставщиков TT Логистики: цена в рублях сразу с доставкой, заказ по ссылке или фото."}, {"@type": "WebSite", "@id": "https://{{.Host}}/#site", "url": "https://{{.Host}}/", "name": "ASTTA", "inLanguage": "ru-RU", "publisher": {"@id": "https://{{.Host}}/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как считается цена?", "acceptedAnswer": {"@type": "Answer", "text": "В каталоге цена в рублях уже с доставкой до России и сервисным сбором ASTTA. Для товара по ссылке или скриншоту сайт сразу считает предварительную цену: цена в юанях по курсу сервиса плюс логистика. Перед выкупом агент сверяет цену на площадке."}}, {"@type": "Question", "name": "Когда платить?", "acceptedAnswer": {"@type": "Answer", "text": "Сразу при оформлении заказа. Если у поставщика не окажется товара, вернём деньги за него. Если цена на площадке выше расчёта, напишем до выкупа: доплатите разницу или получите деньги обратно."}}, {"@type": "Question", "name": "Можно заказать товар, которого нет в каталоге?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать."}}, {"@type": "Question", "name": "Как отслеживать заказ?", "acceptedAnswer": {"@type": "Answer", "text": "В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае."}}, {"@type": "Question", "name": "Как войти на сайт?", "acceptedAnswer": {"@type": "Answer", "text": "Через Telegram, без пароля: подтвердите вход в приложении Telegram."}}, {"@type": "Question", "name": "Можно купить оптом?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Включите режим «Опт» вверху: цены за штуку в юанях, оптовые ступени от количества и совместный опт, когда партию собирают несколько покупателей."}}]}]}</script>
 <script src="assets/js/theme.js"></script>
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
@@ -20,8 +39,8 @@
   <span class="splash__flash"></span>
   <div class="splash__logo">
     <span class="splash__halo"></span>
-    <img class="splash__mark" src="assets/img/brand/logo-mark.png" alt="" width="256" height="250">
-    <img class="splash__word" src="assets/img/brand/logo-word.png" alt="" width="600" height="99">
+    <img class="splash__mark" src="assets/img/brand/logo-mark.webp" alt="" width="256" height="250">
+    <img class="splash__word" src="assets/img/brand/logo-word.webp" alt="" width="600" height="99">
     <span class="splash__sub">Marketplace</span>
   </div>
   <div class="splash__bar"><i></i></div>
@@ -71,8 +90,8 @@
 <header class="topbar">
   <div class="topbar__in">
     <a class="brand" href="#home" aria-label="ASTTA — на главную">
-      <img class="brand__mark" src="assets/img/brand/logo-mark.png" alt="" width="36" height="35">
-      <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="112" height="18">
+      <img class="brand__mark" src="assets/img/brand/logo-mark-sm.webp" alt="" width="36" height="35">
+      <img class="brand__word" src="assets/img/brand/logo-word-sm.webp" alt="ASTTA" width="112" height="18">
     </a>
 
     <nav class="topnav" aria-label="Разделы">
@@ -118,9 +137,9 @@
       <span class="hero__vword" aria-hidden="true">ASTTA</span>
       <div class="hero__visual">
         <div class="hero__media">
-          <img class="is-on" src="assets/img/hero-parka.jpg" alt="Парень в куртке-парке" width="1000" height="1250">
-          <img src="assets/img/hero-leopard.jpg" alt="Парень в рубашке и солнцезащитных очках" width="1000" height="1250" loading="lazy">
-          <img src="assets/img/hero-denim.jpg" alt="Девушка в джинсовой куртке и худи" width="1000" height="1250" loading="lazy">
+          <img class="is-on" fetchpriority="high" src="assets/img/hero-parka.webp" alt="Парень в куртке-парке" width="1000" height="1250">
+          <img fetchpriority="low" decoding="async" src="assets/img/hero-leopard.webp" alt="Парень в рубашке и солнцезащитных очках" width="1000" height="1250" loading="lazy">
+          <img fetchpriority="low" decoding="async" src="assets/img/hero-denim.webp" alt="Девушка в джинсовой куртке и худи" width="1000" height="1250" loading="lazy">
         </div>
         <div class="hero__meta">
           <span class="hero__tag" id="heroTag">Новинки</span>
@@ -241,7 +260,7 @@
         <span class="linkor" aria-hidden="true">или</span>
         <button class="linkform__photo" type="button" data-photo-order><svg class="ic"><use href="#i-camera"/></svg>Загрузить фото или скриншот</button>
       </div>
-      <figure class="banner__media"><img src="assets/img/banner-hoodie.jpg" alt="Человек в сером худи" width="900" height="1000" loading="lazy"></figure>
+      <figure class="banner__media"><img src="assets/img/banner-hoodie.webp" alt="Человек в сером худи" width="900" height="1000" loading="lazy"></figure>
     </section>
 
     <section class="block">
@@ -264,9 +283,21 @@
       <div class="feed feed--preview" id="feedPreview"></div>
     </section>
 
+    <section class="block faq" id="faq" aria-labelledby="faqTitle">
+      <div class="block__head"><h2 id="faqTitle">Частые вопросы</h2></div>
+      <div class="faq__list">
+        <details class="faq__item"><summary>Как считается цена?</summary><p>В каталоге цена в рублях уже с доставкой до России и сервисным сбором ASTTA. Для товара по ссылке или скриншоту сайт сразу считает предварительную цену: цена в юанях по курсу сервиса плюс логистика. Перед выкупом агент сверяет цену на площадке.</p></details>
+        <details class="faq__item"><summary>Когда платить?</summary><p>Сразу при оформлении заказа. Если у поставщика не окажется товара, вернём деньги за него. Если цена на площадке выше расчёта, напишем до выкупа: доплатите разницу или получите деньги обратно.</p></details>
+        <details class="faq__item"><summary>Можно заказать товар, которого нет в каталоге?</summary><p>Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать.</p></details>
+        <details class="faq__item"><summary>Как отслеживать заказ?</summary><p>В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае.</p></details>
+        <details class="faq__item"><summary>Как войти на сайт?</summary><p>Через Telegram, без пароля: подтвердите вход в приложении Telegram.</p></details>
+        <details class="faq__item"><summary>Можно купить оптом?</summary><p>Да. Включите режим «Опт» вверху: цены за штуку в юанях, оптовые ступени от количества и совместный опт, когда партию собирают несколько покупателей.</p></details>
+      </div>
+    </section>
+
     <section class="community">
-      <h2>Дропы и скидки<br>в Telegram.</h2>
-      <button class="btn btn--lime" type="button" data-telegram>Подписаться <svg class="ic"><use href="#i-send"/></svg></button>
+      <h2>Статусы заказов<br>в Telegram.</h2>
+      <a class="btn btn--lime" href="https://t.me/astta_shop_bot" target="_blank" rel="noopener">Открыть бота <svg class="ic"><use href="#i-send"/></svg></a>
     </section>
   </section>
 
@@ -334,8 +365,8 @@
 <footer class="foot">
   <div class="foot__in">
     <a class="brand" href="#home" aria-label="ASTTA — на главную">
-      <img class="brand__mark" src="assets/img/brand/logo-mark.png" alt="" width="36" height="35">
-      <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="112" height="18">
+      <img class="brand__mark" src="assets/img/brand/logo-mark-sm.webp" alt="" width="36" height="35">
+      <img class="brand__word" src="assets/img/brand/logo-word-sm.webp" alt="ASTTA" width="112" height="18">
     </a>
     <p>Демо-версия. Товары, цены, курс и отзывы здесь примеры.</p>
   </div>
@@ -362,8 +393,8 @@
   <aside class="drawer__panel" aria-label="Меню">
     <div class="drawer__head">
       <a class="brand" href="#home" data-close-menu aria-label="ASTTA — на главную">
-        <img class="brand__mark" src="assets/img/brand/logo-mark.png" alt="" width="36" height="35">
-        <img class="brand__word" src="assets/img/brand/logo-word.png" alt="ASTTA" width="112" height="18">
+        <img class="brand__mark" src="assets/img/brand/logo-mark-sm.webp" alt="" width="36" height="35">
+        <img class="brand__word" src="assets/img/brand/logo-word-sm.webp" alt="ASTTA" width="112" height="18">
       </a>
       <button class="iconbtn" type="button" data-close-menu aria-label="Закрыть меню"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>

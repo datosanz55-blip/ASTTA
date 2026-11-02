@@ -306,7 +306,7 @@
   const round10 = (n) => Math.round(n / 10) * 10;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (name, cls = '') => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-  const img = (name) => `assets/img/${name}.jpg`;
+  const img = (name) => `assets/img/${name}.webp`;
   const plural = (n, one, few, many) => {
     const a = Math.abs(n) % 100, b = a % 10;
     if (a > 10 && a < 20) return many;
@@ -2074,7 +2074,6 @@ ${aiCatalogJSON()}
       go('catalog');
       return;
     }
-    if (t.matches('[data-telegram]')) { toast('Канал откроем к запуску площадки'); return; }
 
     if (d.mode) { setMode(d.mode); return; }
     if (d.switchMode) { setMode(d.switchMode); return; }
@@ -2475,6 +2474,8 @@ ${aiCatalogJSON()}
     const el = $('#splash');
     if (!el) return;
     const root = document.documentElement;
+    if (root.classList.contains('no-splash')) { el.remove(); return; }
+    try { sessionStorage.setItem('astta-splash', '1'); } catch (e) { /* без хранилища покажем снова */ }
     root.classList.add('is-splash');
     let gone = false;
     const finish = () => {

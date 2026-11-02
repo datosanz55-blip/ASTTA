@@ -2,9 +2,17 @@
 # Запуск: cp infra/.env.example infra/.env, заполнить, затем
 #   docker compose -f infra/docker-compose.yml --env-file infra/.env up -d --build
 # Наружу открыты только 80 и 443 (Caddy). База, Redis и сервер доступны лишь внутри Docker.
+# Логи контейнеров не больше 3 × 10 МБ на сервис: иначе за месяцы они забивают диск и сайт падает.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   caddy:
     image: caddy:2.10-alpine
+    logging: *logging
     restart: unless-stopped
     ports:
       - "80:80"
@@ -18,6 +26,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../index.html:/srv/site/index.html:ro
       - ../assets:/srv/site/assets:ro
+      - ../public:/srv/site/public:ro
       - media:/srv/media:ro
       - caddy_data:/data
       - caddy_config:/config
@@ -27,6 +36,7 @@ services:
 
   db:
     image: postgres:16-alpine
+    logging: *logging
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -41,9 +51,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    logging: *logging
     restart: unless-stopped
 
   backend: &backend
+    logging: *logging
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -88,6 +100,7 @@ services:
   # в папке infra/backups на этом же сервере: их нужно ещё копировать в другое место (см. README).
   backup:
     image: postgres:16-alpine
+    logging: *logging
     restart: unless-stopped
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}

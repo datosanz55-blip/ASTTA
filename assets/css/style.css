@@ -358,6 +358,17 @@ main {
 :root[data-ui="light"] .perks li { color: var(--ink); }
 :root[data-ui="light"] .perks .ic { filter: none; }
 
+/* ---------- Частые вопросы ---------- */
+.faq__list { display: grid; gap: 10px; }
+.faq__item { border-radius: var(--r-sm); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.faq__item summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; cursor: pointer; list-style: none; font-size: 16px; font-weight: 600; }
+.faq__item summary::-webkit-details-marker { display: none; }
+.faq__item summary::after { content: "+"; flex: none; font-size: 22px; line-height: 1; color: var(--accent-ink); }
+.faq__item[open] summary::after { content: "−"; }
+.faq__item summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--r-sm); }
+.faq__item p { margin: 0; padding: 0 20px 18px; max-width: 72ch; color: var(--muted); }
+@media (min-width: 900px) { .faq__list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+
 /* ---------- Плитки подборок ---------- */
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 /* Подборок пять: первая на две колонки, чтобы ряды были ровными (2 + 2 + 1 → широкая + 2 + 2, на компьютере широкая + 1 и 3). */
@@ -1119,6 +1130,7 @@ html[data-mode="supplier"] .pd__price b { color: var(--accent-ink); }
    Фон и линии заранее отрисованы в картинки: анимируются только transform и opacity,
    их браузер считает на видеокарте без перерисовки. */
 html.is-splash, html.is-splash body { overflow: hidden; }
+.no-splash .splash { display: none; }
 .splash {
   position: fixed; inset: 0; z-index: 100; overflow: hidden;
   display: grid; place-items: center;
@@ -1130,7 +1142,7 @@ html.is-splash, html.is-splash body { overflow: hidden; }
 @keyframes splashOut { to { opacity: 0; visibility: hidden; } }
 .splash__bg {
   position: absolute; inset: 0;
-  background: url("../img/brand/splash-bg-land.jpg") center / cover no-repeat;
+  background: url("../img/brand/splash-bg-land.webp") center / cover no-repeat;
   opacity: 0; will-change: opacity; animation: splashFade .8s ease forwards;
 }
 @keyframes splashFade { to { opacity: 1; } }
@@ -1140,15 +1152,15 @@ html.is-splash, html.is-splash body { overflow: hidden; }
 .splash__half--r { right: 0; transform: translate3d(calc(50vw + 1px), 0, 0); }
 .splash__lines {
   position: absolute; top: 0; bottom: 0; width: 100vw;
-  background: url("../img/brand/splash-lines-land.png") center / cover no-repeat; will-change: transform;
+  background: url("../img/brand/splash-lines-land.webp") center / cover no-repeat; will-change: transform;
 }
 .splash__half--l .splash__lines { left: 0; transform: translate3d(calc(50vw + 1px), 0, 0); }
 .splash__half--r .splash__lines { right: 0; transform: translate3d(calc(-50vw - 1px), 0, 0); }
 .splash__half, .splash__lines { animation: splashWipe 1.1s cubic-bezier(.6, 0, .3, 1) .45s forwards; }
 @keyframes splashWipe { to { transform: translate3d(0, 0, 0); } }
 @media (orientation: portrait) {
-  .splash__bg { background-image: url("../img/brand/splash-bg-port.jpg"); }
-  .splash__lines { background-image: url("../img/brand/splash-lines-port.png"); }
+  .splash__bg { background-image: url("../img/brand/splash-bg-port.webp"); }
+  .splash__lines { background-image: url("../img/brand/splash-lines-port.webp"); }
 }
 .splash__flash {
   position: absolute; top: 50%; left: 50%; width: 60vmin; height: 60vmin; margin: -30vmin 0 0 -30vmin; border-radius: 50%;

@@ -84,7 +84,7 @@ class Command(BaseCommand):
             product.tiers.all().delete()
             PriceTier.objects.bulk_create([PriceTier(product=product, min_qty=q, price_cny=Decimal(str(c)))
                                            for q, c in p["tiers"]])
-            source = PROTOTYPE_IMAGES / f"{p['id']}.jpg"
+            source = PROTOTYPE_IMAGES / f"{p['id']}.webp"
             if source.exists() and not product.images.exists():
                 with source.open("rb") as fh:
                     ProductImage.objects.create(product=product, image=File(fh, name=source.name))
