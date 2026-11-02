@@ -91,6 +91,15 @@ docker compose -f infra/docker-compose.yml --env-file infra/.env up -d --build
 docker compose -f infra/docker-compose.yml exec backend python manage.py createsuperuser
 ```
 
+**Какой сервер.** 4 ГБ памяти и 2–4 ядра — с запасом. На 2 ГБ и 2 ядрах тоже работает: в `infra/.env` поставьте `WEB_WORKERS=2` и `CELERY_CONCURRENCY=1` и включите файл подкачки на 4 ГБ — он страхует, когда при загрузке каталога с фото память кратко подскакивает:
+
+```bash
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Одно ядро не подходит: пока сервер уменьшает фото из архива, сайт тормозит. Диск — от 40 ГБ: фото товаров и бэкапы.
+
 Caddy сам выпускает и продлевает сертификат Let's Encrypt для `SITE_DOMAIN` (DNS-запись домена должна смотреть на сервер), ставит защитные заголовки, отдаёт сайт и фото, остальное передаёт серверу. Загрузка до 1 ГБ, ожидание ответа до 3 минут.
 
 ## Защита
