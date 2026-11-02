@@ -28,7 +28,6 @@
   --shade: rgba(4, 8, 6, .82);
   --accent-ink: var(--lime);      /* лаймовый текст и иконки на фоне страницы */
   --header-bg: rgba(7, 11, 9, .88);
-  --logo-word: none;               /* в светлой теме белое слово ASTTA становится тёмным */
 
   --font-display: "Oswald", "Arial Narrow", "Roboto Condensed", sans-serif;
   --font-body: "Onest", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -62,7 +61,6 @@
   --scrim: rgba(16, 24, 19, .45);
   --shade: rgba(4, 8, 6, .82);
   --header-bg: rgba(243, 245, 238, .9);
-  --logo-word: brightness(0);
 }
 /* Тёмные «острова» в светлой теме: возвращаем им тёмную палитру. */
 :root[data-ui="light"] :is(.hero, .ai, .trends, .splash) {
@@ -71,7 +69,9 @@
   --ink: #f1f5ee; --muted: #8f9b93; --accent-ink: var(--lime);
   color: var(--ink);
 }
-.brand__word { filter: var(--logo-word); }
+/* Логотип: в тёмной теме — белая «А» и белое слово, в светлой — версия для светлого фона (чёрная «А» и слово).
+   Показываемую версию не трогаем через display, чтобы работали правила вроде «спрятать слово на 900–1023 px». */
+:root:not([data-ui="light"]) .brand--light, :root[data-ui="light"] .brand--dark { display: none; }
 
 /* ---------- База ---------- */
 *, *::before, *::after { box-sizing: border-box; }
