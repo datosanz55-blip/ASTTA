@@ -437,7 +437,6 @@
 
   /* ---------- Главная ---------- */
   const TILES = [
-    { title: 'Акции дня', img: 'tile-sale', filter: 'sale' },
     { title: 'До 1\u00a0000\u00a0₽', img: 'tile-discount', filter: 'budget' },
     { title: 'Новинки', img: 'tile-new', filter: 'new' },
     { title: 'Хиты', img: 'tile-hits', filter: 'all', sort: 'pop' },
@@ -447,10 +446,8 @@
 
   function tileHTML(tile, i) {
     const n = filterProducts(tile.filter, '').length;
-    const maxSale = Math.max(...PRODUCTS.map((p) => p.sale || 0));
     return `<button class="tile" type="button" data-tile="${i}">
       <img src="${img(tile.img)}" alt="" loading="lazy" width="900" height="1000">
-      ${tile.filter === 'sale' ? `<span class="tile__badge">до −${maxSale}%</span>` : ''}
       <span class="roundbtn" aria-hidden="true">${icon('arrow-ur')}</span>
       <span class="tile__body"><span class="tile__text"><span class="tile__title">${tile.title}</span><span class="tile__sub">${n} ${plural(n, 'товар', 'товара', 'товаров')}</span></span></span>
     </button>`;
@@ -461,7 +458,6 @@
     $('#tiles').innerHTML = TILES.map(tileHTML).join('');
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${img(c.img)}" alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
-    $('#saleRail').innerHTML = PRODUCTS.filter((p) => p.sale).map(cardHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
   }
@@ -481,12 +477,11 @@
   }
 
   /* ---------- Каталог ---------- */
-  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'sale', name: 'Акции' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }, { id: 'group', name: 'Совместный опт' }];
+  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }, { id: 'group', name: 'Совместный опт' }];
 
   function filterProducts(filter, q) {
     const ql = (q || '').toLowerCase();
     return PRODUCTS.filter((p) => {
-      if (filter === 'sale' && !p.sale) return false;
       if (filter === 'new' && !p.isNew) return false;
       if (filter === 'group' && !p.group) return false;
       if (filter === 'budget' && (isSupplier() ? wholesale(p, p.tiers[0][0]).landed : retail(p).total) > 1000) return false;
@@ -1888,6 +1883,22 @@ ${aiCatalogJSON()}
     after();
   }
 
+  /* ---------- Тема: тёмная (фирменная) и светлая ---------- */
+  // Начальную тему ставит assets/js/theme.js ещё до отрисовки, здесь — переключатель.
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-ui', theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#f3f5ee' : '#070b09');
+    const label = theme === 'light' ? 'Тёмная тема' : 'Светлая тема';
+    $$('[data-theme-toggle]').forEach((b) => { b.setAttribute('aria-label', label); b.title = label; });
+    $$('[data-theme-label]').forEach((s) => { s.textContent = label; });
+  }
+  function toggleTheme() {
+    const next = document.documentElement.getAttribute('data-ui') === 'light' ? 'dark' : 'light';
+    try { localStorage.setItem('astta-theme', next); } catch (e) { /* не запомнили — тема до перезагрузки */ }
+    applyTheme(next);
+  }
+
   /* ---------- Шторка, меню, уведомления ---------- */
   let lastFocus = null;
   function openSheet(html, opts = {}) {
@@ -2168,6 +2179,7 @@ ${aiCatalogJSON()}
     }
     if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
     if (t.matches('[data-tg-login]')) { openTgLogin(); return; }
+    if (t.matches('[data-theme-toggle]')) { toggleTheme(); return; }
     if (t.matches('[data-tg-logout]')) { state.tg = null; store.save(); renderProfile(); toast('Вы вышли'); return; }
     if (d.measures !== undefined) { state.ptab = 'size'; closeSheet(); go('profile'); return; }
     if (d.familyAdd) {
@@ -2481,6 +2493,7 @@ ${aiCatalogJSON()}
   function init() {
     initSplash();
     store.load();
+    applyTheme(document.documentElement.getAttribute('data-ui') === 'light' ? 'light' : 'dark');
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${c.id}" data-close-menu>${c.name}</a>`).join('');
     document.addEventListener('click', onClick);
