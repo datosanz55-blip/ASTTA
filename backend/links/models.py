@@ -55,6 +55,7 @@ class LinkRequest(models.Model):
                                        blank=True)
     contact = models.CharField(_("телефон или Telegram"), max_length=64)
     comment = models.TextField(_("комментарий покупателя"), blank=True)
+    pd_consent_at = models.DateTimeField(_("согласие на обработку ПДн"), null=True, blank=True)
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.NEW)
     agent = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("агент"), null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="link_requests")

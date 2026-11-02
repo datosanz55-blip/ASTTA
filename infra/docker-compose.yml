@@ -27,6 +27,8 @@ services:
       - ../index.html:/srv/site/index.html:ro
       - ../assets:/srv/site/assets:ro
       - ../public:/srv/site/public:ro
+      - ../privacy.html:/srv/site/privacy.html:ro
+      - ../consent.html:/srv/site/consent.html:ro
       - media:/srv/media:ro
       - caddy_data:/data
       - caddy_config:/config

@@ -9,6 +9,7 @@ Cookie в мини-приложении не используем: в Telegram W
 from django.conf import settings
 from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
+from django.utils import timezone
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja.utils import check_csrf
@@ -38,6 +39,16 @@ def current_buyer(request) -> User | None:
     return None
 
 
+CONSENT_REQUIRED = "Нужно согласие на обработку персональных данных: отметьте галочку"
+
+
+def require_consent(given: bool):
+    """Без отметки согласия персональные данные не принимаем (152-ФЗ)."""
+    if not given:
+        raise HttpError(422, CONSENT_REQUIRED)
+    return timezone.now()
+
+
 def buyer_contact(buyer: User | None, contact: str) -> str:
     """Контакт для заказа: что ввёл покупатель, иначе его ник в Telegram."""
     contact = contact.strip()
@@ -54,6 +65,7 @@ class TelegramWidgetIn(Schema):
     photo_url: str = ""
     auth_date: int
     hash: str
+    consent: bool = False  # галочка согласия на сайте, в подпись Telegram не входит
 
 
 class OrderBrief(Schema):
@@ -100,10 +112,12 @@ def telegram_login(request, payload: TelegramWidgetIn):
     # Без токена чужой сайт мог бы незаметно войти покупателем под своим аккаунтом и увидеть его заказы.
     if check_csrf(request):
         raise HttpError(403, "Обновите страницу и войдите ещё раз")
+    consent_at = require_consent(payload.consent)
     try:
-        user = buyer_for(verify_login_widget(payload.dict()))
+        user = buyer_for(verify_login_widget(payload.dict(exclude={"consent"})))
     except TelegramAuthError as exc:
         raise HttpError(401, str(exc)) from exc
+    User.objects.filter(pk=user.pk).update(pd_consent_at=consent_at)
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     return me_out(user)
 

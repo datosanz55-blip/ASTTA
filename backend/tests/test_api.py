@@ -40,7 +40,7 @@ def test_quote_endpoint(client, runner):
 
 
 def test_place_order_snapshots_price_and_tracks(client, runner):
-    resp = client.post("/api/orders", {"items": [{"product": "runner", "qty": 1, "size": "42"}],
+    resp = client.post("/api/orders", {"consent": True, "items": [{"product": "runner", "qty": 1, "size": "42"}],
                                        "contact": "@buyer"}, content_type="application/json")
     assert resp.status_code == 201
     data = resp.json()
@@ -58,9 +58,9 @@ def test_place_order_snapshots_price_and_tracks(client, runner):
 
 
 def test_order_validation(client, runner):
-    bad = client.post("/api/orders", {"items": [{"product": "nope"}], "contact": "@b"},
+    bad = client.post("/api/orders", {"consent": True, "items": [{"product": "nope"}], "contact": "@b"},
                       content_type="application/json")
     assert bad.status_code == 400
-    empty_contact = client.post("/api/orders", {"items": [{"product": "runner"}], "contact": " "},
+    empty_contact = client.post("/api/orders", {"consent": True, "items": [{"product": "runner"}], "contact": " "},
                                 content_type="application/json")
     assert empty_contact.status_code == 400

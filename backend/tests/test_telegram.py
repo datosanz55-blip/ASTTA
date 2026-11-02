@@ -26,6 +26,7 @@ def widget(user_id=777, auth_date=None, token=TOKEN, **extra):
             **extra}
     check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
     data["hash"] = hmac.new(hashlib.sha256(token.encode()).digest(), check.encode(), hashlib.sha256).hexdigest()
+    data["consent"] = True  # галочка согласия на сайте, Telegram её не подписывает
     return data
 
 
@@ -95,7 +96,8 @@ def test_mini_app_orders_with_init_data(supplier, shoes, pricing_setup):
     auth = {"HTTP_AUTHORIZATION": f"tma {init_data()}"}
     me = client.get("/api/me", **auth).json()
     assert me["username"] == "ivan_k" and me["orders"] == []
-    resp = client.post("/api/orders", {"items": [{"product": "hoodie"}]}, content_type="application/json", **auth)
+    resp = client.post("/api/orders", {"items": [{"product": "hoodie"}], "consent": True},
+                       content_type="application/json", **auth)
     assert resp.status_code == 201, resp.content
     order = Order.objects.get()
     assert order.buyer.telegram_id == 888 and order.contact == "@ivan_k"  # контакт подставили из Telegram
@@ -110,7 +112,7 @@ def test_site_order_with_session_needs_csrf_and_links_buyer(supplier, shoes, pri
     make_product(supplier, shoes, "hoodie", 80, 1, [], title_ru="Худи")
     client, csrf = site_client()
     client.post("/api/auth/telegram", widget(), content_type="application/json", HTTP_X_CSRFTOKEN=csrf)
-    body = {"items": [{"product": "hoodie"}]}
+    body = {"items": [{"product": "hoodie"}], "consent": True}
     assert client.post("/api/orders", body, content_type="application/json").status_code == 403
     # После входа токен меняется: сайт берёт новый через /api/auth/csrf.
     fresh = client.get("/api/auth/csrf").json()["csrf"]
@@ -123,7 +125,8 @@ def test_site_order_with_session_needs_csrf_and_links_buyer(supplier, shoes, pri
 
 def test_guest_order_still_needs_contact(supplier, shoes, pricing_setup):
     make_product(supplier, shoes, "hoodie", 80, 1, [], title_ru="Худи")
-    resp = Client().post("/api/orders", {"items": [{"product": "hoodie"}]}, content_type="application/json")
+    resp = Client().post("/api/orders", {"items": [{"product": "hoodie"}], "consent": True},
+                         content_type="application/json")
     assert resp.status_code == 400 and Order.objects.count() == 0
 
 

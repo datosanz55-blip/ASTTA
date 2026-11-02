@@ -369,6 +369,11 @@
       <img class="brand__word" src="assets/img/brand/logo-word-sm.webp" alt="ASTTA" width="112" height="18">
     </a>
     <p>Демо-версия. Товары, цены, курс и отзывы здесь примеры.</p>
+    <nav class="foot__legal" aria-label="Документы">
+      <a href="privacy.html">Политика обработки персональных данных</a>
+      <a href="consent.html">Согласие на обработку персональных данных</a>
+      <button type="button" data-cookies-open>Настройки cookie</button>
+    </nav>
   </div>
 </footer>
 
@@ -412,6 +417,13 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+<div class="cookies" id="cookies" role="region" aria-label="Cookie" hidden>
+  <p>Мы используем cookie и хранилище браузера, чтобы сайт работал: корзина, тема, вход. Аналитику включим, только если вы разрешите. <a href="privacy.html#cookies" target="_blank" rel="noopener">Подробнее</a></p>
+  <div class="cookies__btns">
+    <button class="btn btn--lime btn--sm" type="button" data-cookies="all">Принять все</button>
+    <button class="btn btn--ghost btn--sm" type="button" data-cookies="necessary">Только необходимые</button>
+  </div>
+</div>
 <script src="assets/js/app.js"></script>
 </body>
 </html>

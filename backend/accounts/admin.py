@@ -10,6 +10,8 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     list_display = ("username", "role", "telegram_username", "phone", "is_staff", "is_active")
     list_filter = ("role", "language", "is_active")
     search_fields = ("username", "phone", "email", "telegram_username", "telegram_id")
+    readonly_fields = ("pd_consent_at",)
     fieldsets = BaseUserAdmin.fieldsets + (
-        ("ASTTA", {"fields": ("role", "phone", "telegram_id", "telegram_username", "telegram_photo_url")}),
+        ("ASTTA", {"fields": ("role", "phone", "telegram_id", "telegram_username", "telegram_photo_url",
+                              "pd_consent_at")}),
     )

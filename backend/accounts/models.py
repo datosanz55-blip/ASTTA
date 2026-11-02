@@ -15,6 +15,7 @@ class User(AbstractUser):
     telegram_id = models.BigIntegerField("Telegram ID", null=True, blank=True, unique=True)
     telegram_username = models.CharField(_("ник в Telegram"), max_length=64, blank=True)
     telegram_photo_url = models.URLField(_("аватар в Telegram"), max_length=500, blank=True)
+    pd_consent_at = models.DateTimeField(_("согласие на обработку ПДн"), null=True, blank=True)
     # Поставщик из Китая видит кабинет на китайском, если выбрал zh-hans.
     language = models.CharField(_("язык интерфейса"), max_length=8, default="ru",
                                 choices=[("ru", "Русский"), ("zh-hans", "中文"), ("en", "English")])

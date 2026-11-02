@@ -4,7 +4,7 @@ from ninja import File, Form, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
-from accounts.api import buyer_contact, current_buyer
+from accounts.api import buyer_contact, current_buyer, require_consent
 from assistant import yandex
 from assistant.models import AiLog
 from assistant.services import read_photo
@@ -15,6 +15,7 @@ from config.throttles import per_ip
 from links.models import LinkRequest, Marketplace
 from links.services import estimate, find_in_catalog, parse_link
 from orders.api import OrderOut, order_out
+from orders.models import Order
 from orders.services import OrderError, create_link_order
 from pricing.services import PricingError
 
@@ -69,6 +70,7 @@ class RequestIn(Schema):
     category: str = ""
     contact: str
     comment: str = ""
+    consent: bool = False
 
 
 class LinkOrderIn(Schema):
@@ -81,6 +83,7 @@ class LinkOrderIn(Schema):
     contact: str = ""
     name: str = ""
     comment: str = ""
+    consent: bool = False
 
 
 class PhotoOut(Schema):
@@ -160,6 +163,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
         raise HttpError(422, "Укажите телефон или Telegram")
     if not payload.text.strip() and photo is None:
         raise HttpError(422, "Пришлите ссылку или фото товара")
+    consent_at = require_consent(payload.consent)
     _check(payload.price_cny, payload.qty)
     info = parse_link(payload.text)
     product = find_in_catalog(info)
@@ -181,6 +185,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
         photo=content or "", price_cny=payload.price_cny, qty=payload.qty, size=payload.size.strip()[:32],
         color=payload.color.strip()[:40], category=category, contact=payload.contact.strip()[:64],
         comment=payload.comment.strip()[:2000], estimate_rub=result.total_rub if result else None,
+        pd_consent_at=consent_at,
     )
     return Status(201, {
         "id": item.pk, "estimate": _estimate_out(result) if result else None,
@@ -200,6 +205,7 @@ def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile |
             content = prepare_image(photo.read(), photo.name or "photo")
         except ImageError as exc:
             raise HttpError(400, str(exc)) from exc
+    consent_at = require_consent(payload.consent)
     buyer = current_buyer(request)
     try:
         order = create_link_order(
@@ -209,6 +215,7 @@ def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile |
         )
     except OrderError as exc:
         raise HttpError(422, str(exc)) from exc
+    Order.objects.filter(pk=order.pk).update(pd_consent_at=consent_at)
     return Status(201, order_out(request, order))
 
 
@@ -219,7 +226,7 @@ ASK_CONTACT = "Не узнали товар на фото. Оставьте те
 @router.post("/photo", response=PhotoOut, throttle=[per_ip("link_photo", "10/m"), per_ip("link_photo_day", "100/d")],
              summary="Фото товара: узнали — цена и похожее в каталоге, не узнали — передаём менеджеру")
 def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] = "", contact: Form[str] = "",
-               comment: Form[str] = ""):
+               comment: Form[str] = "", consent: Form[bool] = False):
     if photo.size and photo.size > 15 * 1024 * 1024:
         raise HttpError(413, "Фото больше 15 МБ")
     data = photo.read()
@@ -249,7 +256,9 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
         AiLog.objects.filter(pk=reading.log_id).update(handoff=True)
     if not understood:
         if contact.strip():
+            consent_at = require_consent(consent)
             item = LinkRequest.objects.create(
+                pd_consent_at=consent_at,
                 photo=prepared, marketplace=place, contact=contact.strip()[:64], comment=comment.strip()[:2000],
                 text="Фото без ссылки: ИИ не узнал товар" if yandex.enabled() else "Фото без ссылки",
                 price_cny=reading.price_cny if reading else None,

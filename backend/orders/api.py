@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Status
 from ninja.errors import HttpError
 
-from accounts.api import buyer_contact, current_buyer
+from accounts.api import buyer_contact, current_buyer, require_consent
 from config.throttles import per_ip
 from orders.models import Order
 from orders.services import CartLine, OrderError, create_order
@@ -28,6 +28,7 @@ class OrderIn(Schema):
     comment: str = ""
     mode: str = "retail"
     shipping: str | None = None
+    consent: bool = False  # согласие на обработку персональных данных
 
 
 class ItemOut(Schema):
@@ -82,6 +83,7 @@ def order_out(request, order: Order) -> dict:
 def place_order(request, payload: OrderIn):
     if payload.mode not in Order.Mode.values:
         raise HttpError(400, "mode: retail или wholesale")
+    consent_at = require_consent(payload.consent)
     buyer = current_buyer(request)
     try:
         order = create_order(
@@ -91,6 +93,7 @@ def place_order(request, payload: OrderIn):
         )
     except OrderError as exc:
         raise HttpError(400, str(exc)) from exc
+    Order.objects.filter(pk=order.pk).update(pd_consent_at=consent_at)
     return Status(201, order_out(request, order))
 
 

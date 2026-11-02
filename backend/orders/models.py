@@ -40,6 +40,8 @@ class Order(models.Model):
     paid_at = models.DateTimeField(_("оплачен"), null=True, blank=True)
     # Если у поставщика не оказалось товара, деньги за эту часть заказа возвращаем.
     refund_rub = models.DecimalField(_("к возврату, ₽"), max_digits=12, decimal_places=2, default=0)
+    # Когда покупатель отметил согласие на обработку персональных данных (152-ФЗ): доказательство для проверок.
+    pd_consent_at = models.DateTimeField(_("согласие на обработку ПДн"), null=True, blank=True)
     created_at = models.DateTimeField(_("создан"), auto_now_add=True)
     updated_at = models.DateTimeField(_("изменён"), auto_now=True)
 

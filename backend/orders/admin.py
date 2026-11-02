@@ -196,11 +196,11 @@ class OrderAdmin(ModelAdmin):
     date_hierarchy = "created_at"
     list_per_page = 50
     readonly_fields = ("number", "status_label", "rate", "total_rub", "paid_at", "refund_rub", "created_at",
-                       "updated_at")
+                       "updated_at", "pd_consent_at")
     fieldsets = (
         (None, {"fields": ("number", "status_label", "contact", "name", "comment", "agent")}),
         (_("Деньги"), {"fields": ("mode", "rate", "total_rub", "paid_at", "refund_rub")}),
-        (_("Служебное"), {"fields": ("created_at", "updated_at"), "classes": ["collapse"]}),
+        (_("Служебное"), {"fields": ("created_at", "updated_at", "pd_consent_at"), "classes": ["collapse"]}),
     )
     inlines = [OrderItemInline, SupplierOrderInline, OrderEventInline, NewEventInline]
     actions = ["paid", "cancel", *[_move_action(status, label) for status, label in MOVES]]

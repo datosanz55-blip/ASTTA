@@ -101,8 +101,8 @@ def test_request_with_photo_creates_ticket(supplier, shoes, pricing_setup):
     buffer.seek(0)
     buffer.name = "screen.jpg"
     client = Client()
-    resp = client.post("/api/link/requests", {"text": "https://m.dewu.com/x?spuId=42", "price_cny": "899",
-                                              "size": "42", "contact": "@buyer", "photo": buffer})
+    resp = client.post("/api/link/requests", {"consent": "true", "text": "https://m.dewu.com/x?spuId=42",
+                                              "price_cny": "899", "size": "42", "contact": "@buyer", "photo": buffer})
     assert resp.status_code == 201, resp.content
     data = resp.json()
     assert data["estimate"]["total_rub"]
@@ -123,7 +123,8 @@ def test_rate_limits_do_not_share_counter(supplier, shoes, pricing_setup):
 
 
 def test_link_request_admin_page(supplier, shoes, pricing_setup):
-    Client().post("/api/link/requests", {"text": "https://detail.1688.com/offer/9.html", "contact": "@b"})
+    Client().post("/api/link/requests", {"text": "https://detail.1688.com/offer/9.html", "contact": "@b",
+                                         "consent": "true"})
     admin = User.objects.create_superuser("founder", password="pw-123456!")
     client = Client()
     client.force_login(admin)
@@ -137,8 +138,8 @@ def test_order_by_link_is_paid_like_any_order(pricing_setup, django_user_model):
     from orders.services import create_payouts, mark_paid, supplier_action
 
     client = Client()
-    resp = client.post("/api/link/order", {"text": "Смотри https://m.dewu.com/x?spuId=42", "price_cny": "601",
-                                           "size": "42", "contact": "@buyer"})
+    resp = client.post("/api/link/order", {"consent": "true", "text": "Смотри https://m.dewu.com/x?spuId=42",
+                                           "price_cny": "601", "size": "42", "contact": "@buyer"})
     assert resp.status_code == 201, resp.content
     data = resp.json()
     # Та же формула, что в расчёте: 601 × 13 + 1000 = 8813 → 8810 ₽, оплата сразу.
@@ -172,8 +173,8 @@ def test_order_by_screenshot_needs_price_and_contact(pricing_setup):
     buffer.seek(0)
     buffer.name = "screen.jpg"
     client = Client()
-    resp = client.post("/api/link/order", {"price_cny": "120", "qty": 2, "contact": "+7 900", "photo": buffer,
-                                           "title": "Кроссовки Nike"})
+    resp = client.post("/api/link/order", {"consent": "true", "price_cny": "120", "qty": 2, "contact": "+7 900",
+                                           "photo": buffer, "title": "Кроссовки Nike"})
     assert resp.status_code == 201, resp.content
     data = resp.json()
     assert data["total_rub"] == "5120.00"  # 120 × 2 × 13 + 2000

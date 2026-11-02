@@ -633,6 +633,7 @@
       <p class="note">После оплаты сразу заказываем у поставщика. Если товара не окажется, вернём деньги за него.</p>
       <form class="stack" id="checkoutForm" novalidate>
         <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}" required></label>
+        ${consentHTML('ckConsent')}
         <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
         <button class="btn btn--lime btn--wide" type="submit">Перейти к оплате</button>
       </form>
@@ -651,6 +652,7 @@
     if (bad && !err) { err = document.createElement('small'); err.className = 'field__err'; err.textContent = 'Укажите телефон или Telegram'; field.append(err); }
     if (!bad && err) err.remove();
     if (bad) { input.focus(); return; }
+    if (!consentOk('ckConsent')) return;
     const num = orderNum();
     const t = cartTotals();
     state.orders.unshift({
@@ -728,6 +730,7 @@
       <form class="stack" id="tgLoginForm" novalidate>
         <label class="field"><span>Имя</span><input id="tgName" autocomplete="given-name" placeholder="Анна"></label>
         <label class="field"><span>Ник в Telegram</span><input id="tgUser" autocomplete="username" placeholder="anna_v"></label>
+        ${consentHTML('tgConsent')}
         <button class="tgbtn tgbtn--wide" type="submit">${TG_ICON}Подтвердить вход</button>
       </form>
     </div>`, { narrow: true });
@@ -735,6 +738,7 @@
   function submitTgLogin() {
     const user = $('#tgUser').value.trim().replace(/^@/, '');
     if (!/^[A-Za-z0-9_]{3,32}$/.test(user)) { toast('Ник в Telegram: латиница, цифры и _, от 3 символов'); $('#tgUser').focus(); return; }
+    if (!consentOk('tgConsent')) return;
     state.tg = { name: $('#tgName').value.trim().slice(0, 40), username: user };
     store.save();
     closeSheet();
@@ -1696,6 +1700,7 @@ ${aiCatalogJSON()}
         <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
         <div id="lcSum"></div>
         <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
+        ${consentHTML('lcConsent')}
         <div class="stack" id="lcActions"></div>
       </form></div>`);
     linkCalcOut();
@@ -1752,6 +1757,7 @@ ${aiCatalogJSON()}
     const bad = !input.value.trim();
     field.classList.toggle('is-error', bad);
     if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
+    if (!consentOk('lcConsent')) return;
     const price = Number($('#lcPrice').value);
     const extra = [$('#lcSize').value.trim(), price > 0 ? `цена ${cny(price)} × ${$('#lcQty').value || 1}` : ''].filter(Boolean).join(', ');
     closeSheet();
@@ -1774,6 +1780,7 @@ ${aiCatalogJSON()}
         <div id="poSum"></div>
         <label class="field"><span>Размер, цвет, количество (если важно)</span><input id="poNote" placeholder="42, чёрный, 1 шт." autocomplete="off"></label>
         <label class="field"><span>Телефон или Telegram</span><input id="poContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
+        ${consentHTML('poConsent')}
         <div class="stack" id="poActions">${linkActionsHTML(0)}</div>
       </form></div>`, { narrow: true });
   }
@@ -1784,6 +1791,7 @@ ${aiCatalogJSON()}
     const bad = !input.value.trim();
     input.closest('.field').classList.toggle('is-error', bad);
     if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
+    if (!consentOk('poConsent')) return;
     const note = $('#poNote').value.trim();
     const price = Number($('#poPrice').value);
     const title = photoTitle;
@@ -1856,7 +1864,7 @@ ${aiCatalogJSON()}
   function orderFromLinkCalc() {
     const price = Number($('#lcPrice').value);
     if (!(price > 0)) { toast('Впишите цену в юанях'); $('#lcPrice').focus(); return; }
-    if (!contactOk($('#lcContact'))) return;
+    if (!contactOk($('#lcContact')) || !consentOk('lcConsent')) return;
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
     placeLinkOrder({ title: linkCalc.platform ? `Товар с ${linkCalc.platform}` : 'Товар по ссылке', url: linkCalc.url,
       price, qty, note: $('#lcSize').value.trim() });
@@ -1865,7 +1873,7 @@ ${aiCatalogJSON()}
     if (!$('#poPhoto').files[0]) { toast('Добавьте фото товара'); return; }
     const price = Number($('#poPrice').value);
     if (!(price > 0)) { toast('Впишите цену в юанях'); $('#poPrice').focus(); return; }
-    if (!contactOk($('#poContact'))) return;
+    if (!contactOk($('#poContact')) || !consentOk('poConsent')) return;
     placeLinkOrder({ title: photoTitle || 'Товар по фото', url: '', price, qty: 1, note: $('#poNote').value.trim() });
   }
   async function onPricePhoto(file, priceInput, statusEl, after) {
@@ -1882,6 +1890,38 @@ ${aiCatalogJSON()}
     }
     after();
   }
+
+  /* ---------- Cookie и согласие на обработку персональных данных ---------- */
+  // Согласие — отдельная галочка, по умолчанию не отмечена: так требует 152-ФЗ (с 1 сентября 2025 года
+  // согласие оформляется отдельно от других документов). Без неё форму не отправить.
+  const consentHTML = (id) => `<label class="consent" for="${id}">
+      <input type="checkbox" id="${id}">
+      <span>Даю <a href="consent.html" target="_blank" rel="noopener">согласие на обработку персональных данных</a> по <a href="privacy.html" target="_blank" rel="noopener">политике ASTTA</a></span>
+    </label>`;
+  function consentOk(id) {
+    const box = $('#' + id);
+    if (!box) return true;
+    const bad = !box.checked;
+    box.closest('.consent').classList.toggle('is-error', bad);
+    if (bad) { toast('Отметьте согласие на обработку персональных данных'); box.focus(); }
+    return !bad;
+  }
+  // Выбор по cookie: 'all' — можно включать аналитику, 'necessary' — только то, без чего сайт не работает.
+  const COOKIES_KEY = 'astta-cookies';
+  function cookieChoice() {
+    try { return localStorage.getItem(COOKIES_KEY); } catch (e) { return null; }
+  }
+  function initCookies() {
+    const box = $('#cookies');
+    if (box && !cookieChoice()) box.hidden = false;
+  }
+  function setCookies(choice) {
+    try { localStorage.setItem(COOKIES_KEY, choice); } catch (e) { /* не запомнили — спросим в следующий раз */ }
+    $('#cookies').hidden = true;
+    toast(choice === 'all' ? 'Спасибо! Аналитику можно будет включить' : 'Только необходимые cookie');
+  }
+  // Для аналитики на боевом сайте: подключать Яндекс Метрику, только если вернулось true.
+  window.asttaAnalyticsAllowed = () => cookieChoice() === 'all';
 
   /* ---------- Тема: тёмная (фирменная) и светлая ---------- */
   // Начальную тему ставит assets/js/theme.js ещё до отрисовки, здесь — переключатель.
@@ -2179,6 +2219,8 @@ ${aiCatalogJSON()}
     if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
     if (t.matches('[data-tg-login]')) { openTgLogin(); return; }
     if (t.matches('[data-theme-toggle]')) { toggleTheme(); return; }
+    if (t.matches('[data-cookies]')) { setCookies(t.dataset.cookies); return; }
+    if (t.matches('[data-cookies-open]')) { $('#cookies').hidden = false; $('#cookies .btn').focus(); return; }
     if (t.matches('[data-tg-logout]')) { state.tg = null; store.save(); renderProfile(); toast('Вы вышли'); return; }
     if (d.measures !== undefined) { state.ptab = 'size'; closeSheet(); go('profile'); return; }
     if (d.familyAdd) {
@@ -2495,6 +2537,7 @@ ${aiCatalogJSON()}
     initSplash();
     store.load();
     applyTheme(document.documentElement.getAttribute('data-ui') === 'light' ? 'light' : 'dark');
+    initCookies();
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${c.id}" data-close-menu>${c.name}</a>`).join('');
     document.addEventListener('click', onClick);

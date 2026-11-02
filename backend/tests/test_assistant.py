@@ -93,7 +93,8 @@ def test_disabled_without_keys(settings, db):
     # Без ИИ фото всё равно принимаем: просим контакт и передаём менеджеру.
     no_contact = client.post("/api/link/photo", {"photo": jpeg()}).json()
     assert (no_contact["handoff"], no_contact["need_contact"], no_contact["request_id"]) == (True, True, None)
-    sent = client.post("/api/link/photo", {"photo": jpeg(), "contact": "@buyer", "marketplace": "poizon"}).json()
+    sent = client.post("/api/link/photo", {"photo": jpeg(), "contact": "@buyer", "marketplace": "poizon",
+                                                "consent": "true"}).json()
     assert sent["handoff"] and not sent["need_contact"] and "менеджер" in sent["message"]
     ticket = LinkRequest.objects.get(pk=sent["request_id"])
     assert (ticket.contact, ticket.marketplace.code, ticket.photo.name.endswith(".webp")) == ("@buyer", "poizon", True)
@@ -234,7 +235,7 @@ def test_photo_not_understood_goes_to_manager(ai, supplier, shoes, pricing_setup
     # На фото нет ни цены, ни понятного товара: ИИ не угадывает, а передаёт менеджеру.
     replies.extend([{"textAnnotation": {"fullText": "好看", "blocks": [{"lines": [{"text": "好看"}]}]}},
                     gpt({"title_ru": "", "category": "", "price_cny": None, "keywords": []})])
-    data = Client().post("/api/link/photo", {"photo": jpeg(), "contact": "+7 900 000-00-00"}).json()
+    data = Client().post("/api/link/photo", {"photo": jpeg(), "contact": "+7 900 000-00-00", "consent": "true"}).json()
     assert (data["understood"], data["handoff"]) == (False, True)
     assert LinkRequest.objects.get(pk=data["request_id"]).text.startswith("Фото без ссылки")
     assert AiLog.objects.get(kind="photo").handoff is True
@@ -255,5 +256,5 @@ def test_screenshot_with_only_price_is_counted_at_once(ai, supplier, shoes, pric
 def test_photo_when_yandex_fails_goes_to_manager(ai, supplier, shoes, pricing_setup):
     _, replies = ai
     replies.append(yandex.AIError("Яндекс вернул 500"))
-    data = Client().post("/api/link/photo", {"photo": jpeg(), "contact": "@b"}).json()
+    data = Client().post("/api/link/photo", {"photo": jpeg(), "contact": "@b", "consent": "true"}).json()
     assert data["handoff"] and data["request_id"]

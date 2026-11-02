@@ -369,6 +369,28 @@ main {
 .faq__item p { margin: 0; padding: 0 20px 18px; max-width: 72ch; color: var(--muted); }
 @media (min-width: 900px) { .faq__list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 
+/* ---------- Согласие на ПДн и плашка cookie ---------- */
+.consent { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.45; color: var(--muted); cursor: pointer; }
+.consent input { flex: none; width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--lime); cursor: pointer; }
+.consent a { color: var(--ink); text-underline-offset: 2px; }
+.consent.is-error { color: var(--hot); }
+.consent.is-error input { outline: 2px solid var(--hot); outline-offset: 2px; border-radius: 4px; }
+.cookies {
+  position: fixed; z-index: 60; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; max-width: 760px; margin: 0 auto; padding: 16px 18px;
+  border-radius: var(--r-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), 0 12px 40px rgba(0, 0, 0, .35);
+}
+/* Пока открыто окно (шторка, меню), плашка не мешает: прячем и возвращаем после закрытия. */
+html.is-locked .cookies { display: none; }
+.cookies p { flex: 1 1 280px; margin: 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
+.cookies a { color: var(--ink); }
+.cookies__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.foot__legal { display: flex; flex-wrap: wrap; gap: 6px 18px; width: 100%; font-size: 13.5px; }
+.foot__legal a, .foot__legal button { padding: 0; border: 0; background: none; color: var(--muted); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.foot__legal a:hover, .foot__legal button:hover { color: var(--ink); }
+@media (min-width: 900px) { .cookies { bottom: max(20px, env(safe-area-inset-bottom, 0px)); } }
+
 /* ---------- Плитки подборок ---------- */
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 /* Подборок пять: первая на две колонки, чтобы ряды были ровными (2 + 2 + 1 → широкая + 2 + 2, на компьютере широкая + 1 и 3). */
