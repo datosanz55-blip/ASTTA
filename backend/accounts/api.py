@@ -77,19 +77,63 @@ class OrderBrief(Schema):
     created_at: str
 
 
+class StatsOut(Schema):
+    orders: int
+    active: int
+    delivered: int
+    spent_rub: str
+
+
 class MeOut(Schema):
     telegram_id: int | None
     username: str
     first_name: str
+    last_name: str
     photo_url: str
+    member_since: str
+    phone: str
+    city: str
+    delivery_address: str
+    measures: dict
+    stats: StatsOut
     orders: list[OrderBrief]
+
+
+MEASURE_KEYS = {"height": (100, 230), "chest": (60, 160), "waist": (40, 160), "hips": (60, 180), "foot": (15, 35)}
+
+
+class ProfileIn(Schema):
+    phone: str | None = None
+    city: str | None = None
+    delivery_address: str | None = None
+    measures: dict | None = None
+
+
+def buyer_stats(user: User) -> dict:
+    from django.db.models import F, Sum
+
+    from orders.models import Order
+
+    orders = Order.objects.filter(buyer=user)
+    paid = orders.filter(paid_at__isnull=False).exclude(status=Order.Status.CANCELLED)
+    spent = paid.aggregate(s=Sum(F("total_rub") - F("refund_rub")))["s"] or 0
+    done = {Order.Status.DELIVERED, Order.Status.CANCELLED, Order.Status.AWAITING_PAYMENT}
+    return {
+        "orders": orders.count(),
+        "active": orders.exclude(status__in=done).count(),
+        "delivered": orders.filter(status=Order.Status.DELIVERED).count(),
+        "spent_rub": str(spent),
+    }
 
 
 def me_out(user: User) -> dict:
     orders = user.orders.order_by("-created_at")[:50]
     return {
         "telegram_id": user.telegram_id, "username": user.telegram_username, "first_name": user.first_name,
-        "photo_url": user.telegram_photo_url,
+        "last_name": user.last_name, "photo_url": user.telegram_photo_url,
+        "member_since": user.date_joined.date().isoformat(),
+        "phone": user.phone, "city": user.city, "delivery_address": user.delivery_address,
+        "measures": user.measures or {}, "stats": buyer_stats(user),
         "orders": [{"number": o.number, "token": str(o.token), "status": o.status,
                     "status_label": o.get_status_display(), "total_rub": str(o.total_rub),
                     "created_at": o.created_at.isoformat()} for o in orders],
@@ -135,4 +179,36 @@ def me(request):
     buyer = current_buyer(request)
     if buyer is None:
         raise HttpError(401, "Войдите через Telegram")
+    return me_out(buyer)
+
+
+@router.patch("/me", response=MeOut, throttle=[per_ip("me_edit", "30/m")],
+              summary="Изменить свои данные: телефон, город, пункт выдачи, мерки")
+def me_update(request, payload: ProfileIn):
+    buyer = current_buyer(request)
+    if buyer is None:
+        raise HttpError(401, "Войдите через Telegram")
+    fields = []
+    for name, limit in (("phone", 32), ("city", 80), ("delivery_address", 300)):
+        value = getattr(payload, name)
+        if value is not None:
+            setattr(buyer, name, value.strip()[:limit])
+            fields.append(name)
+    if payload.measures is not None:
+        clean = {}
+        for key, (low, high) in MEASURE_KEYS.items():
+            raw = payload.measures.get(key)
+            if raw in (None, ""):
+                continue
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                raise HttpError(422, "Мерки: только числа в сантиметрах") from None
+            if not low <= value <= high:
+                raise HttpError(422, f"Мерка {key}: от {low} до {high} см")
+            clean[key] = value
+        buyer.measures = clean
+        fields.append("measures")
+    if fields:
+        buyer.save(update_fields=fields)
     return me_out(buyer)
