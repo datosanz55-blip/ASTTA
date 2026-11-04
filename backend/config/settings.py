@@ -137,6 +137,8 @@ TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", "")
 TELEGRAM_AUTH_MAX_AGE = int(env("TELEGRAM_AUTH_MAX_AGE", str(60 * 60 * 24)))
 # Секрет вебхука бота: Telegram присылает его в каждом запросе, без него запросы к боту отклоняются.
 TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", "")
+# Адрес Bot API. Если хостинг блокирует api.telegram.org — адрес посредника за рубежом (см. infra/telegram-proxy.js).
+TELEGRAM_API_URL = (env("TELEGRAM_API_URL") or "https://api.telegram.org").rstrip("/")
 # Адрес сайта: на него ведут кнопки бота и мини-приложение.
 SITE_URL = env("SITE_URL", "")
 

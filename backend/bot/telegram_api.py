@@ -12,7 +12,7 @@ def call(method: str, **params) -> dict:
     if not settings.TELEGRAM_BOT_TOKEN:
         raise BotError("Бот не настроен: нет TELEGRAM_BOT_TOKEN")
     try:
-        resp = httpx.post(f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/{method}", json=params,
+        resp = httpx.post(f"{settings.TELEGRAM_API_URL}/bot{settings.TELEGRAM_BOT_TOKEN}/{method}", json=params,
                           timeout=10)
         data = resp.json()
     except (httpx.HTTPError, ValueError) as exc:
