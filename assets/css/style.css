@@ -1343,3 +1343,8 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .linkcalc__tag { padding: 6px 10px; border-radius: 999px; font: 600 12px/1 var(--font-display); letter-spacing: .05em; text-transform: uppercase; background: var(--lime); color: var(--on-lime); }
 .linkcalc__photo { width: 96px; height: 96px; border-radius: 12px; object-fit: cover; }
 @media (max-width: 520px) { .linkcalc .grid2 { grid-template-columns: minmax(0, 1fr); } }
+
+/* Боевой сайт: ролики пока только в демо, раздел «Тренды» прячем. */
+.is-live [data-nav="trends"] { display: none; }
+.tgwidget { min-height: 48px; display: flex; justify-content: center; }
+.is-live [data-demo], html:not(.is-live) [data-live] { display: none; }

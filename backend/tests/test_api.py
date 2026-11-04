@@ -64,3 +64,24 @@ def test_order_validation(client, runner):
     empty_contact = client.post("/api/orders", {"consent": True, "items": [{"product": "runner"}], "contact": " "},
                                 content_type="application/json")
     assert empty_contact.status_code == 400
+
+
+def test_card_has_fields_for_site_pricing(client, runner):
+    card = client.get("/api/products").json()["items"][0]
+    assert card["supplier_code"] == runner.supplier.code
+    assert card["tiers"][0]["min_qty"] == 6
+    assert card["fee_retail"] == "0.0500"
+    assert card["fee_wholesale"] == "0.0300"
+    assert {"weight_kg", "bulky", "size_grid", "sold_count"} <= card.keys()
+
+
+def test_site_settings_and_suppliers(client, runner):
+    site = client.get("/api/site").json()
+    assert site["rate"] is not None
+    assert any(m["is_default"] for m in site["shipping"])
+    assert site["telegram_bot"] == ""  # без токена бота кнопку входа не показываем
+    assert [s["code"] for s in client.get("/api/suppliers").json()] == [runner.supplier.code]
+
+
+def test_site_settings_without_rate(client, db):
+    assert client.get("/api/site").json()["rate"] is None

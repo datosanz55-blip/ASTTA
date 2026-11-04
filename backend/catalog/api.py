@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from catalog.models import Category, Product, SupplierPost
+from catalog.models import Category, Product, Supplier, SupplierPost
 from pricing.services import PricingContext, PricingError, quote
 
 router = Router(tags=["Каталог"])
@@ -39,17 +39,30 @@ class ProductCard(Schema):
     min_qty: int | None
     rating: Decimal | None
     reviews_count: int
+    # Для расчёта цены на сайте теми же формулами, что и на сервере (pricing/services.py).
+    supplier_code: str
+    weight_kg: Decimal
+    bulky: bool
+    size_grid: str
+    sold_count: int
+    tiers: list[TierOut]
+    fee_retail: Decimal | None
+    fee_wholesale: Decimal | None
+
+
+class SupplierOut(Schema):
+    code: str
+    name: str
+    about: str
+    city: str
+    fact_days: list[int] | None
 
 
 class ProductDetail(ProductCard):
     description: str
-    weight_kg: Decimal
-    bulky: bool
-    size_grid: str
     sizes: list[str]
     colors: list[str]
     images: list[str]
-    tiers: list[TierOut]
     supplier_fact_days: list[int] | None
 
 
@@ -103,6 +116,14 @@ def _card(request, product, ctx):
         "min_qty": tiers[0].min_qty if tiers else None,
         "rating": product.rating,
         "reviews_count": product.reviews_count,
+        "supplier_code": product.supplier.code,
+        "weight_kg": product.weight_kg,
+        "bulky": product.bulky,
+        "size_grid": product.size_grid,
+        "sold_count": product.sold_count,
+        "tiers": tiers,
+        "fee_retail": ctx.fee_for(product, "retail") if ctx else None,
+        "fee_wholesale": ctx.fee_for(product, "wholesale") if ctx else None,
     }
 
 
@@ -116,6 +137,13 @@ def _pricing_context():
         return PricingContext()
     except PricingError:
         return None  # нет курса: каталог показываем, цену в рублях нет
+
+
+@router.get("/suppliers", response=list[SupplierOut], summary="Поставщики")
+def suppliers(request):
+    return [{"code": s.code, "name": s.name, "about": s.about, "city": s.city,
+             "fact_days": [s.fact_days_min, s.fact_days_max] if s.fact_days_min and s.fact_days_max else None}
+            for s in Supplier.objects.filter(is_active=True).order_by("name")]
 
 
 @router.get("/categories", response=list[CategoryOut], summary="Категории")
@@ -156,13 +184,9 @@ def product_detail(request, slug: str):
     supplier = product.supplier
     data.update({
         "description": product.description_ru,
-        "weight_kg": product.weight_kg,
-        "bulky": product.bulky,
-        "size_grid": product.size_grid,
         "sizes": product.size_list,
         "colors": product.color_list,
         "images": _image_urls(request, product),
-        "tiers": sorted(product.tiers.all(), key=lambda t: t.min_qty),
         "supplier_fact_days": ([supplier.fact_days_min, supplier.fact_days_max]
                                if supplier.fact_days_min and supplier.fact_days_max else None),
     })
