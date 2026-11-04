@@ -1,0 +1,103 @@
+# Вход на сервер: HTTPS-сертификат Let's Encrypt выпускается и продлевается сам.
+# Сайт для покупателей (index.html + assets) и сервер (API, админка) живут на одном домене,
+# поэтому браузеру не нужны CORS-разрешения, а cookie админки не уходят на другие сайты.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin-allow-popups"
+		-Server
+	}
+
+	# Каталог с архивом фото — до 1 ГБ за раз.
+	request_body {
+		max_size 1GB
+	}
+
+	# Фото товаров, постов и склада. Только картинки: даже если загрузят что-то другое, браузер
+	# не выполнит это как страницу или скрипт.
+	handle /media/* {
+		root * /srv
+		header Content-Security-Policy "default-src 'none'; img-src 'self'; sandbox"
+		header Cache-Control "public, max-age=2592000"
+		file_server
+	}
+
+	# Для поисковиков: что индексировать, карта сайта. Адрес админки здесь не называем — он секретный,
+	# а от индексации её закрывает заголовок X-Robots-Tag ниже.
+	handle /robots.txt {
+		respond <<TXT
+		User-agent: *
+		Allow: /
+		Disallow: /api/
+
+		Sitemap: https://{$SITE_DOMAIN}/sitemap.xml
+		TXT 200
+	}
+	# Пока сайт одностраничный, в карте одна страница. С карточками товаров на своих адресах карту будет отдавать сервер.
+	handle /sitemap.xml {
+		header Content-Type "application/xml; charset=utf-8"
+		respond <<XML
+		<?xml version="1.0" encoding="UTF-8"?>
+		<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+		  <url><loc>https://{$SITE_DOMAIN}/</loc><changefreq>daily</changefreq></url>
+		</urlset>
+		XML 200
+	}
+	# Куда писать, если кто-то нашёл уязвимость (стандарт RFC 9116). Срок продлевать раз в год.
+	handle /.well-known/security.txt {
+		respond <<TXT
+		Contact: mailto:{$ACME_EMAIL}
+		Expires: 2027-11-01T00:00:00.000Z
+		Preferred-Languages: ru, en
+		Canonical: https://{$SITE_DOMAIN}/.well-known/security.txt
+		TXT 200
+	}
+
+	# API и админка: запрет встраивания в чужие страницы ставит сам сервер (X-Frame-Options: DENY).
+	@server path /api/* /{$DJANGO_ADMIN_URL}/* /static/* /healthz
+	handle @server {
+		header X-Robots-Tag "noindex, nofollow"
+		reverse_proxy backend:8000 {
+			# Загрузка каталога с 300 фото обрабатывается около минуты.
+			transport http {
+				response_header_timeout 180s
+			}
+		}
+	}
+
+	# Всё остальное — сайт для покупателей.
+	# CSP: скрипты только свои и Telegram (кнопка входа и мини-приложение), запросы только к нашему серверу.
+	# Встраивать сайт можно только самому себе и Telegram: так мини-приложение открывается в Telegram Web,
+	# а чужой сайт не может спрятать наши кнопки под своими (кликджекинг).
+	handle {
+		header Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://t.me https://telegram.org https://*.telegram.org; media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src https://oauth.telegram.org; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+		# Кэш в браузере: шрифты — год, картинки — месяц; код и страница каждый раз сверяются с сервером
+		# (ETag, ответ 304 почти ничего не весит), поэтому обновления сайта видны сразу.
+		@fonts path /assets/fonts/*
+		header @fonts Cache-Control "public, max-age=31536000, immutable"
+		@images path /assets/img/* /public/*
+		header @images Cache-Control "public, max-age=2592000"
+		@code path / /index.html /assets/js/* /assets/css/*
+		header @code Cache-Control "no-cache"
+		# В index.html подставляем наш домен в canonical и превью для соцсетей ({{.Host}}).
+		@page path / /index.html
+		templates @page
+		root * /srv/site
+		# favicon.ico, llms.txt и иконки лежат в public/, а браузеры и боты ищут часть из них в корне.
+		try_files {path} /public{path} /index.html
+		file_server
+	}
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}

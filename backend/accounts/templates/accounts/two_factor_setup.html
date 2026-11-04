@@ -1,0 +1,22 @@
+{% extends 'unfold/layouts/unauthenticated.html' %}
+{% load unfold %}
+
+{% block content %}
+    {% include "unfold/helpers/unauthenticated_title.html" with title="Подключите приложение" subtitle="Защита входа в ASTTA" %}
+    <ol class="flex flex-col gap-2 mb-6 text-sm">
+        <li>1. Установите на телефон Яндекс Ключ или Google Authenticator.</li>
+        <li>2. В приложении нажмите «Добавить» и отсканируйте QR-код.</li>
+        <li>3. Введите шесть цифр, которые покажет приложение.</li>
+    </ol>
+    <p class="mb-6 text-sm">Без кода из приложения в админку не войти даже с паролем: так украденный пароль ничего не даст.</p>
+    <div class="bg-white p-3 rounded-default border border-base-200 w-fit mx-auto mb-4 [&_svg]:w-48 [&_svg]:h-48">{{ qr }}</div>
+    <p class="mb-6 text-xs text-center">Не сканируется — введите ключ вручную:<br><code class="font-mono select-all">{{ secret }}</code></p>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% include "unfold/helpers/field.html" with field=form.code %}
+        <div class="flex flex-col gap-3 mt-6">
+            {% component "unfold/components/button.html" with submit=1 variant="primary" class="w-full" %}Подключить и войти{% endcomponent %}
+        </div>
+    </form>
+{% endblock %}

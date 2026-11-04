@@ -1,0 +1,50 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="max-w-2xl flex flex-col gap-6">
+  <p>{% translate "Заполните шаблон: одна строка — один товар. Фото положите в ZIP: имя файла начинается с артикула (A-101.jpg, A-101_2.jpg) или фото лежат в папке с артикулом. Новые фото товара заменяют старые. Если в файле или архиве есть ошибка, не загрузится ничего: исправьте и загрузите снова." %}</p>
+  <p><a class="underline font-medium" href="{% url 'admin:catalog_product_template' %}">{% translate "Скачать шаблон Excel" %}</a></p>
+
+  {% if result and result.warnings %}
+    <div class="border border-amber-300 bg-amber-50 text-amber-900 rounded-default p-4 dark:bg-amber-950 dark:text-amber-200">
+      <ul class="list-disc pl-5">{% for warning in result.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+  {% if result and result.errors %}
+    <div class="border border-red-300 bg-red-50 text-red-800 rounded-default p-4 dark:bg-red-950 dark:text-red-200">
+      <p class="font-semibold mb-2">{% translate "Файл не загружен. Исправьте ошибки:" %}</p>
+      <ul class="list-disc pl-5">{% for error in result.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4">
+    {% csrf_token %}
+    {% if not suppliers %}
+      <p class="border border-amber-300 bg-amber-50 text-amber-900 rounded-default p-4 dark:bg-amber-950 dark:text-amber-200">
+        {% translate "Сначала заведите поставщика: от его имени товары появятся на сайте." %}
+        <a class="underline font-medium" href="{% url 'admin:catalog_supplier_add' %}">{% translate "Добавить поставщика" %}</a></p>
+    {% endif %}
+    {% if suppliers %}
+      <label class="flex flex-col gap-1">{% translate "Поставщик" %} <a class="underline text-sm w-fit" href="{% url 'admin:catalog_supplier_add' %}">{% translate "+ новый поставщик" %}</a>
+        <select name="supplier" required class="border border-base-200 rounded-default px-3 py-2">
+          {% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+    {% endif %}
+    <label class="flex flex-col gap-1">{% translate "Файл .xlsx (можно без него, если загружаете только фото)" %}
+      <input type="file" name="file" accept=".xlsx">
+    </label>
+    <label class="flex flex-col gap-1">{% translate "Архив с фото .zip (необязательно)" %}
+      <input type="file" name="photos" accept=".zip">
+    </label>
+    {% if suppliers %}
+      <label class="flex items-center gap-2"><input type="checkbox" name="publish" value="1" checked>
+        {% translate "Сразу опубликовать на сайте" %}</label>
+      <label class="flex items-center gap-2"><input type="checkbox" name="translate" value="1">
+        {% translate "Перевести с китайского, где нет русского названия (YandexGPT)" %}</label>
+    {% endif %}
+    <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default w-fit">{% translate "Загрузить" %}</button>
+  </form>
+</div>
+{% endblock %}

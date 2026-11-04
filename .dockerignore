@@ -1,0 +1,10 @@
+# Образ собирается из корня репозитория, но берёт только сервер.
+*
+!backend/
+backend/db.sqlite3
+backend/media/
+backend/staticfiles/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.pyc
