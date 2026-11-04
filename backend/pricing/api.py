@@ -18,6 +18,7 @@ class ShippingOut(Schema):
     days_min: int
     days_max: int
     for_bulky_only: bool
+    is_default: bool
 
 
 class QuoteOut(Schema):
@@ -66,3 +67,27 @@ def get_quote(request, product: str, qty: int = 1, mode: str = "retail", shippin
         return quote_out(quote(item, qty=qty, mode=mode, shipping=shipping))
     except PricingError as exc:
         raise HttpError(400, str(exc)) from exc
+
+
+@router.get("/site", summary="Настройки для сайта одним запросом: курс, доставка, сборы, вход и ИИ")
+def site(request):
+    from django.conf import settings
+
+    from assistant import yandex
+    from pricing.models import PricingConfig
+
+    config = PricingConfig.load()
+    try:
+        rate_value = current_rate(config=config)
+    except PricingError:
+        rate_value = None  # курса нет: сайт покажет каталог без цен в рублях
+    return {
+        "rate": rate_value,
+        "retail_fee": config.retail_fee,
+        "wholesale_fee": config.wholesale_fee,
+        "link_rate": config.link_rate,
+        "link_delivery_rub": config.link_delivery_rub,
+        "shipping": [ShippingOut.from_orm(m).dict() for m in ShippingMethod.objects.filter(is_active=True)],
+        "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",
+        "ai": yandex.enabled(),
+    }

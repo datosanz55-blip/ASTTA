@@ -2,13 +2,13 @@
   'use strict';
 
   /* ---------- Настройки (в рабочей версии приходят с сервера) ---------- */
-  const RATE = 11.4;          // ₽ за 1 ¥, демо-значение
+  let RATE = 11.4;          // ₽ за 1 ¥, демо-значение
   const EUR = 95;             // ₽ за 1 €, демо-значение для бюджета в евро
-  const FEE_RETAIL = 0.05;    // сервисный сбор ASTTA с розничной продажи
-  const FEE_OPT = 0.03;       // сервисный сбор ASTTA с оптовой продажи
+  let FEE_RETAIL = 0.05;    // сервисный сбор ASTTA с розничной продажи
+  let FEE_OPT = 0.03;       // сервисный сбор ASTTA с оптовой продажи
   // Заказ по ссылке или фото: цена с площадки по своему курсу плюс логистика за штуку (в админке меняются).
-  const LINK_RATE = 13;       // ₽ за 1 ¥
-  const LINK_DELIVERY = 1000; // ₽ за штуку
+  let LINK_RATE = 13;       // ₽ за 1 ¥
+  let LINK_DELIVERY = 1000; // ₽ за штуку
   const SHIP = {
     auto:  { name: 'Авто', perKg: 420, days: [18, 25], icon: 'truck' },
     air:   { name: 'Авиа', perKg: 980, days: [8, 12], icon: 'plane' },
@@ -274,8 +274,10 @@
         if (d.mode === 'buyer' || d.mode === 'supplier') state.mode = d.mode;
         if (d.ship && SHIP[d.ship]) state.ship = d.ship;
         if (d.carts && Array.isArray(d.carts.buyer) && Array.isArray(d.carts.supplier)) {
-          state.carts.buyer = d.carts.buyer.filter((i) => byId[i.id]);
-          state.carts.supplier = d.carts.supplier.filter((i) => byId[i.id]);
+          // Сохранённую корзину сверяем с каталогом, когда он загрузится: на сервере товары другие, чем в демо.
+          state.savedCarts = { buyer: d.carts.buyer.filter((i) => i && typeof i.id === 'string'), supplier: d.carts.supplier.filter((i) => i && typeof i.id === 'string') };
+          state.carts.buyer = state.savedCarts.buyer.filter((i) => byId[i.id]);
+          state.carts.supplier = state.savedCarts.supplier.filter((i) => byId[i.id]);
         }
         if (Array.isArray(d.liked)) state.liked = new Set(d.liked);
         if (Array.isArray(d.joined)) state.joined = new Set(d.joined);
@@ -307,6 +309,8 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (name, cls = '') => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const img = (name) => `assets/img/${name}.webp`;
+  // Фото товара: с сервера (загружено в админке) или из демо-набора по id.
+  const pimg = (p) => (p && p.image) || img(p ? p.id : 'bag');
   const plural = (n, one, few, many) => {
     const a = Math.abs(n) % 100, b = a % 10;
     if (a > 10 && a < 20) return many;
@@ -320,6 +324,11 @@
   const shipFor = (p, wanted = state.ship) => (p.bulky ? 'cargo' : (wanted === 'cargo' ? 'auto' : wanted));
   const unitCny = (p) => (p.sale ? Math.round(p.cny * (1 - p.sale / 100)) : p.cny);
 
+  // Сбор свой у товара (правило поставщика или категории на сервере), иначе общий.
+  const feeR = (p) => (p.feeR != null ? p.feeR : FEE_RETAIL);
+  const feeW = (p) => (p.feeW != null ? p.feeW : FEE_OPT);
+  const pct = (x) => `${nf1.format(Math.round(x * 1000) / 10)}%`;
+
   // Розница: цена под ключ = товар по курсу + доставка по весу + сервисный сбор
   function retail(p, opts = {}) {
     const ship = SHIP[shipFor(p, opts.ship)];
@@ -327,7 +336,7 @@
     const unit = opts.cny != null ? opts.cny : unitCny(p);
     const goods = unit * RATE * qty;
     const delivery = p.kg * ship.perKg * qty;
-    const fee = goods * FEE_RETAIL;
+    const fee = goods * feeR(p);
     return { unit, goods, delivery, fee, ship, total: round10(goods + delivery + fee), each: round10((goods + delivery + fee) / qty) };
   }
   const retailFull = (p) => retail(p, { cny: p.cny }).total;
@@ -347,11 +356,11 @@
     const goodsCny = each * qty;
     const goods = goodsCny * RATE;
     const delivery = p.kg * ship.perKg * qty;
-    const fee = goods * FEE_OPT;
+    const fee = goods * feeW(p);
     return { each, goodsCny, goods, delivery, fee, ship, total: round10(goods + delivery + fee), landed: round10((goods + delivery + fee) / qty) };
   }
   const daysText = (d) => `${d[0]}–${d[1]}\u00a0дн.`;
-  const rateText = RATE.toFixed(2).replace('.', ',');
+  let rateText = RATE.toFixed(2).replace('.', ',');
 
   /* ---------- Карточки ---------- */
   function cardHTML(p) {
@@ -372,7 +381,7 @@
     const days = SHIP[shipFor(p)].days;
     return `<article class="card">
       <div class="card__media">
-        <img class="card__img" src="${img(p.id)}" alt="" loading="lazy" width="720" height="720">
+        <img class="card__img" src="${pimg(p)}" alt="" loading="lazy" width="720" height="720">
         ${badge}
         <button class="card__add" type="button" data-add="${p.id}" aria-label="В корзину: ${esc(p.t)}">${icon('plus')}</button>
       </div>
@@ -380,7 +389,7 @@
         <div class="card__price">${price}${old}</div>
         <div class="card__unit">${sub}</div>
         <h3 class="card__title"><button class="card__hit" type="button" data-open="${p.id}">${esc(p.t)}</button></h3>
-        <div class="card__meta"><span>${icon('star', 'ic--fill')}${nf1.format(p.rating)}</span><span>${daysText(days)}</span></div>
+        <div class="card__meta">${p.rating ? `<span>${icon('star', 'ic--fill')}${nf1.format(p.rating)}</span>` : ''}<span>${daysText(days)}</span></div>
       </div>
     </article>`;
   }
@@ -395,7 +404,7 @@
       ? `<b>${cny(g.cny)}</b> за шт <s>${cny(p.tiers[0][1])}</s>`
       : `<b>${rub(retail(p, { cny: g.cny }).total)}</b> под ключ <s>${rub(retail(p).total)}</s>`;
     return `<article class="group">
-      <img src="${img(p.id)}" alt="" loading="lazy" width="92" height="92">
+      <img src="${pimg(p)}" alt="" loading="lazy" width="92" height="92">
       <div class="group__body">
         <h3 class="group__title"><button type="button" data-open="${p.id}">${esc(p.t)}</button></h3>
         <div class="group__price">${price}</div>
@@ -409,29 +418,35 @@
   }
 
   function postHTML(post) {
-    const s = SUPPLIERS[post.sup];
+    const s = SUPPLIERS[post.sup] || { name: post.supName || 'Поставщик', about: '', short: '··' };
     const p = byId[post.pid];
     const liked = state.liked.has(post.id);
-    const price = isSupplier() ? `${cny(p.tiers[0][1])} · от ${p.tiers[0][0]} шт` : `${rub(retail(p).total)} под ключ`;
-    const photo = post.photo || img(p.id);
-    return `<article class="post">
-      <header class="post__head">
-        <span class="ava" aria-hidden="true">${s.short}</span>
-        <div class="post__who"><b>${esc(s.name)}</b><span>${esc(post.time)} · ${esc(s.about)}</span></div>
-        ${post.auto ? `<span class="tag" title="Пост собран контент-заводом из карточки товара">${icon('spark')}Автопост</span>` : ''}
-      </header>
-      <p class="post__text">${esc(post.text)}</p>
-      <img class="post__img" src="${esc(photo)}" alt="${esc(p.t)}" loading="lazy" width="720" height="540">
-      <div class="post__product">
-        <img src="${img(p.id)}" alt="" loading="lazy" width="46" height="46">
+    const price = !p ? '' : (isSupplier() ? `${cny(p.tiers[0][1])} · от ${p.tiers[0][0]} шт` : `${rub(retail(p).total)} под ключ`);
+    const photo = post.photo || (p ? pimg(p) : '');
+    const product = p ? `<div class="post__product">
+        <img src="${pimg(p)}" alt="" loading="lazy" width="46" height="46">
         <div><button class="link" type="button" data-open="${p.id}"><b>${esc(p.t)}</b></button><span>${price}</span></div>
         <button class="roundbtn" type="button" data-add="${p.id}" aria-label="В корзину: ${esc(p.t)}">${icon('plus')}</button>
-      </div>
-      <div class="post__actions">
+      </div>` : '';
+    // Лайки и комментарии в ленте пока только в демо: на сервере их нет, нули не показываем.
+    const actions = live.on ? `<div class="post__actions">
+        ${p ? `<button type="button" data-open="${p.id}">${icon('bag')}<span>Смотреть товар</span></button>` : ''}
+        <button class="push" type="button" data-open-chat="${post.sup}">Спросить поставщика</button>
+      </div>` : `<div class="post__actions">
         <button type="button" data-like="${post.id}" aria-pressed="${liked}" aria-label="Нравится">${icon('heart')}<span>${post.likes + (liked ? 1 : 0)}</span></button>
         <button type="button" data-open="${p.id}" aria-label="Отзывы и вопросы">${icon('chat')}<span>${post.comments}</span></button>
         <button class="push" type="button" data-open-chat="${post.sup}">Спросить поставщика</button>
-      </div>
+      </div>`;
+    return `<article class="post">
+      <header class="post__head">
+        <span class="ava" aria-hidden="true">${esc(s.short)}</span>
+        <div class="post__who"><b>${esc(s.name)}</b><span>${esc(post.time)}${s.about ? ` · ${esc(s.about)}` : ''}</span></div>
+        ${post.auto ? `<span class="tag" title="Пост собран контент-заводом из карточки товара">${icon('spark')}Автопост</span>` : ''}
+      </header>
+      <p class="post__text">${esc(post.text)}</p>
+      ${photo ? `<img class="post__img" src="${esc(photo)}" alt="${p ? esc(p.t) : ''}" loading="lazy" width="720" height="540">` : ''}
+      ${product}
+      ${actions}
     </article>`;
   }
 
@@ -455,11 +470,18 @@
 
   function renderHome() {
     $('#reelRail').innerHTML = TRENDS.map(reelThumbHTML).join('');
-    $('#tiles').innerHTML = TILES.map(tileHTML).join('');
-    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${img(c.img)}" alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
+    // Пустые подборки и разделы на главной прячем: на боевом сайте нет роликов и совместного опта.
+    $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
+    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${c.src || img(c.img)}" alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
+    ['#reelRail', '#groups', '#popular', '#feedPreview', '#homeCats'].forEach((sel) => {
+      const box = $(sel);
+      box.closest('section').hidden = !box.innerHTML.trim();
+    });
+    const empty = $('#liveEmpty');
+    if (empty) empty.hidden = !(live.on && !PRODUCTS.length);
   }
 
   const PLATFORMS = [[/1688\./i, '1688'], [/taobao\.|tb\.cn/i, 'Taobao'], [/tmall\./i, 'Tmall'], [/poizon|dewu/i, 'Poizon'], [/pinduoduo|yangkeduo/i, 'Pinduoduo']];
@@ -589,7 +611,7 @@
       }
       const s = SHIP[shipFor(p)];
       return `<article class="citem">
-        <img src="${img(p.id)}" alt="" width="76" height="76" loading="lazy">
+        <img src="${pimg(p)}" alt="" width="76" height="76" loading="lazy">
         <div class="citem__body">
           <button class="citem__title" type="button" data-open="${p.id}">${esc(p.t)}</button>
           <span class="citem__meta">${esc(SUPPLIERS[p.sup].name)}${sizeLabel} · ${s.name.toLowerCase()} ${daysText(s.days)}</span>
@@ -653,6 +675,7 @@
     if (!bad && err) err.remove();
     if (bad) { input.focus(); return; }
     if (!consentOk('ckConsent')) return;
+    if (live.on) { checkoutLive(input.value.trim(), $('#checkoutForm button[type=submit]')); return; }
     const num = orderNum();
     const t = cartTotals();
     state.orders.unshift({
@@ -689,7 +712,7 @@
         </div>
         ${status}
       </div>
-      ${o.link ? `<p class="order__link">${icon('route')}<span>${esc(o.link.title)}${o.link.url ? ` · <span class="mono">${esc(o.link.url)}</span>` : ''}</span></p>` : `<div class="thumbs">${o.items.map((id) => `<img src="${img(id)}" alt="${esc(byId[id].t)}" width="52" height="52" loading="lazy">`).join('')}</div>`}
+      ${o.link ? `<p class="order__link">${icon('route')}<span>${esc(o.link.title)}${o.link.url ? ` · <span class="mono">${esc(o.link.url)}</span>` : ''}</span></p>` : `<div class="thumbs">${o.items.map((id) => `<img src="${pimg(byId[id])}" alt="${esc(byId[id].t)}" width="52" height="52" loading="lazy">`).join('')}</div>`}
       ${o.unpaid ? `<button class="btn btn--lime btn--sm" type="button" data-pay-link="${o.num}" style="align-self:flex-start">Оплатить ${rub(o.total)}</button>` : ''}
       <ol class="timeline">${stages}</ol>
       ${o.delivered ? `<div class="rvremind">${icon('star')}<div><b>Review+ через 3 месяца</b><span>8 января напомним рассказать, как кроссовки после 3 месяцев носки</span></div><button class="btn btn--line btn--sm" type="button" data-rv-now>Отзыв сейчас</button></div>` : `<button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>`}
@@ -697,9 +720,11 @@
   }
 
   function renderProfile() {
-    const tabs = [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
+    // Семья и подарки пока работают только в браузере, без сервера: на боевом сайте их не показываем.
+    const tabs = live.on ? [['orders', 'Заказы'], ['size', 'Мерки']] : [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
+    if (!tabs.some(([id]) => id === state.ptab)) state.ptab = 'orders';
     const body = {
-      orders: () => `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`,
+      orders: () => (live.on ? liveOrdersHTML() : `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`),
       family: familyHTML, gifts: giftsHTML, size: measuresHTML,
     }[state.ptab]();
     $('#profileBody').innerHTML = `${tgCardHTML()}<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
@@ -711,9 +736,9 @@
   function tgCardHTML() {
     if (state.tg) {
       return `<div class="tgcard tgcard--in">
-        <span class="tgcard__ava" aria-hidden="true">${esc((state.tg.name || state.tg.username).slice(0, 1).toUpperCase())}</span>
-        <div class="tgcard__txt"><b>${esc(state.tg.name || 'Вы')}</b><span>@${esc(state.tg.username)} · статусы заказов пришлёт <a href="https://t.me/astta_shop_bot" target="_blank" rel="noopener">@astta_shop_bot</a></span></div>
-        <button class="linkbtn" type="button" data-tg-logout>Выйти</button>
+        <span class="tgcard__ava" aria-hidden="true">${esc((state.tg.name || state.tg.username || '·').slice(0, 1).toUpperCase())}</span>
+        <div class="tgcard__txt"><b>${esc(state.tg.name || 'Вы')}</b><span>${state.tg.username ? `@${esc(state.tg.username)} · ` : ''}статусы заказов пришлёт <a href="https://t.me/astta_shop_bot" target="_blank" rel="noopener">@astta_shop_bot</a></span></div>
+        ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
       </div>`;
     }
     return `<div class="tgcard">
@@ -723,6 +748,7 @@
   }
   const TG_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21.9 4.3 18.6 19.9c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L5.9 13.4 1 11.9c-1.1-.3-1.1-1.1.2-1.6L20.6 2.8c.9-.3 1.7.2 1.3 1.5Z"/></svg>';
   function openTgLogin() {
+    if (live.on) { openTgLoginLive(); return; }
     openSheet(`<div class="stack">
       <h2 class="sheet__title">Вход через Telegram</h2>
       <p class="note">На сайте откроется окно Telegram: подтвердите вход для ASTTA, и мы узнаем ваше имя и ник. Телефон Telegram не передаёт, пароль не нужен.</p>
@@ -760,7 +786,7 @@
       const p = byId[it.pid];
       const status = it.status === 'pending' ? '<span class="pill pill--wait">Ждёт согласования</span>' : (it.status === 'declined' ? '<span class="pill">Отклонено</span>' : '<span class="pill pill--go">Одобрено</span>');
       return `<article class="fitem${it.status === 'declined' ? ' is-off' : ''}">
-        <img src="${img(p.id)}" alt="" width="64" height="64" loading="lazy">
+        <img src="${pimg(p)}" alt="" width="64" height="64" loading="lazy">
         <div class="fitem__body">
           <button class="citem__title" type="button" data-open="${p.id}">${esc(p.t)}</button>
           <span class="citem__meta">Добавил(а): ${esc(member(it.by).name)} · ${rub(priceOf(it))}</span>
@@ -806,7 +832,7 @@
     return `<div class="stack pool">
       <span class="ai__badge">${icon('users')}GiftPool</span>
       <h2 class="sheet__title">${esc(g.occasion)}: ${esc(g.who)}</h2>
-      <div class="pool__item"><img src="${img(p.id)}" alt="" width="72" height="72"><div><b>${esc(p.t)}</b><span>${rub(poolTotal(g))} с доставкой</span></div></div>
+      <div class="pool__item"><img src="${pimg(p)}" alt="" width="72" height="72"><div><b>${esc(p.t)}</b><span>${rub(poolTotal(g))} с доставкой</span></div></div>
       <div class="pool__sum">
         <div class="build__row"><span>Собрано ${g.paid.length} из ${g.people}</span><output>${rub(got)}</output></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
@@ -823,7 +849,7 @@
       const p = byId[g.pid];
       const pct = Math.min(100, Math.round((g.paid.length / g.people) * 100));
       return `<button class="gcard" type="button" data-pool-open="${g.id}">
-        <img src="${img(p.id)}" alt="" width="72" height="72" loading="lazy">
+        <img src="${pimg(p)}" alt="" width="72" height="72" loading="lazy">
         <div><b>${esc(g.occasion)}: ${esc(g.who)}</b><span>${esc(p.t)} · ${dateText(g.date)}</span><div class="bar"><i style="width:${pct}%"></i></div><small>${g.paid.length} из ${g.people} скинулись</small></div>
       </button>`;
     }).join('');
@@ -839,7 +865,7 @@
     return `<div class="stack">
       <span class="ai__badge">${icon('users')}GiftPool</span>
       <h2 class="sheet__title">Общий подарок</h2>
-      <div class="pool__item"><img src="${img(p.id)}" alt="" width="72" height="72"><div><b>${esc(p.t)}</b><span>${rub(retail(p).total)} с доставкой</span></div></div>
+      <div class="pool__item"><img src="${pimg(p)}" alt="" width="72" height="72"><div><b>${esc(p.t)}</b><span>${rub(retail(p).total)} с доставкой</span></div></div>
       <form class="form" id="poolForm" data-pid="${pid}" novalidate>
         <label class="field"><span>Кому</span><input id="plWho" required placeholder="Имя"></label>
         <label class="field"><span>Повод</span><select id="plOcc"><option>День рождения</option><option>Новый год</option><option>Свадьба</option><option>Новоселье</option><option>Просто так</option></select></label>
@@ -880,6 +906,7 @@
     pdState = { id, size: null, ship: shipFor(p), qty: isSupplier() ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
     openSheet(productHTML(), {});
     if (opts.needSize) toast('Выберите размер');
+    loadProductDetail(p);
   }
 
   function productHTML() {
@@ -895,7 +922,7 @@
         <details class="why"><summary>Итого за партию: ${rub(w.total)}</summary><div class="sum">
           <div class="sum__row"><span>${pdState.qty} шт × ${cny(w.each)}</span><span>${rub(w.goods)}</span></div>
           <div class="sum__row"><span>Доставка, ${nf1.format(p.kg * pdState.qty)} кг</span><span>${rub(w.delivery)}</span></div>
-          <div class="sum__row"><span>Сервис ASTTA, 3%</span><span>${rub(w.fee)}</span></div>
+          <div class="sum__row"><span>Сервис ASTTA, ${pct(feeW(p))}</span><span>${rub(w.fee)}</span></div>
           <p class="sum__note">Одна штука в Москве ≈ ${rub(w.landed)}</p>
         </div></details>`;
     } else {
@@ -904,7 +931,7 @@
       breakdown = `<details class="why"><summary>Из чего цена</summary><div class="sum">
           <div class="sum__row"><span>Товар: ${cny(r.unit)} × ${rateText}</span><span>${rub(r.goods)}</span></div>
           <div class="sum__row"><span>Доставка, ${nf1.format(p.kg)} кг</span><span>${rub(r.delivery)}</span></div>
-          <div class="sum__row"><span>Сервис ASTTA, 5%</span><span>${rub(r.fee)}</span></div>
+          <div class="sum__row"><span>Сервис ASTTA, ${pct(feeR(p))}</span><span>${rub(r.fee)}</span></div>
           <p class="sum__note">Доплат после заказа нет.</p>
         </div></details>`;
     }
@@ -917,7 +944,7 @@
       : (MEAS[p.id] ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size</b><span>Укажите мерки один раз, и мы подскажем размер по реальным замерам этой модели</span></div><button class="btn btn--line btn--sm" type="button" data-measures>Указать</button></div>` : ''));
     const sizes = (!sup && p.sizes) ? `<div class="stack" style="gap:10px">
         <span class="sublabel">Размер · китайский и наш</span>
-        <div class="sizes" role="group" aria-label="Размер">${SIZE_GRID[p.sizes].map(([cn, ru]) => `<button class="size${rec && rec.size === cn ? ' size--rec' : ''}" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${rec && rec.size === cn ? 'ваш размер' : ru}</span></button>`).join('')}</div>
+        <div class="sizes" role="group" aria-label="Размер">${(p.grid || SIZE_GRID[p.sizes] || []).map(([cn, ru]) => `<button class="size${rec && rec.size === cn ? ' size--rec' : ''}" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${rec && rec.size === cn ? 'ваш размер' : ru}</span></button>`).join('')}</div>
         ${smart}
       </div>` : '';
 
@@ -949,11 +976,11 @@
     return `<div class="pd" data-id="${p.id}">
       <div class="pd__media">${FLOATING[p.id]
         ? `<div class="pd__float" style="--t1:${FLOATING[p.id][0]};--t2:${FLOATING[p.id][1]}"><img src="assets/img/cut/${p.id}.webp" alt="${esc(p.t)}" width="900" height="900"></div>`
-        : `<img src="${img(p.id)}" alt="${esc(p.t)}" width="720" height="720">`}</div>
+        : `<img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720">`}</div>
       <div class="pd__info">
         <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)}</button>
         <h2>${esc(p.t)}</h2>
-        <div class="pd__rating"><span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span><span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span><span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
+        <div class="pd__rating">${p.rating ? `<span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span>` : ''}${p.reviews ? `<span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span>` : ''}<span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
         ${priceBlock}
         ${sizes}
         ${ship}
@@ -965,13 +992,13 @@
         </div>
         ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
         ${optNote}
-        ${sup ? '' : `<button class="proofbox${pdState.proof ? ' is-on' : ''}" type="button" data-proof aria-pressed="${!!pdState.proof}">
+        ${sup || live.on ? '' : `<button class="proofbox${pdState.proof ? ' is-on' : ''}" type="button" data-proof aria-pressed="${!!pdState.proof}">
           <span class="proofbox__check">${icon('check')}</span>
           <span class="proofbox__body"><b>ASTTA Proof · +${rub(proofOf(p).price)}</b><span>Проверим именно ваш экземпляр на складе до отправки: ${proofOf(p).list.slice(0, 3).join(', ').toLowerCase()}. Отчёт с фото и видео придёт в заказ.</span></span>
         </button>`}
         ${DIMS[p.id] ? `<button class="btn btn--line" type="button" data-room="${p.id}">${icon('ruler')}Примерить в комнату · ${DIMS[p.id].w}×${DIMS[p.id].d} см</button>` : ''}
-        ${sup ? '' : `<div class="pdextra"><button class="btn btn--ghost btn--sm" type="button" data-pool-new="${p.id}">${icon('users')}Скинуться на подарок</button><button class="btn btn--ghost btn--sm" type="button" data-family-add="${p.id}">${icon('home')}В семейный список</button></div>`}
-        <p class="pd__desc">${esc(p.desc)}</p>
+        ${sup || live.on ? '' : `<div class="pdextra"><button class="btn btn--ghost btn--sm" type="button" data-pool-new="${p.id}">${icon('users')}Скинуться на подарок</button><button class="btn btn--ghost btn--sm" type="button" data-family-add="${p.id}">${icon('home')}В семейный список</button></div>`}
+        ${p.desc ? `<p class="pd__desc">${esc(p.desc)}</p>` : ''}
         <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
         ${reviews}
       </div>
@@ -979,6 +1006,7 @@
   }
 
   function reviewsHTML(p) {
+    if (live.on) return ''; // отзывы в прототипе придуманные, настоящих пока нет
     const tab = pdState.rv || 'first';
     const long = REVIEWS_LONG[p.cat] || { m3: [], m6: [], ok: 0, issue: '' };
     const lists = { first: REVIEWS[p.cat] || [], m3: long.m3, m6: long.m6 };
@@ -1016,6 +1044,7 @@
 
   /* ---------- Чат с агентом ---------- */
   function openChat(supId) {
+    if (live.on) { openAgentLive(); return; }
     const s = supId && SUPPLIERS[supId];
     openSheet(`<div class="chat">
       <div class="chat__agent"><span class="ava" aria-hidden="true">МК</span><div><b>Мария, агент TT Логистики</b><span>онлайн · отвечает за 15 минут</span></div></div>
@@ -1031,6 +1060,7 @@
     </div>`, { narrow: true });
   }
   function sendChat(text, reply) {
+    if (live.on) return;
     const t = text.trim();
     if (!t) return;
     const box = $('#msgs');
@@ -1368,7 +1398,7 @@ ${aiCatalogJSON()}
       const p = byId[id];
       const price = isSupplier() ? `${cny(p.tiers[0][1])} от ${p.tiers[0][0]} шт` : rub(retail(p).total);
       return `<div class="reelchip">
-        <button class="reelchip__open" type="button" data-open="${id}"><img src="${img(id)}" alt="" width="44" height="44" loading="lazy"><span><b>${esc(p.t)}</b><em>${price}</em></span></button>
+        <button class="reelchip__open" type="button" data-open="${id}"><img src="${pimg(p)}" alt="" width="44" height="44" loading="lazy"><span><b>${esc(p.t)}</b><em>${price}</em></span></button>
         <button class="reelchip__buy" type="button" data-add="${id}">Купить</button>
       </div>`;
     }).join('');
@@ -1735,6 +1765,7 @@ ${aiCatalogJSON()}
   }
   // Цена со скриншота. В превью на claude.ai картинку читает Claude, на сервере — Yandex Vision + YandexGPT.
   async function readPricePhoto(file) {
+    if (live.on) return readPricePhotoLive(file);
     const sample = await aiSample();
     if (!sample) return null;
     try {
@@ -1760,6 +1791,11 @@ ${aiCatalogJSON()}
     if (!consentOk('lcConsent')) return;
     const price = Number($('#lcPrice').value);
     const extra = [$('#lcSize').value.trim(), price > 0 ? `цена ${cny(price)} × ${$('#lcQty').value || 1}` : ''].filter(Boolean).join(', ');
+    if (live.on) {
+      linkRequestLive({ text: linkCalc.text, price, qty: Math.max(1, parseInt($('#lcQty').value, 10) || 1), size: $('#lcSize').value.trim(),
+        contact: input.value.trim(), file: $('#lcPhoto').files[0] }, $('#lcActions [data-act=ask]'));
+      return;
+    }
     closeSheet();
     openChat();
     sendChat(`Посчитайте цену${linkCalc.platform ? ` с ${linkCalc.platform}` : ''}: ${linkCalc.url}${extra ? ` (${extra})` : ''}`,
@@ -1795,6 +1831,11 @@ ${aiCatalogJSON()}
     const note = $('#poNote').value.trim();
     const price = Number($('#poPrice').value);
     const title = photoTitle;
+    if (live.on) {
+      linkRequestLive({ text: '', price, qty: 1, contact: input.value.trim(), comment: [title, note].filter(Boolean).join(' · '),
+        file: photo }, $('#poActions [data-act=ask]'));
+      return;
+    }
     closeSheet();
     openChat();
     if (price > 0) {
@@ -1819,7 +1860,8 @@ ${aiCatalogJSON()}
     if (bad) { toast('Укажите телефон или Telegram'); input.focus(); }
     return !bad;
   }
-  function placeLinkOrder({ title, url, price, qty, note }) {
+  function placeLinkOrder({ title, url, price, qty, note, contact, file, btn }) {
+    if (live.on) { linkOrderLive({ title, url, price, qty, note, contact, file }, btn); return; }
     const total = linkTotal(price, qty);
     const num = orderNum();
     state.orders.unshift({
@@ -1867,14 +1909,16 @@ ${aiCatalogJSON()}
     if (!contactOk($('#lcContact')) || !consentOk('lcConsent')) return;
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
     placeLinkOrder({ title: linkCalc.platform ? `Товар с ${linkCalc.platform}` : 'Товар по ссылке', url: linkCalc.url,
-      price, qty, note: $('#lcSize').value.trim() });
+      price, qty, note: $('#lcSize').value.trim(), contact: $('#lcContact').value.trim(), file: $('#lcPhoto').files[0],
+      btn: $('#lcActions [data-act=order]') });
   }
   function orderFromPhoto() {
     if (!$('#poPhoto').files[0]) { toast('Добавьте фото товара'); return; }
     const price = Number($('#poPrice').value);
     if (!(price > 0)) { toast('Впишите цену в юанях'); $('#poPrice').focus(); return; }
     if (!contactOk($('#poContact')) || !consentOk('poConsent')) return;
-    placeLinkOrder({ title: photoTitle || 'Товар по фото', url: '', price, qty: 1, note: $('#poNote').value.trim() });
+    placeLinkOrder({ title: photoTitle || 'Товар по фото', url: '', price, qty: 1, note: $('#poNote').value.trim(),
+      contact: $('#poContact').value.trim(), file: $('#poPhoto').files[0], btn: $('#poActions [data-act=order]') });
   }
   async function onPricePhoto(file, priceInput, statusEl, after) {
     photoTitle = '';
@@ -2221,7 +2265,7 @@ ${aiCatalogJSON()}
     if (t.matches('[data-theme-toggle]')) { toggleTheme(); return; }
     if (t.matches('[data-cookies]')) { setCookies(t.dataset.cookies); return; }
     if (t.matches('[data-cookies-open]')) { $('#cookies').hidden = false; $('#cookies .btn').focus(); return; }
-    if (t.matches('[data-tg-logout]')) { state.tg = null; store.save(); renderProfile(); toast('Вы вышли'); return; }
+    if (t.matches('[data-tg-logout]')) { if (live.on) { logoutLive(); return; } state.tg = null; store.save(); renderProfile(); toast('Вы вышли'); return; }
     if (d.measures !== undefined) { state.ptab = 'size'; closeSheet(); go('profile'); return; }
     if (d.familyAdd) {
       state.family.items.unshift({ id: 'f' + Date.now(), pid: d.familyAdd, by: 'me', status: 'approved', payer: 'me' });
@@ -2377,6 +2421,10 @@ ${aiCatalogJSON()}
     if (t.type === 'radio' && t.closest('.ship')) {
       $$('.shipopt', t.closest('.ship')).forEach((l) => l.classList.toggle('is-on', $('input', l).checked));
     }
+    if (t.id === 'tgConsent' && live.on) {
+      if (t.checked) mountTgWidget(); else { const box = $('#tgWidget'); if (box) box.innerHTML = ''; }
+      return;
+    }
     if (t.name === 'cartShip') { state.ship = t.value; store.save(); renderCart(); renderHome(); return; }
     if (t.name === 'pdShip') { pdState.ship = t.value; rerenderProduct(); return; }
     if (t.id === 'sort') { state.sort = t.value; renderCatalog(); return; }
@@ -2511,6 +2559,330 @@ ${aiCatalogJSON()}
     if (e.key === 'Escape') { closeSheet(); closeMenu(); }
   }
 
+  /* ---------- Сервер: каталог, лента, заказы, вход ---------- */
+  // Сайт открыт с сервера — товары, цены, заказы и вход берём из /api. Открыт как файл или в превью без
+  // сервера — работает на демо-данных выше. Отзывы, ролики, лайки и чат пока только демо: на боевом сайте
+  // их не показываем, чтобы не выдавать придуманное за настоящее.
+  const live = { on: false, site: null, csrf: '', tma: '', me: null, orders: [], loaded: false };
+  const GUEST_KEY = 'astta-orders';
+
+  async function api(path, opts = {}) {
+    const headers = { Accept: 'application/json' };
+    if (live.tma) headers.Authorization = 'tma ' + live.tma;
+    let body = opts.body;
+    const method = opts.method || 'GET';
+    if (body && !(body instanceof FormData)) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(body); }
+    if (method !== 'GET' && !live.tma) {
+      if (!live.csrf) live.csrf = (await api('/api/auth/csrf')).csrf;
+      headers['X-CSRFToken'] = live.csrf;
+    }
+    const res = await fetch(path, { method, headers, body, credentials: 'same-origin' });
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* пустой ответ */ }
+    if (!res.ok) {
+      const d = data && data.detail;
+      const err = new Error(typeof d === 'string' ? d : (res.status === 429 ? 'Слишком много запросов, подождите минуту' : 'Не получилось, попробуйте ещё раз'));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  const guestTokens = () => { try { return JSON.parse(localStorage.getItem(GUEST_KEY) || '[]').filter((t) => typeof t === 'string'); } catch (e) { return []; } };
+  function rememberOrder(token) {
+    try { localStorage.setItem(GUEST_KEY, JSON.stringify([token, ...guestTokens().filter((t) => t !== token)].slice(0, 30))); } catch (e) { /* без хранилища заказ виден в боте */ }
+  }
+
+  const relTime = (iso) => {
+    const d = new Date(iso);
+    const min = Math.round((Date.now() - d.getTime()) / 60000);
+    if (min < 60) return min <= 1 ? 'только что' : `${min} мин назад`;
+    if (min < 60 * 24) return `${Math.round(min / 60)} ч назад`;
+    if (min < 60 * 48) return 'вчера';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  };
+  const dateTime = (iso) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  function liveProduct(c) {
+    const tiers = (c.tiers || []).map((t) => [t.min_qty, Number(t.price_cny)]).sort((a, b) => a[0] - b[0]);
+    return {
+      id: c.slug, t: c.title, cat: c.category, sup: c.supplier_code, supName: c.supplier,
+      cny: Number(c.price_cny), kg: Number(c.weight_kg) || 0.5,
+      tiers: tiers.length ? tiers : [[1, Number(c.unit_price_cny)]],
+      rating: Number(c.rating) || 0, reviews: c.reviews_count || 0, sold: c.sold_count || 0,
+      sizes: c.size_grid || null, sale: c.sale_percent || 0, isNew: !!c.is_new, bulky: !!c.bulky,
+      desc: '', image: c.image || '',
+      feeR: c.fee_retail != null ? Number(c.fee_retail) : null, feeW: c.fee_wholesale != null ? Number(c.fee_wholesale) : null,
+      live: true,
+    };
+  }
+
+  // Тарифы сервера раскладываем по трём местам сайта: обычная доставка, быстрая и сборный груз для мебели.
+  function applyShipping(methods) {
+    const regular = methods.filter((m) => !m.for_bulky_only);
+    const slots = {
+      auto: regular.find((m) => m.is_default) || regular[0],
+      air: regular.find((m) => m !== (regular.find((x) => x.is_default) || regular[0])),
+      cargo: methods.find((m) => m.for_bulky_only),
+    };
+    Object.entries(slots).forEach(([key, m]) => {
+      if (!m) return;
+      SHIP[key] = { name: m.name, perKg: Number(m.rub_per_kg), days: [m.days_min, m.days_max], icon: key === 'air' ? 'plane' : 'truck', code: m.code };
+    });
+    if (!slots.air) delete SHIP.air;
+  }
+
+  function replaceAll(target, items) { target.splice(0, target.length, ...items); }
+
+  async function loadLive() {
+    if (!/^https?:$/.test(location.protocol)) return;
+    let site;
+    try { site = await api('/api/site'); } catch (e) { return; } // сервера нет: остаёмся в демо
+    let sups, cats, feed, items = [];
+    try {
+      [sups, cats, feed] = await Promise.all([api('/api/suppliers'), api('/api/categories'), api('/api/feed?page_size=60')]);
+      for (let page = 1, total = 1; items.length < total && page <= 20; page++) {
+        const r = await api(`/api/products?sort=popular&page_size=60&page=${page}`);
+        items = items.concat(r.items); total = r.total;
+        if (!r.items.length) break;
+      }
+    } catch (e) { return; }
+
+    live.on = true; live.site = site;
+    if (site.rate) { RATE = Number(site.rate); rateText = RATE.toFixed(2).replace('.', ','); }
+    FEE_RETAIL = Number(site.retail_fee); FEE_OPT = Number(site.wholesale_fee);
+    if (site.link_rate) LINK_RATE = Number(site.link_rate);
+    if (site.link_delivery_rub) LINK_DELIVERY = Number(site.link_delivery_rub);
+    applyShipping(site.shipping || []);
+    if (!SHIP[state.ship]) state.ship = 'auto';
+
+    Object.keys(SUPPLIERS).forEach((k) => delete SUPPLIERS[k]);
+    sups.forEach((s) => {
+      SUPPLIERS[s.code] = { name: s.name, about: s.about || s.city || '', short: s.code.slice(0, 2).toUpperCase(), followers: 0,
+        fact: s.fact_days || (SHIP.auto ? SHIP.auto.days : [18, 25]) };
+    });
+    const products = items.map(liveProduct).filter((p) => SUPPLIERS[p.sup]);
+    replaceAll(PRODUCTS, products);
+    Object.keys(byId).forEach((k) => delete byId[k]);
+    products.forEach((p) => { byId[p.id] = p; });
+
+    const demoCat = Object.fromEntries(CATS.map((c) => [c.id, c.img]));
+    replaceAll(CATS, cats.filter((c) => products.some((p) => p.cat === c.slug)).map((c) => {
+      const first = products.find((p) => p.cat === c.slug);
+      return { id: c.slug, name: c.name_ru, img: demoCat[c.slug] || 'cat-home', src: demoCat[c.slug] ? '' : (first && first.image) || '' };
+    }));
+    replaceAll(POSTS, feed.items.map((f) => ({
+      id: f.id, sup: f.supplier_code, supName: f.supplier, pid: f.product ? f.product.slug : null, time: relTime(f.created_at),
+      auto: false, kind: f.kind, likes: 0, comments: 0, text: f.text, photo: f.images[0] || '',
+    })));
+    // Демо-содержимое, которое ссылается на демо-товары, на боевом сайте убираем.
+    DEMO_ORDERS.length = 0;
+    replaceAll(TRENDS, []);
+    tr.rendered = false;
+    AI_INTENTS.forEach((i) => { i.slots = i.slots.map((sl) => sl.filter((id) => byId[id])).filter((sl) => sl.length); });
+    replaceAll(AI_INTENTS, AI_INTENTS.filter((i) => i.slots.length));
+    const saved = state.savedCarts || state.carts;
+    ['buyer', 'supplier'].forEach((m) => { state.carts[m] = (saved[m] || []).filter((i) => byId[i.id]); });
+    state.family.items = state.family.items.filter((it) => byId[it.pid]);
+    state.pools = state.pools.filter((g) => byId[g.pid]);
+    state.tg = null;
+
+    document.documentElement.classList.add('is-live');
+    $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
+    $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${c.id}" data-close-menu>${c.name}</a>`).join('');
+    if (live.tma) state.tg = live.tmaUser;
+    renderAll();
+    updateCartCount();
+    await loadMe();
+  }
+
+  // Профиль и заказы: вошедший покупатель — из /api/me, гость — по токенам заказов, сохранённым в браузере.
+  async function loadMe() {
+    try {
+      live.me = await api('/api/me');
+      state.tg = { name: live.me.first_name, username: live.me.username || '' };
+    } catch (e) { live.me = null; if (!live.tma) state.tg = null; }
+    const tokens = [...new Set([...(live.me ? live.me.orders.map((o) => o.token) : []), ...guestTokens()])].slice(0, 20);
+    const got = await Promise.all(tokens.map((t) => api(`/api/orders/${encodeURIComponent(t)}`).catch(() => null)));
+    live.orders = got.filter(Boolean);
+    live.loaded = true;
+    if (currentView === 'profile') renderProfile();
+  }
+
+  async function loadProductDetail(p) {
+    if (!live.on || !p.live || p.detail) return;
+    try {
+      const d = await api(`/api/products/${encodeURIComponent(p.id)}`);
+      p.detail = true;
+      p.desc = d.description || '';
+      if (d.images && d.images.length) p.image = d.images[0];
+      if (d.sizes && d.sizes.length) { p.grid = d.sizes.map((x) => [x, '']); p.sizes = p.sizes || 'custom'; }
+      if (d.supplier_fact_days && SUPPLIERS[p.sup]) SUPPLIERS[p.sup].fact = d.supplier_fact_days;
+      if (pdState && pdState.id === p.id && $('.pd')) rerenderProduct();
+    } catch (e) { /* карточка откроется без описания */ }
+  }
+
+  const PAID_STEPS = ['paid', 'purchased', 'at_warehouse', 'shipped', 'border', 'in_russia', 'ready', 'delivered'];
+  function serverOrderHTML(o) {
+    const unpaid = o.status === 'awaiting_payment';
+    const pill = o.status === 'delivered' || o.status === 'cancelled' ? 'pill' : 'pill pill--go';
+    const events = [...o.events].reverse().map((e, i) => `<li class="${i === 0 ? 'is-now' : 'is-done'}"><span class="dot">${i === 0 ? '' : icon('check')}</span><div class="tl__body">
+        <b>${esc(e.status_label)}</b><span>${esc(dateTime(e.created_at))}${e.weight_kg ? ` · вес ${nf1.format(Number(e.weight_kg))} кг` : ''}</span>
+        ${e.note ? `<span>${esc(e.note)}</span>` : ''}
+        ${e.photo ? `<a class="tl__photo" href="${esc(e.photo)}" target="_blank" rel="noopener"><img src="${esc(e.photo)}" alt="" width="84" height="60" loading="lazy"><span>Фото со склада</span></a>` : ''}
+      </div></li>`).join('');
+    const items = o.items.map((i) => `${esc(i.title)}${i.size ? `, ${esc(i.size)}` : ''} × ${i.qty}`).join(' · ');
+    return `<article class="order">
+      <div class="order__head">
+        <div>
+          <div class="order__num">${esc(o.number)}<button type="button" data-copy="${esc(o.number)}">Скопировать</button></div>
+          <div class="order__sub">${rub(Number(o.total_rub))}${Number(o.refund_rub) ? ` · возврат ${rub(Number(o.refund_rub))}` : ''}</div>
+        </div>
+        <span class="${pill}">${esc(o.status_label)}</span>
+      </div>
+      <p class="order__link">${icon('box')}<span>${items}</span></p>
+      ${unpaid ? `<p class="note">Оплата картой и СБП подключается. Агент напишет вам со ссылкой на оплату, после неё сразу заказываем у поставщика.</p>` : ''}
+      ${events ? `<ol class="timeline">${events}</ol>` : ''}
+      <button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>
+    </article>`;
+  }
+  function liveOrdersHTML() {
+    if (!live.loaded) return '<p class="empty">Загружаем заказы…</p>';
+    if (!live.orders.length) return `<div class="emptystate">${icon('box')}<h2>Заказов пока нет</h2><p>Оформленные заказы появятся здесь, а статусы придут в Telegram.</p><a class="btn btn--lime" href="#catalog">Открыть каталог</a></div>`;
+    return `<div class="orders">${live.orders.map(serverOrderHTML).join('')}</div>`;
+  }
+
+  function orderPlacedSheet(order, extra = '') {
+    closeSheet();
+    openSheet(`<div class="success">
+      <span class="success__ic">${icon('check')}</span>
+      <h2 class="sheet__title">Заказ ${esc(order.number)} принят</h2>
+      <div class="sum"><div class="sum__row sum__row--total"><span>К оплате</span><span>${rub(Number(order.total_rub))}</span></div>${extra ? `<div class="sum__note">${extra}</div>` : ''}</div>
+      <p>Оплата картой и СБП подключается. Агент напишет вам в ближайшее время со ссылкой на оплату, после неё сразу заказываем у поставщика. Статусы и фото со склада будут в профиле${live.site && live.site.telegram_bot ? ` и в <a href="https://t.me/${esc(live.site.telegram_bot)}" target="_blank" rel="noopener">Telegram-боте</a>` : ''}.</p>
+      <div class="buyrow"><a class="btn btn--lime" href="#profile" data-close>Мой заказ</a></div>
+    </div>`, { narrow: true });
+  }
+
+  async function withBusy(btn, fn) {
+    if (btn) { if (btn.disabled) return; btn.disabled = true; }
+    try { await fn(); } catch (e) { toast(e.message || 'Не получилось, попробуйте ещё раз'); } finally { if (btn && document.contains(btn)) btn.disabled = false; }
+  }
+
+  async function checkoutLive(contact, btn) {
+    const ship = SHIP[state.ship === 'cargo' ? 'auto' : state.ship] || SHIP.auto;
+    const lines = cart().map((i) => ({ product: i.id, qty: i.qty, size: i.size && i.size !== '?' ? i.size : '' }));
+    const askSize = cart().filter((i) => i.size === '?').map((i) => byId[i.id].t);
+    await withBusy(btn, async () => {
+      const order = await api('/api/orders', { method: 'POST', body: {
+        items: lines, contact, mode: isSupplier() ? 'wholesale' : 'retail', shipping: ship && ship.code ? ship.code : null,
+        comment: askSize.length ? `Подобрать размер: ${askSize.join(', ')}` : '', consent: true } });
+      rememberOrder(order.token);
+      live.orders.unshift(order); live.loaded = true;
+      state.carts[state.mode] = [];
+      store.save(); updateCartCount(); renderCart();
+      orderPlacedSheet(order);
+    });
+  }
+
+  function linkForm(fields, file) {
+    const fd = new FormData();
+    Object.entries(fields).forEach(([k, v]) => { if (v !== '' && v != null) fd.append(k, String(v)); });
+    if (file) fd.append('photo', file);
+    return fd;
+  }
+  async function linkOrderLive({ title, url, price, qty, note, contact, file }, btn) {
+    await withBusy(btn, async () => {
+      const order = await api('/api/link/order', { method: 'POST', body: linkForm({ text: url, price_cny: price, qty, size: note.slice(0, 32), title, contact, consent: 'true' }, file) });
+      rememberOrder(order.token);
+      live.orders.unshift(order); live.loaded = true;
+      orderPlacedSheet(order, 'Перед выкупом агент сверит цену и наличие. Окажется дороже — напишем до выкупа, и вы решите: доплатить или вернуть деньги. Нет товара — вернём деньги полностью.');
+    });
+  }
+  async function linkRequestLive({ text, price, qty, size, contact, comment, file }, btn) {
+    await withBusy(btn, async () => {
+      await api('/api/link/requests', { method: 'POST', body: linkForm({ text, price_cny: price > 0 ? price : '', qty, size: (size || '').slice(0, 32), contact, comment, consent: 'true' }, file) });
+      closeSheet();
+      openSheet(`<div class="success"><span class="success__ic">${icon('check')}</span>
+        <h2 class="sheet__title">Заявка у агента</h2>
+        <p>Агент проверит товар и продавца и напишет вам ${esc(contact)} с точной ценой в рублях с доставкой.</p></div>`, { narrow: true });
+    });
+  }
+  async function readPricePhotoLive(file) {
+    try {
+      const r = await api('/api/link/photo', { method: 'POST', body: linkForm({}, file) });
+      return r.price_cny ? { price: Number(r.price_cny), title: r.title_ru || '' } : null;
+    } catch (e) { return null; }
+  }
+
+  // Вход: на сайте — кнопка Telegram, после подтверждения Telegram возвращает на /?tglogin=1&id=…&hash=…;
+  // в мини-приложении Telegram сам передаёт данные в адресе (#tgWebAppData=…), вход не нужен.
+  function readTelegramLaunch() {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const data = hash.get('tgWebAppData');
+    if (data) {
+      try { sessionStorage.setItem('astta-tma', data); } catch (e) { /* ничего */ }
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    try { live.tma = data || sessionStorage.getItem('astta-tma') || ''; } catch (e) { live.tma = data || ''; }
+    if (live.tma) {
+      try {
+        const u = JSON.parse(new URLSearchParams(live.tma).get('user') || '{}');
+        live.tmaUser = { name: u.first_name || '', username: u.username || '' };
+      } catch (e) { live.tmaUser = null; }
+    }
+  }
+  async function finishWidgetLogin() {
+    const q = new URLSearchParams(location.search);
+    if (!q.has('tglogin') || !q.has('hash')) return;
+    history.replaceState(null, '', location.pathname + '#profile');
+    const fields = {};
+    ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash'].forEach((k) => { if (q.has(k)) fields[k] = q.get(k); });
+    fields.id = Number(fields.id); fields.auth_date = Number(fields.auth_date); fields.consent = true;
+    try {
+      await api('/api/auth/telegram', { method: 'POST', body: fields });
+      live.csrf = ''; // после входа Django выдаёт новый токен защиты
+      await loadMe();
+      toast(state.tg && state.tg.username ? `Вы вошли как @${state.tg.username}` : 'Вы вошли');
+    } catch (e) { toast(e.message); }
+    route();
+  }
+  function openTgLoginLive() {
+    const bot = live.site && live.site.telegram_bot;
+    if (!bot) { toast('Вход через Telegram скоро заработает'); return; }
+    openSheet(`<div class="stack">
+      <h2 class="sheet__title">Вход через Telegram</h2>
+      <p class="note">Отметьте согласие, затем нажмите кнопку Telegram и подтвердите вход в приложении. Мы узнаем ваше имя и ник, телефон Telegram не передаёт. Пароль не нужен.</p>
+      ${consentHTML('tgConsent')}
+      <div id="tgWidget" class="tgwidget"></div>
+    </div>`, { narrow: true });
+  }
+  function mountTgWidget() {
+    const box = $('#tgWidget');
+    if (!box || box.childElementCount) return;
+    const sc = document.createElement('script');
+    sc.async = true;
+    sc.src = 'https://telegram.org/js/telegram-widget.js?22';
+    sc.dataset.telegramLogin = live.site.telegram_bot;
+    sc.dataset.size = 'large';
+    sc.dataset.radius = '12';
+    sc.dataset.requestAccess = 'write';
+    sc.dataset.authUrl = `${location.origin}/?tglogin=1`;
+    box.append(sc);
+  }
+  async function logoutLive() {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* выходим локально */ }
+    live.csrf = ''; live.me = null; state.tg = null;
+    live.orders = []; live.loaded = false;
+    await loadMe();
+    renderProfile();
+    toast('Вы вышли');
+  }
+  function openAgentLive() {
+    const bot = live.site && live.site.telegram_bot;
+    if (bot) window.open(`https://t.me/${bot}?start=help`, '_blank', 'noopener');
+    else toast('Напишите нам в Telegram: @astta_shop_bot');
+  }
+
   /* ---------- Заставка ---------- */
   function initSplash() {
     const el = $('#splash');
@@ -2556,9 +2928,11 @@ ${aiCatalogJSON()}
       const reel = e.target.closest('.reel');
       if (reel && !e.target.closest('.reel__side, .reel__info')) likeReel(Number(reel.dataset.reel), true);
     });
+    readTelegramLaunch();
     setMode(state.mode, true);
     route();
     initHero();
+    loadLive().then(() => { if (live.on) finishWidgetLogin(); });
     // Ширина кнопок меняется, когда загрузится шрифт и когда переключатель переезжает из шапки в строку ниже.
     window.addEventListener('resize', placeModeThumbs);
     if (document.fonts) document.fonts.ready.then(placeModeThumbs);
