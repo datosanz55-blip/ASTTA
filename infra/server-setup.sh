@@ -7,7 +7,7 @@
 # Повторный запуск безопасен: уже сделанные шаги пропускаются, пароли в .env не перезаписываются.
 set -euo pipefail
 
-REPO="git@github.com:datosanz55-blip/astta.git"
+REPO="git@github.com:datosanz55-blip/ASTTA.git"
 APP=/opt/astta
 DOMAIN="${DOMAIN:-astta.ru}"
 KEY=/root/.ssh/astta_deploy
@@ -49,7 +49,7 @@ if [ ! -d "$APP/.git" ]; then
   [ -f "$KEY" ] || ssh-keygen -t ed25519 -N "" -C "astta-server" -f "$KEY" >/dev/null
   ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
   echo
-  echo "Добавьте этот ключ в GitHub: репозиторий astta → Settings → Deploy keys → Add deploy key."
+  echo "Добавьте этот ключ в GitHub: репозиторий ASTTA → Settings → Deploy keys → Add deploy key."
   echo "Название: server. Галочку «Allow write access» НЕ ставьте."
   echo
   cat "$KEY.pub"
