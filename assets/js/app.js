@@ -309,6 +309,10 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (name, cls = '') => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const img = (name) => `assets/img/${name}.webp`;
+  // Уменьшенные копии для телефонов (assets/img/<имя>-<ширина>.webp): так грузится в 2–3 раза меньше.
+  const SMALL = { 'tile-opt': 420, 'tile-new': 420, 'tile-hits': 420, 'tile-discount': 420, 'tile-group': 420,
+    'cat-clothes': 400, 'cat-furniture': 400, 'cat-home': 400, 'cat-shoes': 400, 'cat-tech': 400 };
+  const imgSet = (name, full, sizes) => (SMALL[name] ? ` srcset="${img(`${name}-${SMALL[name]}`)} ${SMALL[name]}w, ${img(name)} ${full}w" sizes="${sizes}"` : '');
   // Фото товара: с сервера (загружено в админке) или из демо-набора по id.
   const pimg = (p) => (p && p.image) || img(p ? p.id : 'bag');
   const plural = (n, one, few, many) => {
@@ -462,7 +466,7 @@
   function tileHTML(tile, i) {
     const n = filterProducts(tile.filter, '').length;
     return `<button class="tile" type="button" data-tile="${i}">
-      <img src="${img(tile.img)}" alt="" loading="lazy" width="900" height="1000">
+      <img src="${img(tile.img)}"${imgSet(tile.img, 756, '(max-width: 760px) 50vw, 20vw')} alt="" loading="lazy" width="900" height="1000">
       <span class="roundbtn" aria-hidden="true">${icon('arrow-ur')}</span>
       <span class="tile__body"><span class="tile__text"><span class="tile__title">${tile.title}</span><span class="tile__sub">${n} ${plural(n, 'товар', 'товара', 'товаров')}</span></span></span>
     </button>`;
@@ -472,7 +476,7 @@
     $('#reelRail').innerHTML = TRENDS.map(reelThumbHTML).join('');
     // Пустые подборки и разделы на главной прячем: на боевом сайте нет роликов и совместного опта.
     $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
-    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${c.src || img(c.img)}" alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
+    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${c.src || img(c.img)}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
@@ -2657,6 +2661,8 @@ ${aiCatalogJSON()}
 
     live.on = true; live.site = site;
     if (site.rate) { RATE = Number(site.rate); rateText = RATE.toFixed(2).replace('.', ','); }
+    // Курса ещё нет — не показываем демо-курс как настоящий.
+    $$('[data-rate]').forEach((el) => { const box = el.closest('.rate'); if (box) box.hidden = !site.rate; });
     FEE_RETAIL = Number(site.retail_fee); FEE_OPT = Number(site.wholesale_fee);
     if (site.link_rate) LINK_RATE = Number(site.link_rate);
     if (site.link_delivery_rub) LINK_DELIVERY = Number(site.link_delivery_rub);
@@ -2704,12 +2710,18 @@ ${aiCatalogJSON()}
   }
 
   // Профиль и заказы: вошедший покупатель — из /api/me, гость — по токенам заказов, сохранённым в браузере.
-  async function loadMe() {
+  // Гостя на /api/me не спрашиваем: лишний ответ 401 Lighthouse считает ошибкой. Флаг ставим после входа.
+  const SIGNED_KEY = 'astta-signed-in';
+  const signedFlag = (on) => { try { if (on) localStorage.setItem(SIGNED_KEY, '1'); else localStorage.removeItem(SIGNED_KEY); } catch (e) { /* ничего */ } };
+  const maybeSignedIn = () => { try { return !!localStorage.getItem(SIGNED_KEY); } catch (e) { return true; } };
+  async function loadMe(force) {
     try {
+      if (!force && !live.tma && !maybeSignedIn()) throw new Error('guest');
       live.me = await api('/api/me');
+      signedFlag(true);
       state.tg = { name: live.me.first_name, username: live.me.username || '' };
       if (live.me.measures && Object.keys(live.me.measures).length) state.measures = live.me.measures;
-    } catch (e) { live.me = null; if (!live.tma) state.tg = null; }
+    } catch (e) { live.me = null; if (!live.tma) state.tg = null; if (e.status === 401) signedFlag(false); }
     const tokens = [...new Set([...(live.me ? live.me.orders.map((o) => o.token) : []), ...guestTokens()])].slice(0, 20);
     const got = await Promise.all(tokens.map((t) => api(`/api/orders/${encodeURIComponent(t)}`).catch(() => null)));
     live.orders = got.filter(Boolean);
@@ -2849,7 +2861,7 @@ ${aiCatalogJSON()}
     try {
       await api('/api/auth/telegram', { method: 'POST', body: fields });
       live.csrf = ''; // после входа Django выдаёт новый токен защиты
-      await loadMe();
+      await loadMe(true);
       toast(state.tg && state.tg.username ? `Вы вошли как @${state.tg.username}` : 'Вы вошли');
     } catch (e) { toast(e.message); }
     route();
@@ -2880,6 +2892,7 @@ ${aiCatalogJSON()}
   async function logoutLive() {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* выходим локально */ }
     live.csrf = ''; live.me = null; state.tg = null;
+    signedFlag(false);
     live.orders = []; live.loaded = false;
     await loadMe();
     renderProfile();
@@ -2990,7 +3003,7 @@ ${aiCatalogJSON()}
     // Анимация сама прячет заставку примерно через 3 с (CSS); касание пропускает её
     el.addEventListener('click', () => { el.classList.add('is-done'); setTimeout(finish, 500); });
     el.addEventListener('animationend', (e) => { if (e.target === el && e.animationName === 'splashOut') finish(); });
-    setTimeout(finish, 4800);
+    setTimeout(finish, 2600);
   }
 
   /* ---------- Старт ---------- */
