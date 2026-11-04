@@ -720,8 +720,8 @@
   }
 
   function renderProfile() {
-    // Семья и подарки пока работают только в браузере, без сервера: на боевом сайте их не показываем.
-    const tabs = live.on ? [['orders', 'Заказы'], ['size', 'Мерки']] : [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
+    if (live.on) { renderLiveProfile(); return; }
+    const tabs = [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
     if (!tabs.some(([id]) => id === state.ptab)) state.ptab = 'orders';
     const body = {
       orders: () => (live.on ? liveOrdersHTML() : `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`),
@@ -732,7 +732,7 @@
 
   // Вход через Telegram. На сайте это официальная кнопка Telegram (/api/auth/telegram), в мини-приложении
   // вход не нужен: Telegram сам передаёт, кто открыл. В прототипе вход демонстрационный.
-  const tgContact = () => (state.tg ? `@${state.tg.username}` : '');
+  const tgContact = () => (live.me && live.me.phone ? live.me.phone : (state.tg && state.tg.username ? `@${state.tg.username}` : ''));
   function tgCardHTML() {
     if (state.tg) {
       return `<div class="tgcard tgcard--in">
@@ -2483,10 +2483,17 @@ ${aiCatalogJSON()}
       })();
       return;
     }
+    if (f.id === 'meForm') {
+      saveProfile({ phone: $('#meePhone').value, city: $('#meeCity').value, delivery_address: $('#meeAddr').value },
+        $('button[type=submit]', f), 'Данные сохранены');
+      return;
+    }
     if (f.id === 'measForm') {
       const num = (id) => { const v = parseFloat(String($(id).value).replace(',', '.')); return Number.isFinite(v) && v > 0 ? v : null; };
       state.measures = { height: num('#msHeight'), chest: num('#msChest'), waist: num('#msWaist'), hips: num('#msHips'), foot: num('#msFoot') };
-      store.save(); toast('Мерки сохранены');
+      store.save();
+      if (live.me) { saveProfile({ measures: state.measures }, $('button[type=submit]', f), 'Мерки сохранены в профиле'); return; }
+      toast('Мерки сохранены');
       return;
     }
     if (f.id === 'poolForm') {
@@ -2701,6 +2708,7 @@ ${aiCatalogJSON()}
     try {
       live.me = await api('/api/me');
       state.tg = { name: live.me.first_name, username: live.me.username || '' };
+      if (live.me.measures && Object.keys(live.me.measures).length) state.measures = live.me.measures;
     } catch (e) { live.me = null; if (!live.tma) state.tg = null; }
     const tokens = [...new Set([...(live.me ? live.me.orders.map((o) => o.token) : []), ...guestTokens()])].slice(0, 20);
     const got = await Promise.all(tokens.map((t) => api(`/api/orders/${encodeURIComponent(t)}`).catch(() => null)));
@@ -2881,6 +2889,87 @@ ${aiCatalogJSON()}
     const bot = live.site && live.site.telegram_bot;
     if (bot) window.open(`https://t.me/${bot}?start=help`, '_blank', 'noopener');
     else toast('Напишите нам в Telegram: @astta_shop_bot');
+  }
+
+  /* ---------- Профиль покупателя (боевой сайт) ---------- */
+  // Вошёл через Telegram — шапка с аватаром, сколько потратил и вкладки. Гость видит вход и заказы с этого браузера.
+  const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  const MONTHS_OF = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  const spentOf = (o) => Number(o.total_rub) - Number(o.refund_rub || 0);
+  const isPaid = (o) => o.paid_at && o.status !== 'cancelled';
+
+  function profileHeadHTML() {
+    const me = live.me;
+    if (!me) return tgCardHTML();
+    const name = [me.first_name, me.last_name].filter(Boolean).join(' ') || 'Покупатель';
+    const since = new Date(me.member_since + 'T12:00:00');
+    const ava = me.photo_url
+      ? `<img class="phead__ava" src="${esc(me.photo_url)}" alt="" width="64" height="64" referrerpolicy="no-referrer">`
+      : `<span class="phead__ava phead__ava--txt" aria-hidden="true">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+    const st = me.stats;
+    return `<div class="phead">
+      ${ava}
+      <div class="phead__txt"><b>${esc(name)}</b><span>${me.username ? `@${esc(me.username)} · ` : ''}с нами с ${MONTHS_OF[since.getMonth()]} ${since.getFullYear()}</span></div>
+      ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
+    </div>
+    <div class="pstats">
+      <div><b>${rub(Number(st.spent_rub))}</b><span>потрачено</span></div>
+      <div><b>${st.orders}</b><span>${plural(st.orders, 'заказ', 'заказа', 'заказов')}</span></div>
+      <div><b>${st.active}</b><span>в пути</span></div>
+      <div><b>${st.delivered}</b><span>получено</span></div>
+    </div>`;
+  }
+
+  function spendingHTML() {
+    const paid = live.orders.filter(isPaid);
+    if (!paid.length) return `<div class="emptystate">${icon('tag')}<h2>Трат пока нет</h2><p>Здесь появятся оплаченные заказы по месяцам.</p></div>`;
+    const byMonth = new Map();
+    paid.forEach((o) => {
+      const d = new Date(o.paid_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+      const row = byMonth.get(key) || { label: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, sum: 0, n: 0 };
+      row.sum += spentOf(o); row.n += 1; byMonth.set(key, row);
+    });
+    const rows = [...byMonth.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([, r]) => r);
+    const max = Math.max(...rows.map((r) => r.sum));
+    const total = paid.reduce((sum, o) => sum + spentOf(o), 0);
+    return `<div class="panel">
+      <h3>Траты по месяцам</h3>
+      <div class="spend">${rows.map((r) => `<div class="spend__row"><span>${r.label}</span><i style="--w:${Math.max(4, Math.round((r.sum / max) * 100))}%"></i><b>${rub(r.sum)}</b><small>${r.n} ${plural(r.n, 'заказ', 'заказа', 'заказов')}</small></div>`).join('')}</div>
+      <div class="sum"><div class="sum__row"><span>Всего</span><span>${rub(total)}</span></div><div class="sum__row"><span>Средний заказ</span><span>${rub(total / paid.length)}</span></div></div>
+      <p class="note">Считаем оплаченные заказы за вычетом возвратов. Если в кабинете заказ на этом браузере, а вы не вошли, его здесь не будет.</p>
+    </div>`;
+  }
+
+  function meDataHTML() {
+    const me = live.me;
+    return `<form class="panel" id="meForm" novalidate>
+      <h3>Мои данные</h3>
+      <p class="note">Подставим в заказ, чтобы не вводить каждый раз. Видят только вы и агент, который ведёт заказ.</p>
+      <div class="form">
+        <label class="field"><span>Телефон</span><input id="meePhone" type="tel" autocomplete="tel" maxlength="32" placeholder="+7 900 000-00-00" value="${esc(me.phone)}"></label>
+        <label class="field"><span>Город</span><input id="meeCity" autocomplete="address-level2" maxlength="80" placeholder="Москва" value="${esc(me.city)}"></label>
+        <label class="field field--full"><span>Пункт выдачи или адрес</span><input id="meeAddr" autocomplete="street-address" maxlength="300" placeholder="СДЭК, ул. Ленина, 1" value="${esc(me.delivery_address)}"></label>
+      </div>
+      <button class="btn btn--lime" type="submit">Сохранить</button>
+    </form>`;
+  }
+
+  function renderLiveProfile() {
+    const tabs = live.me
+      ? [['orders', 'Заказы'], ['spend', 'Траты'], ['data', 'Мои данные'], ['size', 'Мерки']]
+      : [['orders', 'Заказы'], ['size', 'Мерки']];
+    if (!tabs.some(([id]) => id === state.ptab)) state.ptab = 'orders';
+    const body = { orders: liveOrdersHTML, spend: spendingHTML, data: meDataHTML, size: measuresHTML }[state.ptab]();
+    $('#profileBody').innerHTML = `${profileHeadHTML()}<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
+  }
+
+  async function saveProfile(fields, btn, done) {
+    await withBusy(btn, async () => {
+      live.me = await api('/api/me', { method: 'PATCH', body: fields });
+      toast(done);
+      renderProfile();
+    });
   }
 
   /* ---------- Заставка ---------- */

@@ -135,3 +135,34 @@ def test_login_off_without_bot(db, settings):
     client, csrf = site_client()
     resp = client.post("/api/auth/telegram", widget(), content_type="application/json", HTTP_X_CSRFTOKEN=csrf)
     assert resp.status_code == 401 and "не настроен" in resp.json()["detail"]
+
+
+def test_profile_stats_and_edit(supplier, shoes, pricing_setup):
+    from orders.services import mark_paid
+
+    make_product(supplier, shoes, "hoodie", 80, 1, [], title_ru="Худи")
+    client = Client()
+    auth = {"HTTP_AUTHORIZATION": f"tma {init_data()}"}
+    body = {"items": [{"product": "hoodie"}], "consent": True}
+    client.post("/api/orders", body, content_type="application/json", **auth)
+    client.post("/api/orders", body, content_type="application/json", **auth)
+    first = Order.objects.order_by("id").first()
+    mark_paid(first)
+    me = client.get("/api/me", **auth).json()
+    assert me["stats"]["orders"] == 2
+    assert me["stats"]["active"] == 1  # оплаченный едет, неоплаченный ждёт оплаты
+    assert me["stats"]["spent_rub"] == str(first.total_rub)
+
+    resp = client.patch("/api/me", {"phone": " +7 900 000-00-00 ", "city": "Казань",
+                                     "measures": {"chest": "100", "foot": 26.5, "junk": 1}},
+                        content_type="application/json", **auth)
+    assert resp.status_code == 200, resp.content
+    data = resp.json()
+    assert data["phone"] == "+7 900 000-00-00" and data["city"] == "Казань"
+    assert data["measures"] == {"chest": 100.0, "foot": 26.5}
+    bad = client.patch("/api/me", {"measures": {"foot": 90}}, content_type="application/json", **auth)
+    assert bad.status_code == 422
+
+
+def test_profile_edit_needs_login(db):
+    assert Client().patch("/api/me", {"city": "X"}, content_type="application/json").status_code == 401
