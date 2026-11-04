@@ -85,3 +85,11 @@ def test_site_settings_and_suppliers(client, runner):
 
 def test_site_settings_without_rate(client, db):
     assert client.get("/api/site").json()["rate"] is None
+
+
+def test_default_shipping_after_migrations(db):
+    from pricing.models import ShippingMethod
+
+    # Без тарифов заказ из каталога не оформить: миграция создаёт их на чистой базе.
+    assert set(ShippingMethod.objects.values_list("code", flat=True)) == {"auto", "air", "cargo"}
+    assert ShippingMethod.objects.get(is_default=True).code == "auto"
