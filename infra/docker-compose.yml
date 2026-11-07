@@ -56,6 +56,17 @@ services:
     logging: *logging
     restart: unless-stopped
 
+  # Папка с фото принадлежит пользователю сервера (uid 1000): без этого Docker мог создать её от root,
+  # и сохранение товара с фото падало с ошибкой 500. Запускается перед сервером и сразу завершается.
+  media-perms:
+    image: alpine:3.20
+    logging: *logging
+    user: root
+    volumes:
+      - media:/app/media
+    command: chown -R 1000 /app/media
+    restart: "no"
+
   backend: &backend
     logging: *logging
     build:
@@ -78,6 +89,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      media-perms:
+        condition: service_completed_successfully
     command: sh -c "python manage.py migrate --noinput && python manage.py setup_roles && (python manage.py update_rate || echo 'курс ЦБ не загрузился, повторим по расписанию') && gunicorn config.wsgi --bind 0.0.0.0:8000 --workers ${WEB_WORKERS:-3} --access-logfile - --no-control-socket --timeout 180"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
