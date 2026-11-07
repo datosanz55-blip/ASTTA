@@ -18,7 +18,7 @@
     </div>
   {% endif %}
 
-  <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4">
+  <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4" id="importForm">
     {% csrf_token %}
     {% if not suppliers %}
       <p class="border border-amber-300 bg-amber-50 text-amber-900 rounded-default p-4 dark:bg-amber-950 dark:text-amber-200">
@@ -44,7 +44,18 @@
       <label class="flex items-center gap-2"><input type="checkbox" name="translate" value="1">
         {% translate "Перевести с китайского, где нет русского названия (YandexGPT)" %}</label>
     {% endif %}
-    <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default w-fit">{% translate "Загрузить" %}</button>
+    <button type="submit" id="importBtn" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default w-fit disabled:opacity-60">{% translate "Загрузить" %}</button>
+    <p id="importWait" class="font-medium" hidden>{% translate "Загружаем и обрабатываем фото. С большим архивом это до пары минут — не закрывайте страницу." %}</p>
   </form>
+  <script>
+    // Файл не выбран — подсказываем сразу. Выбран — показываем, что загрузка идёт, и не даём нажать дважды.
+    document.getElementById('importForm').addEventListener('submit', function (e) {
+      var f = this.querySelector('[name=file]').files.length, z = this.querySelector('[name=photos]').files.length;
+      if (!f && !z) { e.preventDefault(); alert('{% translate "Выберите таблицу .xlsx или архив с фото .zip" %}'); return; }
+      var btn = document.getElementById('importBtn');
+      btn.disabled = true; btn.textContent = '{% translate "Загружаем…" %}';
+      document.getElementById('importWait').hidden = false;
+    });
+  </script>
 </div>
 {% endblock %}
