@@ -214,3 +214,13 @@ UNFOLD = {
         },
     },
 }
+
+# Ошибки сервера (500) с полным текстом — в журнал контейнера: docker compose logs backend.
+# Без этого Django в боевом режиме молчит, и причину падения не найти.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {"django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False}},
+}

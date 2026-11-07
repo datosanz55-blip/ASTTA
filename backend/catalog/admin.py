@@ -180,30 +180,42 @@ class SupplierPostAdmin(ModelAdmin):
 class PriceTierInline(TabularInline):
     model = PriceTier
     extra = 1
+    verbose_name = _("уровень опта")
+    verbose_name_plural = _("Оптовые цены")
 
 
 class ProductImageInline(PhotoInline):
     model = ProductImage
+    verbose_name = _("снимок")
+    verbose_name_plural = _("Фото")
 
 
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
-    list_display = ("cover", "title_ru", "supplier", "category", "price_cny", "status_label")
+    # Цену и скидку можно поменять прямо в списке и сохранить кнопкой внизу — без захода в карточку.
+    list_display = ("cover", "title_ru", "supplier", "category", "price_cny", "sale_percent", "site_price",
+                    "status_label")
     list_display_links = ("cover", "title_ru")
-    list_filter = ("status", "category", "supplier")
+    list_editable = ("price_cny", "sale_percent")
+    list_filter = ("status", "category", "supplier", "is_new", "bulky")
     search_fields = ("title_ru", "title_zh", "sku", "slug")
     list_per_page = 50
+    save_on_top = True
+    readonly_fields = ("site_price_breakdown",)
     inlines = [ProductImageInline, PriceTierInline]
     actions = ["publish", "reject", "translate"]
     # Ссылку без схемы считаем https://, как будет по умолчанию в Django 6.
     formfield_overrides = {models.URLField: {"assume_scheme": "https"}}
     change_list_template = "admin/catalog/product/change_list.html"
+    # Вкладки сверху карточки: Основное, Описание, Цена, Размеры. Фото и оптовые цены — блоками под ними.
     fieldsets = (
-        (None, {"fields": ("supplier", "category", "sku", "slug", "status", "moderation_note")}),
-        (_("Название и описание"), {"fields": ("title_ru", "description_ru", "title_zh", "description_zh",
-                                                "source_url")}),
-        (_("Цена и доставка"), {"fields": ("price_cny", "sale_percent", "weight_kg", "bulky", "is_new")}),
-        (_("Размеры и цвета"), {"fields": ("sizes", "colors", "size_grid")}),
+        (_("Основное"), {"classes": ["tab"], "fields": (
+            "title_ru", "status", ("supplier", "category"), ("sku", "slug"), "is_new", "moderation_note")}),
+        (_("Описание"), {"classes": ["tab"], "fields": ("description_ru", "title_zh", "description_zh",
+                                                       "source_url")}),
+        (_("Цена и доставка"), {"classes": ["tab"], "fields": (
+            ("price_cny", "sale_percent"), ("weight_kg", "bulky"), "site_price_breakdown")}),
+        (_("Размеры и цвета"), {"classes": ["tab"], "fields": ("size_grid", "sizes", "colors")}),
     )
     prepopulated_fields = {"slug": ("title_ru",)}
 
@@ -220,6 +232,45 @@ class ProductAdmin(ModelAdmin):
         Product.Status.MODERATION.label: "warning", Product.Status.REJECTED.label: "danger"})
     def status_label(self, obj):
         return obj.get_status_display()
+
+    def changelist_view(self, request, extra_context=None):
+        # Курс, тарифы и сборы грузим один раз на страницу, а не на каждую строку списка.
+        from pricing.services import PricingContext, PricingError
+
+        try:
+            self._pricing = PricingContext()
+        except PricingError:
+            self._pricing = None
+        try:
+            return super().changelist_view(request, extra_context)
+        finally:
+            self._pricing = None
+
+    def _quote(self, obj):
+        from pricing.services import PricingError, quote
+
+        if not obj.pk:
+            return None
+        try:
+            return quote(obj, ctx=getattr(self, "_pricing", None))
+        except PricingError:
+            return None
+
+    @admin.display(description=_("на сайте"))
+    def site_price(self, obj):
+        q = self._quote(obj)
+        return f"{q.total_rub:,.0f} ₽".replace(",", " ") if q else "—"
+
+    @admin.display(description=_("цена для покупателя"))
+    def site_price_breakdown(self, obj):
+        q = self._quote(obj)
+        if q is None:
+            return _("Посчитаем после сохранения (нужны курс юаня и тарифы доставки)")
+        money = lambda v: f"{v:,.0f} ₽".replace(",", " ")  # noqa: E731
+        return format_html(
+            "<b>{}</b> под ключ<br>товар {} ¥ × {} = {}, доставка «{}» {}, сервисный сбор {}",
+            money(q.total_rub), q.unit_cny, q.rate, money(q.goods_rub), q.shipping.name,
+            money(q.delivery_rub), money(q.fee_rub))
 
     @admin.action(description=_("Перевести с китайского (YandexGPT)"))
     def translate(self, request, queryset):

@@ -177,3 +177,34 @@ def test_agent_adds_event_with_warehouse_photo(supplier, shoes, pricing_setup):
     client.post(url, {**data, f"{new}-0-status": "", f"{new}-0-note": "", f"{new}-0-weight_kg": "",
                       f"{new}-0-photo": ""})
     assert order.events.count() == events_before  # пустая строка не создаёт событие
+
+
+def test_product_admin_tabs_quick_price_edit_and_manual_add(supplier, shoes, pricing_setup):
+    runner = make_product(supplier, shoes, "runner", 268, 1.1, [(6, 198)])
+    admin = User.objects.create_superuser("boss", "b@x.ru", "pw-123456!")
+    client = Client()
+    client.force_login(admin)
+    page = client.get("/admin/catalog/product/").content.decode()
+    assert "на сайте" in page.lower() and "₽" in page  # цена для покупателя прямо в списке
+    # Быстрая правка цены в списке, без захода в карточку.
+    resp = client.post("/admin/catalog/product/", {
+        "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1", "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
+        "form-0-id": runner.pk, "form-0-price_cny": "250", "form-0-sale_percent": "10", "_save": "Сохранить"})
+    assert resp.status_code == 302, resp.content.decode()[:1500]
+    runner.refresh_from_db()
+    assert runner.price_cny == 250 and runner.sale_percent == 10
+    card = client.get(f"/admin/catalog/product/{runner.pk}/change/").content.decode()
+    assert "под ключ" in card and "Оптовые цены" in card  # расчёт цены и вкладки
+    # Новый товар вручную с фото.
+    resp = client.post("/admin/catalog/product/add/", {
+        "supplier": supplier.pk, "category": shoes.pk, "sku": "", "slug": "loafers-new", "status": "published",
+        "moderation_note": "", "title_ru": "Лоферы", "description_ru": "Замша", "title_zh": "", "description_zh": "",
+        "source_url": "", "price_cny": "199", "sale_percent": "0", "weight_kg": "1", "sizes": "40, 41", "colors": "",
+        "size_grid": "shoes",
+        "images-TOTAL_FORMS": "1", "images-INITIAL_FORMS": "0", "images-MIN_NUM_FORMS": "0",
+        "images-MAX_NUM_FORMS": "1000", "images-0-image": jpeg(), "images-0-position": "0",
+        "tiers-TOTAL_FORMS": "1", "tiers-INITIAL_FORMS": "0", "tiers-MIN_NUM_FORMS": "0",
+        "tiers-MAX_NUM_FORMS": "1000", "tiers-0-min_qty": "5", "tiers-0-price_cny": "160"})
+    assert resp.status_code == 302, resp.content.decode()[:1500]
+    new = Product.objects.get(slug="loafers-new")
+    assert new.images.count() == 1 and new.tiers.get().min_qty == 5
