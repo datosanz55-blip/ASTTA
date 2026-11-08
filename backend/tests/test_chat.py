@@ -96,3 +96,24 @@ def test_thinking_model_gets_its_reasoning_back(ai_on, monkeypatch, runner):
                   content_type="application/json")
     assistant_step = [m for m in sent[1] if m["role"] == "assistant"][-1]
     assert assistant_step["reasoning_content"] == "думаю о кроссовках"  # DeepSeek в режиме thinking требует это
+
+
+def test_deepseek_thinking_off_by_default(settings, monkeypatch):
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://api.deepseek.com", "k", "deepseek-flash"
+    settings.AI_EXTRA_BODY = {}
+    sent = {}
+
+    class Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"total_tokens": 3}}
+
+    def post(url, json=None, headers=None, timeout=None):
+        sent.update(url=url, body=json, headers=headers)
+        return Resp()
+    monkeypatch.setattr(llm.httpx, "post", post)
+    assert llm.chat([{"role": "user", "content": "привет"}]).content == "ok"
+    assert sent["url"] == "https://api.deepseek.com/chat/completions"
+    assert sent["body"]["thinking"] == {"type": "disabled"} and sent["headers"]["Authorization"] == "Bearer k"

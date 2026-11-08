@@ -46,6 +46,10 @@ def chat(messages: list[dict], tools: list[dict] | None = None, *, max_tokens: i
                "temperature": temperature}
     if tools:
         payload["tools"] = tools
+    if "api.deepseek.com" in settings.AI_BASE_URL and "thinking" not in settings.AI_EXTRA_BODY:
+        # DeepSeek по умолчанию «размышляет». С инструментами он тогда требует вернуть размышления всех прошлых
+        # ответов разговора, а в истории с сайта их нет — со второго вопроса был бы 400. Консультанту они не нужны.
+        payload["thinking"] = {"type": "disabled"}
     payload.update(settings.AI_EXTRA_BODY)
     try:
         response = httpx.post(f"{settings.AI_BASE_URL.rstrip('/')}/chat/completions", json=payload,
