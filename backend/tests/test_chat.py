@@ -76,3 +76,23 @@ def test_correction_in_log_becomes_knowledge_article(db):
     log.refresh_from_db()
     article = KnowledgeArticle.objects.get(pk=log.article_id)
     assert article.title == "Можно оплатить долями?" and article.answer == "Пока нет, только сразу."
+
+
+def test_thinking_model_gets_its_reasoning_back(ai_on, monkeypatch, runner):
+    sent = []
+    steps = [
+        llm.Reply(content="", tokens=5, tool_calls=[{"id": "1", "name": "search_catalog", "arguments": {"query": "x"}}],
+                  raw_message={"role": "assistant", "content": "", "reasoning_content": "думаю о кроссовках",
+                               "tool_calls": [{"id": "1", "type": "function",
+                                               "function": {"name": "search_catalog", "arguments": "{}"}}]}),
+        llm.Reply(content="Готово", tokens=5, tool_calls=[], raw_message={"role": "assistant", "content": "Готово"}),
+    ]
+
+    def chat(messages, tools=None, **kwargs):
+        sent.append([dict(m) for m in messages])
+        return steps.pop(0)
+    monkeypatch.setattr(llm, "chat", chat)
+    Client().post("/api/ai/chat", {"messages": [{"role": "user", "content": "кроссовки"}]},
+                  content_type="application/json")
+    assistant_step = [m for m in sent[1] if m["role"] == "assistant"][-1]
+    assert assistant_step["reasoning_content"] == "думаю о кроссовках"  # DeepSeek в режиме thinking требует это

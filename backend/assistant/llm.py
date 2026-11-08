@@ -3,7 +3,8 @@
 Какая модель — решают три переменные окружения, менять код не нужно:
     AI_BASE_URL  адрес API, например https://api.deepseek.com или https://openrouter.ai/api/v1
     AI_API_KEY   ключ
-    AI_MODEL     имя модели, например deepseek-chat
+    AI_MODEL     имя модели, например deepseek-flash
+    AI_EXTRA_BODY  необязательно: JSON с доп. полями запроса, например {"thinking": {"type": "disabled"}}
 Если хостинг блокирует адрес модели, его можно пустить через посредника так же, как Telegram
 (см. infra/telegram-proxy.js): тогда в AI_BASE_URL пишется адрес посредника.
 """
@@ -45,6 +46,7 @@ def chat(messages: list[dict], tools: list[dict] | None = None, *, max_tokens: i
                "temperature": temperature}
     if tools:
         payload["tools"] = tools
+    payload.update(settings.AI_EXTRA_BODY)
     try:
         response = httpx.post(f"{settings.AI_BASE_URL.rstrip('/')}/chat/completions", json=payload,
                               headers={"Authorization": f"Bearer {settings.AI_API_KEY}"}, timeout=TIMEOUT)

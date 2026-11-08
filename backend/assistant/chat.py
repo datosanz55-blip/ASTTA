@@ -219,8 +219,12 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
             tokens += reply.tokens
             if not reply.tool_calls:
                 break
-            messages.append({"role": "assistant", "content": reply.content or "",
-                             "tool_calls": reply.raw_message.get("tool_calls")})
+            step = {"role": "assistant", "content": reply.content or "",
+                    "tool_calls": reply.raw_message.get("tool_calls")}
+            # Модели с «размышлениями» (DeepSeek в режиме thinking) требуют вернуть их вместе с вызовом инструментов.
+            if reply.raw_message.get("reasoning_content"):
+                step["reasoning_content"] = reply.raw_message["reasoning_content"]
+            messages.append(step)
             for call in reply.tool_calls:
                 result = _run_tool(call["name"], call["arguments"], buyer, ctx)
                 if call["name"] == "search_catalog":

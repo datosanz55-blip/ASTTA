@@ -1,5 +1,6 @@
 """Настройки ASTTA. Всё, что отличается между ноутбуком и сервером, берётся из переменных окружения."""
 
+import json
 import os
 from pathlib import Path
 
@@ -133,6 +134,12 @@ YANDEX_GPT_MODEL = env("YANDEX_GPT_MODEL", "yandexgpt/latest")
 AI_BASE_URL = env("AI_BASE_URL", "")
 AI_API_KEY = env("AI_API_KEY", "")
 AI_MODEL = env("AI_MODEL", "")
+try:
+    AI_EXTRA_BODY = json.loads(env("AI_EXTRA_BODY") or "{}")
+    if not isinstance(AI_EXTRA_BODY, dict):
+        AI_EXTRA_BODY = {}
+except ValueError:
+    AI_EXTRA_BODY = {}  # опечатка в настройке не должна ронять сервер: просто без доп. полей
 
 # Вход покупателей через Telegram: бот создаётся в @BotFather, домен сайта задаётся там же командой /setdomain.
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")
