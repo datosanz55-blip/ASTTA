@@ -208,3 +208,12 @@ def test_product_admin_tabs_quick_price_edit_and_manual_add(supplier, shoes, pri
     assert resp.status_code == 302, resp.content.decode()[:1500]
     new = Product.objects.get(slug="loafers-new")
     assert new.images.count() == 1 and new.tiers.get().min_qty == 5
+
+
+def test_import_without_file_says_so(supplier):
+    admin = User.objects.create_superuser("boss2", "b2@x.ru", "pw-123456!")
+    client = Client()
+    client.force_login(admin)
+    page = client.post("/admin/catalog/product/import/", {"supplier": supplier.pk}, follow=True).content.decode()
+    assert "Файл не выбран" in page  # раньше страница молча перезагружалась
+    assert "importWait" in page  # подсказка «загружаем…» на время обработки

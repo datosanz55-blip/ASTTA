@@ -321,7 +321,10 @@ class ProductAdmin(ModelAdmin):
         chosen = request.POST.get("supplier")
         supplier = Supplier.objects.filter(pk=chosen).first() if chosen else None
         result = None
-        if request.method == "POST" and (request.FILES.get("file") or request.FILES.get("photos")):
+        if request.method == "POST" and not (request.FILES.get("file") or request.FILES.get("photos")):
+            # Раньше страница молча перезагружалась, и казалось, что кнопка не работает.
+            messages.error(request, _("Файл не выбран: прикрепите таблицу .xlsx или архив с фото .zip"))
+        elif request.method == "POST":
             if supplier is None:
                 messages.error(request, _("Выберите поставщика"))
             else:

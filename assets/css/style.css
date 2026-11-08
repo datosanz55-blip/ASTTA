@@ -1368,3 +1368,6 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .spend__row b { grid-area: sum; text-align: right; font-variant-numeric: tabular-nums; }
 .spend__row small { grid-area: n; text-align: right; color: var(--muted); }
 @media (max-width: 560px) { .spend__row { grid-template-columns: 1fr auto; grid-template-areas: "m sum" "bar n"; } }
+
+/* Ответ ИИ с переносами строк */
+.msg--ai { white-space: pre-line; }
