@@ -73,7 +73,7 @@ def get_quote(request, product: str, qty: int = 1, mode: str = "retail", shippin
 def site(request):
     from django.conf import settings
 
-    from assistant import yandex
+    from assistant import llm, yandex
     from pricing.models import PricingConfig
 
     config = PricingConfig.load()
@@ -90,4 +90,5 @@ def site(request):
         "shipping": [ShippingOut.from_orm(m).dict() for m in ShippingMethod.objects.filter(is_active=True)],
         "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",
         "ai": yandex.enabled(),
+        "chat": llm.enabled(),
     }

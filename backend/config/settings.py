@@ -129,6 +129,10 @@ if env("PYTEST_VERSION"):
 YANDEX_API_KEY = env("YANDEX_API_KEY", "")
 YANDEX_FOLDER_ID = env("YANDEX_FOLDER_ID", "")
 YANDEX_GPT_MODEL = env("YANDEX_GPT_MODEL", "yandexgpt/latest")
+# Чат ASTTA AI: любая модель с OpenAI-совместимым API (DeepSeek, OpenRouter, YandexGPT). Пусто — чат выключен.
+AI_BASE_URL = env("AI_BASE_URL", "")
+AI_API_KEY = env("AI_API_KEY", "")
+AI_MODEL = env("AI_MODEL", "")
 
 # Вход покупателей через Telegram: бот создаётся в @BotFather, домен сайта задаётся там же командой /setdomain.
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")

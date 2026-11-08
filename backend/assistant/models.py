@@ -27,6 +27,7 @@ class AiLog(models.Model):
 
     class Kind(models.TextChoices):
         ASK = "ask", _("Вопрос покупателя")
+        CHAT = "chat", _("Чат на сайте")
         PHOTO = "photo", _("Фото с ценой")
         TRANSLATE = "translate", _("Перевод карточек")
 
@@ -38,6 +39,12 @@ class AiLog(models.Model):
     helpful = models.BooleanField(_("ответ помог"), null=True, blank=True)
     tokens = models.PositiveIntegerField(_("токены"), default=0)
     error = models.CharField(_("ошибка"), max_length=300, blank=True)
+    # Обучение ИИ: команда пишет, как надо было ответить, и ответ сразу уходит в базу знаний.
+    correct_answer = models.TextField(_("правильный ответ"), blank=True,
+                                      help_text=_("Напишите, как надо было ответить. После сохранения ответ "
+                                                  "станет статьёй базы знаний, и ИИ будет отвечать так."))
+    article = models.ForeignKey(KnowledgeArticle, verbose_name=_("статья из исправления"), null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="corrections")
     created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:

@@ -1232,7 +1232,7 @@ ${aiCatalogJSON()}
     const cards = cat.map((c) => {
       const p = byId[c.id];
       return `<article class="aicard">
-        <button class="aicard__img" type="button" data-open="${c.id}" aria-label="${esc(p.t)}"><img src="${img(c.id)}" alt="" width="160" height="160" loading="lazy"></button>
+        <button class="aicard__img" type="button" data-open="${c.id}" aria-label="${esc(p.t)}"><img src="${pimg(p)}" alt="" width="160" height="160" loading="lazy"></button>
         <div class="aicard__body">
           ${c.role ? `<span class="aicard__role">${esc(c.role)}</span>` : ''}
           <b>${esc(p.t)}</b>
@@ -1282,7 +1282,7 @@ ${aiCatalogJSON()}
       return html;
     }).join('');
     const head = $('#aiMode');
-    if (head) head.textContent = ai.mode === 'claude' ? 'работает на Claude · подбирает из каталога и под заказ' : (ai.mode === 'demo' ? 'демо-режим: сценарии по каталогу' : 'подбирает товары под задачу и бюджет');
+    if (head) head.textContent = ai.mode === 'server' ? 'ASTTA AI · подбирает из каталога, отвечает по правилам сервиса' : ai.mode === 'claude' ? 'работает на Claude · подбирает из каталога и под заказ' : (ai.mode === 'demo' ? 'демо-режим: сценарии по каталогу' : 'подбирает товары под задачу и бюджет');
     box.lastElementChild && box.lastElementChild.scrollIntoView({ block: 'end' });
   }
 
@@ -1326,7 +1326,20 @@ ${aiCatalogJSON()}
       ai.last = { q: opts.demoQuery || q, plan, variant: opts.variant || 0 };
       return { ...aiDemoAnswer(plan), source: 'demo' };
     };
-    const sample = ai.mode === 'demo' ? null : await aiSample();
+    // Боевой сайт с подключённой моделью: спрашиваем ASTTA AI на сервере, он ищет по нашему каталогу.
+    if (live.on && live.site && live.site.chat && !opts.images && !opts.solve) {
+      try {
+        const data = await api('/api/ai/chat', { method: 'POST', body: { messages: [...ai.turns.slice(-10), { role: 'user', content: q }] } });
+        ai.mode = 'server';
+        ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: data.answer });
+        finish({ reply: data.answer, cat: data.products.filter((slug) => byId[slug]).map((slug) => ({ id: slug, why: [] })),
+          toAgent: data.handoff, logId: data.log_id });
+      } catch (e) {
+        finish({ reply: e.message || 'Связь с ИИ прервалась. Попробуйте ещё раз.' });
+      }
+      return;
+    }
+    const sample = ai.mode === 'demo' || live.on ? null : await aiSample();
     if (!sample) {
       ai.mode = 'demo';
       setTimeout(() => finish(demo()), 900);
