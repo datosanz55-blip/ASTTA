@@ -47,6 +47,7 @@ class ChatOut(Schema):
     products: list[str]
     handoff: bool
     log_id: int | None
+    memo: str = ""
 
 
 @router.get("/status", summary="Подключён ли ИИ")
@@ -67,7 +68,8 @@ def chat_view(request, payload: ChatIn):
     if len(history[-1]["content"]) > MAX_QUESTION:
         raise HttpError(422, f"Сообщение длиннее {MAX_QUESTION} символов")
     result = run_chat(history, buyer=current_buyer(request))
-    return {"answer": result.text, "products": result.products, "handoff": result.handoff, "log_id": result.log_id}
+    return {"answer": result.text, "products": result.products, "handoff": result.handoff, "log_id": result.log_id,
+            "memo": result.memo}
 
 
 @router.post("/ask", response=AskOut, throttle=LIMITS, summary="Вопрос покупателя: ответ по базе знаний")

@@ -1331,7 +1331,8 @@ ${aiCatalogJSON()}
       try {
         const data = await api('/api/ai/chat', { method: 'POST', body: { messages: [...ai.turns.slice(-10), { role: 'user', content: q }] } });
         ai.mode = 'server';
-        ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: data.answer });
+        // Данные о товаре по ссылке храним в истории первыми: на «а размер 47?» ИИ ответит, не ища заново.
+        ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: (data.memo ? data.memo + '\n' : '') + data.answer });
         finish({ reply: data.answer, cat: data.products.filter((slug) => byId[slug]).map((slug) => ({ id: slug, why: [] })),
           toAgent: data.handoff, logId: data.log_id });
       } catch (e) {

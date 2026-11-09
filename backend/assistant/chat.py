@@ -20,7 +20,7 @@ from pricing.services import PricingContext, PricingError, quote
 
 MAX_ROUNDS = 4  # сколько раз подряд модель может вызвать инструменты, прежде чем ответить
 MAX_HISTORY = 12
-MAX_MESSAGE = 1500
+MAX_MESSAGE = 3000  # ответ ИИ вместе с «[Данные о товаре: …]»
 CATALOG_LIMIT = 8
 HANDOFF_TEXT = "Передал вопрос агенту TT Логистики, он ответит в Telegram."
 
@@ -38,6 +38,10 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 - Прислали ссылку или текст «поделиться» (часто с иероглифами) — сразу вызови inspect_link: назови площадку,
   переведи название, проверь, нет ли товара у нас. Если вернулся on_marketplace — назови цену под ключ и размеры,
   иначе попроси цену в юанях или скриншот.
+- Строки «[Данные о товаре: …]» в истории — это уже найденное по ссылке. Не вызывай inspect_link заново,
+  отвечай по ним. Цен по каждому размеру у нас нет: назови диапазон под ключ (от и до) и скажи, что точную цену
+  за выбранный размер агент сверит до выкупа; если покупатель знает цену своего размера в юанях — посчитай её.
+- Оформить заказ сам ты не можешь: предложи нажать «Заказать по ссылке» (или кнопку «В корзину» для каталога).
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -217,6 +221,10 @@ def marketplace_card(info) -> dict:
             est = estimate(Decimal(str(item["price_cny"])), 1, info.marketplace)
             out["estimate"] = {"total_rub": int(est.total_rub), "for_price_cny": item["price_cny"],
                                "notes": est.notes}
+            # Цены по каждому размеру скрапер не даёт — только от и до. Считаем и верхнюю границу.
+            if item.get("price_cny_max") and item["price_cny_max"] > item["price_cny"]:
+                top = estimate(Decimal(str(item["price_cny_max"])), 1, info.marketplace)
+                out["estimate"].update(max_total_rub=int(top.total_rub), max_for_price_cny=item["price_cny_max"])
         except PricingError:
             pass
     return out
@@ -240,6 +248,8 @@ class ChatAnswer:
     products: list[str] = field(default_factory=list)
     handoff: bool = False
     log_id: int | None = None
+    # Что ИИ узнал о товаре по ссылке: сайт хранит это в истории, чтобы на «а размер 47?» не искать заново.
+    memo: str = ""
 
 
 def _run_tool(name: str, args: dict, buyer, ctx) -> object:
@@ -289,6 +299,7 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
         ctx = None
     messages = [{"role": "system", "content": SYSTEM.format(facts=facts_text())}, *turns]
     seen_products: set[str] = set()
+    memos: list[str] = []
     trace, tokens = [], 0
     try:
         for _ in range(MAX_ROUNDS + 1):
@@ -310,6 +321,8 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
                     seen_products.add(result["slug"])
                 elif call["name"] == "inspect_link" and result.get("in_catalog"):
                     seen_products.add(result["in_catalog"]["slug"])
+                if call["name"] == "inspect_link" and result.get("url"):
+                    memos.append(_link_memo(result))
                 trace.append({"tool": call["name"], "args": call["arguments"]})
                 messages.append({"role": "tool", "tool_call_id": call["id"],
                                  "content": json.dumps(result, ensure_ascii=False, default=str)[:6000]})
@@ -325,4 +338,23 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
     log.response = text or HANDOFF_TEXT
     log.handoff, log.tokens, log.sources = handoff, tokens, {"tools": trace, "products": products}
     log.save()
-    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk)
+    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk, memo="\n".join(memos)[:1500])
+
+
+def _link_memo(result: dict) -> str:
+    """Короткая выжимка разбора ссылки для истории разговора."""
+    market = result.get("on_marketplace") or {}
+    est = result.get("estimate") or {}
+    parts = [f"ссылка {result.get('url')}", f"площадка {result.get('marketplace')}",
+             f"номер товара {result.get('item_id') or 'не найден'}"]
+    if market.get("title"):
+        parts.append(f"товар «{market['title']}»")
+    if market.get("price_cny"):
+        top = f"–{market['price_cny_max']:g}" if market.get("price_cny_max") else ""
+        parts.append(f"цена на площадке {market['price_cny']:g}{top} ¥ (по размерам отдельно не известна)")
+    if est.get("total_rub"):
+        top = f"–{est['max_total_rub']}" if est.get("max_total_rub") else ""
+        parts.append(f"под ключ {est['total_rub']}{top} ₽")
+    if market.get("sizes"):
+        parts.append("размеры " + ", ".join(market["sizes"][:30]))
+    return "[Данные о товаре: " + "; ".join(parts) + "]"
