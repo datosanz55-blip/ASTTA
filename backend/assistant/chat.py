@@ -20,7 +20,7 @@ from pricing.services import PricingContext, PricingError, quote
 
 MAX_ROUNDS = 4  # сколько раз подряд модель может вызвать инструменты, прежде чем ответить
 MAX_HISTORY = 12
-MAX_MESSAGE = 1500
+MAX_MESSAGE = 3000  # ответ ИИ вместе с «[Данные о товаре: …]»
 CATALOG_LIMIT = 8
 HANDOFF_TEXT = "Передал вопрос агенту TT Логистики, он ответит в Telegram."
 
@@ -38,6 +38,17 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 - Прислали ссылку или текст «поделиться» (часто с иероглифами) — сразу вызови inspect_link: назови площадку,
   переведи название, проверь, нет ли товара у нас. Если вернулся on_marketplace — назови цену под ключ и размеры,
   иначе попроси цену в юанях или скриншот.
+- Строки «[Данные о товаре: …]» в истории — это уже найденное по ссылке. Не вызывай inspect_link заново,
+  отвечай по ним. Цен по каждому размеру у нас нет: назови диапазон под ключ (от и до) и скажи, что точную цену
+  за выбранный размер агент сверит до выкупа; если покупатель знает цену своего размера в юанях — посчитай её.
+- Прислали скриншот — прочитай с него цену в юанях (обычно крупная цифра с ¥, не зачёркнутая и не доставка),
+  название и выбранный размер, переведи с китайского и посчитай через estimate_link_price. Не видно цену — попроси
+  написать её текстом.
+- Нашёл конкретный товар (по ссылке, скриншоту или в каталоге) — дай короткую справку в 2–3 предложения: что это
+  за модель и для кого (например: «KD 19 — именная баскетбольная линейка Кевина Дюранта, лёгкая, для зала и улицы»),
+  чем хороша. Для брендовых вещей вызови search_reviews и добавь 1–2 конкретных плюса или минуса из обзоров
+  со ссылкой на сайт («по обзору на …»). Не придумывай оценки, рейтинги и цифры — только из найденного.
+- Оформить заказ сам ты не можешь: предложи нажать «Заказать по ссылке» (или кнопку «В корзину» для каталога).
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -80,6 +91,13 @@ TOOLS = [
                        "этот товар в нашем каталоге. Для Poizon, Taobao и Tmall ещё цену в юанях, размеры и фото "
                        "с площадки и цену под ключ (если просмотр площадок подключён). Может думать до минуты.",
         "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
+    {"type": "function", "function": {
+        "name": "search_reviews",
+        "description": "Найти в интернете обзоры, отзывы и рейтинги товара или модели (например «Nike KD 19 обзор»). "
+                       "Возвращает заголовок, сайт, дату и краткое содержание.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "модель и слова «обзор отзывы», до 128 символов"}},
+            "required": ["query"]}}},
     {"type": "function", "function": {
         "name": "order_status",
         "description": "Статус заказа покупателя по номеру вида A-000123. Работает, только если покупатель вошёл.",
@@ -217,6 +235,10 @@ def marketplace_card(info) -> dict:
             est = estimate(Decimal(str(item["price_cny"])), 1, info.marketplace)
             out["estimate"] = {"total_rub": int(est.total_rub), "for_price_cny": item["price_cny"],
                                "notes": est.notes}
+            # Цены по каждому размеру скрапер не даёт — только от и до. Считаем и верхнюю границу.
+            if item.get("price_cny_max") and item["price_cny_max"] > item["price_cny"]:
+                top = estimate(Decimal(str(item["price_cny_max"])), 1, info.marketplace)
+                out["estimate"].update(max_total_rub=int(top.total_rub), max_for_price_cny=item["price_cny_max"])
         except PricingError:
             pass
     return out
@@ -240,6 +262,8 @@ class ChatAnswer:
     products: list[str] = field(default_factory=list)
     handoff: bool = False
     log_id: int | None = None
+    # Что ИИ узнал о товаре по ссылке: сайт хранит это в истории, чтобы на «а размер 47?» не искать заново.
+    memo: str = ""
 
 
 def _run_tool(name: str, args: dict, buyer, ctx) -> object:
@@ -254,6 +278,10 @@ def _run_tool(name: str, args: dict, buyer, ctx) -> object:
         return estimate_link_price(args.get("price_cny"), args.get("qty", 1))
     if name == "inspect_link":
         return inspect_link(str(args.get("text", "")), ctx=ctx)
+    if name == "search_reviews":
+        found = llm.web_search(str(args.get("query", "")))
+        return found or {"note": "обзоров не нашлось или поиск недоступен — опирайся на общие знания, "
+                                 "без выдуманных оценок"}
     if name == "order_status":
         return order_status(str(args.get("number", "")), buyer)
     return {"error": f"нет инструмента {name}"}
@@ -277,18 +305,42 @@ def _split_tail(text: str, allowed: set[str]) -> tuple[str, list[str], bool]:
     return "\n".join(lines).strip(), products, handoff
 
 
-def chat(history: list[dict], buyer=None) -> ChatAnswer:
-    """history — сообщения покупателя и ответы ИИ: [{"role": "user"|"assistant", "content": "..."}]."""
+def photo_for_model(data: bytes) -> str:
+    """Скриншот покупателя → JPEG до 1600 px в виде data URL для модели с распознаванием картинок."""
+    import base64
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    from catalog.images import ImageError, prepare_image
+
+    try:
+        webp = prepare_image(data, "photo")  # проверка, поворот по EXIF, уменьшение
+        image = Image.open(BytesIO(webp.read())).convert("RGB")
+    except (ImageError, OSError) as exc:
+        raise ValueError("Это не фото или файл повреждён") from exc
+    out = BytesIO()
+    ImageOps.exif_transpose(image).save(out, "JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode()
+
+
+def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswer:
+    """history — сообщения покупателя и ответы ИИ: [{"role": "user"|"assistant", "content": "..."}].
+    photo — скриншот к последнему сообщению (data URL из photo_for_model)."""
     turns = [{"role": m["role"], "content": str(m.get("content", ""))[:MAX_MESSAGE]}
              for m in history[-MAX_HISTORY:] if m.get("role") in ("user", "assistant") and m.get("content")]
     question = next((m["content"] for m in reversed(turns) if m["role"] == "user"), "")
-    log = AiLog(kind=AiLog.Kind.CHAT, request=question)
+    if photo and turns and turns[-1]["role"] == "user":
+        turns[-1] = {"role": "user", "content": [{"type": "text", "text": turns[-1]["content"]},
+                                                 {"type": "image_url", "image_url": {"url": photo}}]}
+    log = AiLog(kind=AiLog.Kind.CHAT, request=("[фото] " if photo else "") + question)
     try:
         ctx = PricingContext()
     except PricingError:
         ctx = None
     messages = [{"role": "system", "content": SYSTEM.format(facts=facts_text())}, *turns]
     seen_products: set[str] = set()
+    memos: list[str] = []
     trace, tokens = [], 0
     try:
         for _ in range(MAX_ROUNDS + 1):
@@ -310,6 +362,8 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
                     seen_products.add(result["slug"])
                 elif call["name"] == "inspect_link" and result.get("in_catalog"):
                     seen_products.add(result["in_catalog"]["slug"])
+                if call["name"] == "inspect_link" and result.get("url"):
+                    memos.append(_link_memo(result))
                 trace.append({"tool": call["name"], "args": call["arguments"]})
                 messages.append({"role": "tool", "tool_call_id": call["id"],
                                  "content": json.dumps(result, ensure_ascii=False, default=str)[:6000]})
@@ -317,12 +371,33 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
             reply = llm.chat(messages)  # инструменты вызывались слишком долго — просим ответить тем, что есть
             tokens += reply.tokens
     except llm.LLMError as exc:
-        log.error, log.handoff, log.response, log.tokens = str(exc)[:300], True, HANDOFF_TEXT, tokens
+        text = ("Не получилось прочитать фото. Напишите цену в юанях текстом — сразу посчитаю."
+                if photo else HANDOFF_TEXT)
+        log.error, log.handoff, log.response, log.tokens = str(exc)[:300], not photo, text, tokens
         log.save()
-        return ChatAnswer(HANDOFF_TEXT, handoff=True, log_id=log.pk)
+        return ChatAnswer(text, handoff=not photo, log_id=log.pk)
     # Карточки показываем только для товаров, которые модель реально получила из каталога.
     text, products, handoff = _split_tail(reply.content, seen_products)
     log.response = text or HANDOFF_TEXT
     log.handoff, log.tokens, log.sources = handoff, tokens, {"tools": trace, "products": products}
     log.save()
-    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk)
+    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk, memo="\n".join(memos)[:1500])
+
+
+def _link_memo(result: dict) -> str:
+    """Короткая выжимка разбора ссылки для истории разговора."""
+    market = result.get("on_marketplace") or {}
+    est = result.get("estimate") or {}
+    parts = [f"ссылка {result.get('url')}", f"площадка {result.get('marketplace')}",
+             f"номер товара {result.get('item_id') or 'не найден'}"]
+    if market.get("title"):
+        parts.append(f"товар «{market['title']}»")
+    if market.get("price_cny"):
+        top = f"–{market['price_cny_max']:g}" if market.get("price_cny_max") else ""
+        parts.append(f"цена на площадке {market['price_cny']:g}{top} ¥ (по размерам отдельно не известна)")
+    if est.get("total_rub"):
+        top = f"–{est['max_total_rub']}" if est.get("max_total_rub") else ""
+        parts.append(f"под ключ {est['total_rub']}{top} ₽")
+    if market.get("sizes"):
+        parts.append("размеры " + ", ".join(market["sizes"][:30]))
+    return "[Данные о товаре: " + "; ".join(parts) + "]"

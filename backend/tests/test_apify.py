@@ -69,3 +69,32 @@ def test_market_endpoint_for_site(token, pricing_setup, monkeypatch):
                          content_type="application/json").json()
     assert data["item"]["price_cny"] == 329.0 and data["estimate"]["total_rub"] > 0
     assert Client().get("/api/site").json()["market"] is True
+
+
+def test_chat_returns_memo_with_price_range(token, pricing_setup, monkeypatch, settings):
+    import json as _json
+
+    from assistant import llm
+
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: Resp(200, [POIZON_ROW]))
+    url = "https://m.dewu.com/router/product/ProductDetail?spuId=1234567"
+    steps = [
+        llm.Reply(content="", tokens=1, tool_calls=[{"id": "1", "name": "inspect_link", "arguments": {"text": url}}],
+                  raw_message={"role": "assistant", "content": "", "tool_calls": [
+                      {"id": "1", "type": "function", "function": {"name": "inspect_link",
+                                                                    "arguments": _json.dumps({"text": url})}}]}),
+        llm.Reply(content="Nike Dunk Low, под ключ от … ₽", tokens=1, tool_calls=[], raw_message={}),
+    ]
+    sent = []
+
+    def chat(messages, tools=None, **kwargs):
+        sent.append(messages)
+        return steps.pop(0)
+    monkeypatch.setattr(llm, "chat", chat)
+    data = Client().post("/api/ai/chat", {"messages": [{"role": "user", "content": url}]},
+                         content_type="application/json").json()
+    assert "[Данные о товаре:" in data["memo"] and "599–899 ¥" in data["memo"]
+    assert "под ключ" in data["memo"] and "–" in data["memo"].split("под ключ")[1]  # диапазон в рублях
+    estimate = _json.loads(sent[1][-1]["content"])["estimate"]
+    assert estimate["max_for_price_cny"] == 899.0 and estimate["max_total_rub"] > estimate["total_rub"]

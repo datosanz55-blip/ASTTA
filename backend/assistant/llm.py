@@ -75,3 +75,24 @@ def chat(messages: list[dict], tools: list[dict] | None = None, *, max_tokens: i
     usage = data.get("usage") or {}
     return Reply(content=(message.get("content") or "").strip(), tool_calls=calls,
                  tokens=int(usage.get("total_tokens") or 0), raw_message=message)
+
+
+def search_enabled() -> bool:
+    # Поиск по интернету — API самого DeepSeek (/v1/tools/search, тот же ключ, ~0,75 $ за 1000 успешных запросов).
+    return enabled() and "api.deepseek.com" in settings.AI_BASE_URL
+
+
+def web_search(query: str, count: int = 5) -> list[dict]:
+    """Обзоры и отзывы из интернета для ответа покупателю. Пустой список, если поиск недоступен или ничего нет."""
+    if not search_enabled():
+        return []
+    try:
+        response = httpx.post("https://api.deepseek.com/v1/tools/search",
+                              json={"query": query[:128], "count": count},
+                              headers={"Authorization": f"Bearer {settings.AI_API_KEY}"}, timeout=30)
+        results = response.json().get("results") or [] if response.status_code == 200 else []
+    except (httpx.HTTPError, ValueError):
+        return []
+    return [{"title": r.get("title") or "", "site": r.get("site_name") or "", "url": r.get("url") or "",
+             "date": (r.get("date") or "")[:10], "summary": (r.get("summary") or r.get("snippet") or "")[:700]}
+            for r in results if isinstance(r, dict)][:count]

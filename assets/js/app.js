@@ -1295,10 +1295,32 @@ ${aiCatalogJSON()}
         <button class="chip" type="button" data-ai-ask="Собери образ на осень до 15 000 ₽">Образ до 15 000 ₽</button>
         <button class="chip" type="button" data-ai-ask="Подарок девушке до 7 000 ₽">Подарок девушке</button>
       </div>`}
-      <form class="chat__form" id="aiChatForm"><input id="aiChatInput" autocomplete="off" placeholder="Что подобрать?" aria-label="Запрос для ASTTA AI"><button class="roundbtn" type="submit" aria-label="Отправить">${icon('arrow')}</button></form>
+      <form class="chat__form" id="aiChatForm">
+        <label class="roundbtn roundbtn--ghost" aria-label="Прикрепить скриншот" title="Прикрепить скриншот">${icon('camera')}<input id="aiPhoto" type="file" accept="image/*" hidden></label>
+        <input id="aiChatInput" autocomplete="off" placeholder="Что подобрать? Можно ссылку или скриншот" aria-label="Запрос для ASTTA AI"><button class="roundbtn" type="submit" aria-label="Отправить">${icon('arrow')}</button></form>
     </div>`, { narrow: true });
     if (!ai.log.length) ai.log.push({ reply: 'Привет! Напишите задачу и бюджет. Подберу из каталога ASTTA, а чего нет — найду под заказ в Китае и проверю, что всё подходит друг к другу.' });
     aiRender();
+  }
+
+  // Скриншот в чат ИИ: уменьшаем в браузере до 1280 px (JPEG), чтобы отправка была быстрой и лёгкой.
+  async function shrinkPhoto(file, max = 1280) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bitmap.width * scale); c.height = Math.round(bitmap.height * scale);
+    c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  }
+  async function aiPhotoPicked(file) {
+    if (!file) return;
+    if (!(live.on && live.site && live.site.chat)) { toast('Фото ИИ читает на сайте с подключённой моделью'); return; }
+    let photo;
+    try { photo = await shrinkPhoto(file); } catch (e) { toast('Не получилось открыть фото'); return; }
+    const input = $('#aiChatInput');
+    const text = (input && input.value.trim()) || 'Посчитай цену под ключ по скриншоту';
+    if (input) input.value = '';
+    aiAsk(text, { photo, thumb: photo, label: input && text !== 'Посчитай цену под ключ по скриншоту' ? text : 'Скриншот товара' });
   }
 
   async function aiAsk(text, opts = {}) {
@@ -1329,9 +1351,10 @@ ${aiCatalogJSON()}
     // Боевой сайт с подключённой моделью: спрашиваем ASTTA AI на сервере, он ищет по нашему каталогу.
     if (live.on && live.site && live.site.chat && !opts.images && !opts.solve) {
       try {
-        const data = await api('/api/ai/chat', { method: 'POST', body: { messages: [...ai.turns.slice(-10), { role: 'user', content: q }] } });
+        const data = await api('/api/ai/chat', { method: 'POST', body: { messages: [...ai.turns.slice(-10), { role: 'user', content: q }], image: opts.photo || null } });
         ai.mode = 'server';
-        ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: data.answer });
+        // Данные о товаре по ссылке храним в истории первыми: на «а размер 47?» ИИ ответит, не ища заново.
+        ai.turns.push({ role: 'user', content: q }, { role: 'assistant', content: (data.memo ? data.memo + '\n' : '') + data.answer });
         finish({ reply: data.answer, cat: data.products.filter((slug) => byId[slug]).map((slug) => ({ id: slug, why: [] })),
           toAgent: data.handoff, logId: data.log_id });
       } catch (e) {
@@ -2457,6 +2480,7 @@ ${aiCatalogJSON()}
 
   function onChange(e) {
     const t = e.target;
+    if (t.id === 'aiPhoto') { aiPhotoPicked(t.files[0]); t.value = ''; return; }
     if (t.type === 'radio' && t.closest('.ship')) {
       $$('.shipopt', t.closest('.ship')).forEach((l) => l.classList.toggle('is-on', $('input', l).checked));
     }
