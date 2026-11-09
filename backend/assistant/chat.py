@@ -39,8 +39,8 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   переведи название, проверь, нет ли товара у нас. Если вернулся on_marketplace — назови цену под ключ и размеры,
   иначе попроси цену в юанях или скриншот.
 - Строки «[Данные о товаре: …]» в истории — это уже найденное по ссылке. Не вызывай inspect_link заново,
-  отвечай по ним. Если цен по размерам в данных нет — назови диапазон под ключ (от и до) и скажи, что точную цену
-  за выбранный размер агент сверит до выкупа; если покупатель знает цену своего размера в юанях — посчитай её.
+  отвечай по ним. Цена зависит от размера, а цен по размерам у площадки нет: назови диапазон под ключ (от и до)
+  и попроси написать цену своего размера в юанях из приложения или прислать скриншот — тогда посчитай точно.
 - Прислали скриншот — прочитай с него цену в юанях (обычно крупная цифра с ¥, не зачёркнутая и не доставка),
   название и выбранный размер, переведи с китайского и посчитай через estimate_link_price. Не видно цену — попроси
   написать её текстом.
@@ -48,10 +48,11 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   за модель и для кого (например: «KD 19 — именная баскетбольная линейка Кевина Дюранта, лёгкая, для зала и улицы»),
   чем хороша. Для брендовых вещей вызови search_reviews и добавь 1–2 конкретных плюса или минуса из обзоров
   со ссылкой на сайт («по обзору на …»). Не придумывай оценки, рейтинги и цифры — только из найденного.
-- Заказ по ссылке или скриншоту: когда товар понятен и покупатель выбрал размер (или размер не нужен), добавь
-  в конце служебную строку ЗАКАЗ (формат ниже) — под ответом появится кнопка «Оформить заказ» с расчётом.
-  Не пиши «нажмите Заказать по ссылке»: просто скажи, что можно оформить кнопкой ниже. Цена в строке — за
-  выбранный размер, если она известна (покупатель назвал или видно на скриншоте), иначе минимальная «от».
+- Заказ по ссылке или скриншоту: когда товар понятен, покупатель выбрал размер (или размер не нужен) И сам
+  назвал цену в юанях или прислал скриншот с ценой — добавь в конце служебную строку ЗАКАЗ (формат ниже), под
+  ответом появится кнопка «Оформить заказ» с расчётом. Цену «от» с площадки в строку не ставь: нет цены от
+  покупателя — сначала попроси её или скриншот. Не пиши «нажмите Заказать по ссылке»: скажи, что можно оформить
+  кнопкой ниже.
   Для товаров каталога кнопка своя — «В корзину» на карточке.
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
@@ -214,8 +215,8 @@ def inspect_link(text: str, ctx=None) -> dict:
             result["on_marketplace"] = market["item"]
             result["estimate"] = market.get("estimate")
             result["next_step"] = ("Это данные с площадки сейчас. Назови цену под ключ из estimate (если есть "
-                                   "диапазон по размерам — уточни размер). Если есть size_prices — это цены по "
-                                   "размерам. Когда размер выбран — добавь строку ЗАКАЗ.")
+                                   "диапазон по размерам — это от и до). Попроси цену своего размера в юанях или "
+                                   "скриншот; когда покупатель её дал и выбрал размер — добавь строку ЗАКАЗ.")
         else:
             result["next_step"] = (market.get("note") or "Цены с площадки не видно") + (
                 ": попросите цену в юанях со страницы товара или скриншот, посчитайте через estimate_link_price. "
@@ -323,11 +324,11 @@ def _num(text: str) -> float | None:
     return float(found.group(0).replace(",", ".")) if found else None
 
 
-def _order_button(line: str, conversation: str, has_photo: bool) -> dict | None:
+def _order_button(line: str, conversation: str, has_photo: bool, said: str = "") -> dict | None:
     """Строка «ЗАКАЗ: ссылка | размер | цена ¥ | кол-во» → данные для кнопки «Оформить заказ».
 
-    Ссылку берём, только если она была в разговоре (не придумана). Если товар уже смотрели через Apify,
-    цену сверяем с площадкой: есть цена размера — берём её, цена вне диапазона «от–до» — берём «от».
+    Ссылку берём, только если она была в разговоре (не придумана). Цену — только названную покупателем
+    (есть в его сообщениях) или со скриншота: цену «от» с площадки модель подставить не может.
     """
     from links import apify
     from links.services import estimate, parse_link
@@ -349,15 +350,13 @@ def _order_button(line: str, conversation: str, has_photo: bool) -> dict | None:
     qty = max(1, min(qty, 99))
     if not price or not 0 < price < 1_000_000:
         return None
+    plain = re.sub(r"(?<=\d)[\s,](?=\d{3}\b)", "", said)  # «1 099» → «1099»
+    if not has_photo and not re.search(rf"(?<![\d.]){re.escape(f'{price:g}')}(?![\d])", plain):
+        return None  # покупатель цену не называл и скриншота не было
     title, info = "", parse_link(url)
     item = apify.cached_item(info.code, info.item_id) if info.item_id and apify.supported(info.code) else None
     if item:
         title = item.get("title") or ""
-        low, high = item.get("price_cny"), item.get("price_cny_max") or item.get("price_cny")
-        if size and size in (item.get("size_prices") or {}):
-            price = item["size_prices"][size]
-        elif low and high and not low * 0.99 <= price <= high * 1.01:
-            price = low
     try:
         total = int(estimate(Decimal(str(price)), qty, info.marketplace).total_rub)
     except (PricingError, InvalidOperation):
@@ -440,7 +439,9 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
     # Карточки показываем только для товаров, которые модель реально получила из каталога.
     text, products, handoff, order_line = _split_tail(reply.content, seen_products)
     conversation = "\n".join(str(m.get("content")) for m in messages)
-    order = _order_button(order_line, conversation, bool(photo) or "[скриншот]" in conversation) if order_line else None
+    said = "\n".join(str(m["content"]) for m in history if m.get("role") == "user")
+    order = (_order_button(order_line, conversation, bool(photo) or "[скриншот]" in said, said)
+             if order_line else None)
     log.response = text or HANDOFF_TEXT
     log.handoff, log.tokens, log.sources = handoff, tokens, {"tools": trace, "products": products, "order": order}
     log.save()

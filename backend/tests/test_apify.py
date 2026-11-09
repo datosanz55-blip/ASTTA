@@ -108,31 +108,30 @@ def test_size_prices_only_when_believable():
     assert apify.normalize("poizon", retail)["size_prices"] == {}  # одна цена у всех — это розница, не цена размера
 
 
-def test_chat_order_button_checks_link_and_price(token, pricing_setup, monkeypatch, settings):
+def test_chat_order_button_needs_buyer_price(token, pricing_setup, monkeypatch, settings):
     from assistant import llm
 
     settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
     url = "https://m.dewu.com/router/product/ProductDetail?spuId=1234567"
     MarketplaceItem.objects.create(code="poizon", item_id="1234567", found=True,
-                                   data=dict(apify.normalize("poizon", POIZON_ROW), size_prices={"42": 700.0}))
+                                   data=apify.normalize("poizon", POIZON_ROW))
     answers = [f"Оформляйте кнопкой ниже.\nЗАКАЗ: {url} | 42 | 650 | 1",
-               "Оформляйте.\nЗАКАЗ: https://item.taobao.com/item.htm?id=999 | - | 100 | 1",
-               f"Ок.\nЗАКАЗ: {url} | 44 | 5 | 2"]
+               "Оформляйте.\nЗАКАЗ: https://item.taobao.com/item.htm?id=999 | - | 650 | 1",
+               f"Ок.\nЗАКАЗ: {url} | 44 | 599 | 2"]
 
     def chat(messages, tools=None, **kwargs):
         return llm.Reply(content=answers.pop(0), tokens=1, tool_calls=[], raw_message={})
     monkeypatch.setattr(llm, "chat", chat)
     history = [{"role": "user", "content": url}, {"role": "assistant", "content": f"[Данные о товаре: ссылка {url}]"},
-               {"role": "user", "content": "давай 42"}]
+               {"role": "user", "content": "давай 42, в приложении 650 юаней"}]
     post = lambda: Client().post("/api/ai/chat", {"messages": history}, content_type="application/json").json()  # noqa: E731
     data = post()
     assert "ЗАКАЗ" not in data["answer"]
     order = data["order"]
-    assert order["url"] == url and order["size"] == "42" and order["price_cny"] == 700.0  # цена размера с площадки
-    assert order["title"].startswith("Nike Dunk") and order["total_rub"] > 700 * 11
+    assert order["url"] == url and order["size"] == "42" and order["price_cny"] == 650.0  # цена покупателя
+    assert order["title"].startswith("Nike Dunk") and order["total_rub"] > 650 * 11
     assert post()["order"] is None  # ссылки не было в разговоре — кнопку не показываем
-    low = post()["order"]
-    assert low["price_cny"] == 599.0 and low["qty"] == 2  # цена вне диапазона площадки — берём «от»
+    assert post()["order"] is None  # 599 ¥ — цена «от» с площадки, покупатель её не называл
 
 
 def test_photo_form_reads_price_with_chat_model(pricing_setup, monkeypatch, settings, db):
