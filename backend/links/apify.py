@@ -157,6 +157,10 @@ def fetch_item(code: str, item_id: str) -> dict | None:
     cached = MarketplaceItem.objects.filter(code=code, item_id=item_id).first()
     if cached and cached.fetched_at > timezone.now() - timedelta(hours=CACHE_HOURS):
         return cached.data if cached.found else None
+    from config.budget import take
+
+    if not take("apify", settings.APIFY_DAILY_LIMIT):
+        raise ApifyError("Лимит просмотров площадок на сегодня исчерпан: пришлите цену в юанях или скриншот")
     rows = run_actor(code, item_id)
     item = next((n for n in (normalize(code, r) for r in rows if isinstance(r, dict)) if n), None)
     MarketplaceItem.objects.update_or_create(code=code, item_id=item_id,

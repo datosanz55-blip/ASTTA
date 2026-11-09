@@ -26,6 +26,17 @@ class LLMError(Exception):
     """Модель не ответила или ответила непонятно."""
 
 
+class LLMBudgetExceeded(LLMError):
+    """Общий дневной лимит запросов к модели исчерпан (AI_DAILY_LIMIT)."""
+
+
+def _take_budget():
+    from config.budget import take
+
+    if not take("ai", settings.AI_DAILY_LIMIT):
+        raise LLMBudgetExceeded("Дневной лимит запросов к ИИ исчерпан")
+
+
 def enabled() -> bool:
     return bool(settings.AI_BASE_URL and settings.AI_API_KEY and settings.AI_MODEL)
 
@@ -42,6 +53,7 @@ def chat(messages: list[dict], tools: list[dict] | None = None, *, max_tokens: i
          temperature: float = 0.3) -> Reply:
     if not enabled():
         raise LLMUnavailable("ИИ не подключён: задайте AI_BASE_URL, AI_API_KEY и AI_MODEL")
+    _take_budget()
     payload = {"model": settings.AI_MODEL, "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature}
     if tools:
@@ -85,6 +97,10 @@ def search_enabled() -> bool:
 def web_search(query: str, count: int = 5) -> list[dict]:
     """Обзоры и отзывы из интернета для ответа покупателю. Пустой список, если поиск недоступен или ничего нет."""
     if not search_enabled():
+        return []
+    try:
+        _take_budget()
+    except LLMBudgetExceeded:
         return []
     try:
         response = httpx.post("https://api.deepseek.com/v1/tools/search",

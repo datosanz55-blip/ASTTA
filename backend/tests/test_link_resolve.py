@@ -9,11 +9,16 @@ TAOBAO_SHARE = ("【淘宝】https://m.tb.cn/h.5abcdE?tk=xyz CZ0001 「2026秋�
 POIZON_SHARE = "【得物】Nike Dunk Low 复古板鞋 https://dw4.co/t/A/1abcDEF 打开得物App查看"
 
 
-class FakeResponse:
-    def __init__(self, url, text="", content_type="text/html"):
-        self.url = httpx.URL(url)
-        self.text = text
-        self.headers = {"content-type": content_type}
+def serve(monkeypatch, pages):
+    """Площадки без сети: {адрес: (код, заголовки, текст)}; запросы записываем, чтобы видеть, куда ходил сервер."""
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        status, headers, text = pages.get(str(request.url), (404, {}, ""))
+        return httpx.Response(status, headers=headers, text=text)
+    monkeypatch.setattr(services, "TRANSPORT", httpx.MockTransport(handler))
+    return seen
 
 
 def test_share_title_without_noise():
@@ -24,36 +29,46 @@ def test_share_title_without_noise():
 def test_short_taobao_link_resolved_from_redirect_page(monkeypatch):
     # m.tb.cn отдаёт страницу-переходник: настоящий адрес лежит в её коде.
     page = "<script>var url = 'https://item.taobao.com/item.htm?id=712345678901&ali_trackid=1';</script>"
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: FakeResponse("https://m.tb.cn/h.5abcdE?tk=xyz", page))
+    serve(monkeypatch, {"https://m.tb.cn/h.5abcdE?tk=xyz": (200, {"content-type": "text/html"}, page)})
     info = resolve_link(TAOBAO_SHARE)
     assert (info.code, info.item_id) == ("taobao", "712345678901")
 
 
+POIZON_REDIRECT = {"https://dw4.co/t/A/1abcDEF": (302, {"location": "https://m.dewu.com/router/product/"
+                                                                   "ProductDetail?spuId=1234567&sourceName=share"}, ""),
+                   "https://m.dewu.com/router/product/ProductDetail?spuId=1234567&sourceName=share": (200, {}, "ok")}
+
+
 def test_short_poizon_link_resolved_by_redirect(monkeypatch):
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: FakeResponse(
-        "https://m.dewu.com/router/product/ProductDetail?spuId=1234567&sourceName=share"))
+    serve(monkeypatch, POIZON_REDIRECT)
     info = resolve_link(POIZON_SHARE)
     assert (info.code, info.item_id) == ("poizon", "1234567")
 
 
 def test_resolve_survives_marketplace_down(monkeypatch):
-    def boom(*a, **k):
+    def boom(request):
         raise httpx.ConnectTimeout("timeout")
-    monkeypatch.setattr(httpx, "get", boom)
+    monkeypatch.setattr(services, "TRANSPORT", httpx.MockTransport(boom))
     info = resolve_link(POIZON_SHARE)
     assert info.code == "poizon" and info.item_id == ""
 
 
 def test_full_link_needs_no_network(monkeypatch):
-    def forbidden(*a, **k):
-        raise AssertionError("полная ссылка не должна ходить в сеть")
-    monkeypatch.setattr(httpx, "get", forbidden)
+    seen = serve(monkeypatch, {})
     assert services.resolve_link("https://detail.1688.com/offer/6543210987.html").item_id == "6543210987"
+    assert seen == []  # полная ссылка в сеть не ходит
+
+
+def test_redirect_off_marketplace_is_not_followed(monkeypatch):
+    # Короткая ссылка, которая уводит на внутренний адрес сервера: туда не идём (защита от SSRF).
+    seen = serve(monkeypatch, {"https://dw4.co/t/A/1abcDEF": (302, {"location": "http://127.0.0.1:8000/admin/"}, ""),
+                               "http://127.0.0.1:8000/admin/": (200, {}, "secret")})
+    info = resolve_link(POIZON_SHARE)
+    assert info.item_id == "" and seen == ["https://dw4.co/t/A/1abcDEF"]
 
 
 def test_inspect_link_for_ai(monkeypatch, db):
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: FakeResponse(
-        "https://m.dewu.com/router/product/ProductDetail?spuId=1234567"))
+    serve(monkeypatch, POIZON_REDIRECT)
     result = inspect_link(POIZON_SHARE)
     assert result["marketplace"] == "Poizon (Dewu)" and result["item_id"] == "1234567"
     assert result["title_from_share"] == "Nike Dunk Low 复古板鞋" and result["in_catalog"] is None

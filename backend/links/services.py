@@ -84,6 +84,48 @@ def share_title(text: str) -> str:
     return rest[:120] if len(rest) >= 3 else ""
 
 
+MAX_REDIRECTS = 5
+MAX_BODY = 200_000
+TRANSPORT = None  # в тестах подменяется на httpx.MockTransport
+
+
+def _marketplace_host(url: str) -> bool:
+    """Адрес площадки или её короткой ссылки. Только https/http и только эти домены — так сервер нельзя
+    заставить обратиться к своим внутренним адресам (localhost, база, облачные метаданные) через редирект."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https") or not host:
+        return False
+    domains = [d for _, ds, _ in MARKETPLACES for d in ds] + list(SHORT_HOSTS)
+    return any(host == d or host.endswith(f".{d}") for d in domains)
+
+
+def _fetch_marketplace(url: str, timeout: float) -> tuple[str, str] | None:
+    """GET с ручными переходами: каждый редирект проверяем, тело читаем не больше MAX_BODY.
+    Возвращает (адрес после переходов, текст страницы) или None, если редирект ведёт не на площадку
+    или переходов слишком много."""
+    import httpx
+
+    headers = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                             "AppleWebKit/605.1.15 Mobile/15E148"}
+    with httpx.Client(follow_redirects=False, timeout=timeout, headers=headers, transport=TRANSPORT) as client:
+        for _ in range(MAX_REDIRECTS + 1):
+            if not _marketplace_host(url):
+                return None
+            with client.stream("GET", url) as response:
+                if response.is_redirect:
+                    url = str(response.url.join(response.headers.get("location", "")))
+                    continue
+                body = b""
+                if "text" in response.headers.get("content-type", "text"):
+                    for chunk in response.iter_bytes():
+                        body += chunk
+                        if len(body) >= MAX_BODY:
+                            break
+                return str(response.url), body[:MAX_BODY].decode(response.encoding or "utf-8", "replace")
+    return None
+
+
 def resolve_link(text: str, timeout: float = 6.0) -> LinkInfo:
     """Как parse_link, но короткую ссылку «поделиться» (m.tb.cn, dw4.co…) раскрываем переходом и ищем номер товара."""
     import httpx
@@ -93,17 +135,16 @@ def resolve_link(text: str, timeout: float = 6.0) -> LinkInfo:
     if not info.url or info.item_id or not any(host == h or host.endswith(f".{h}") for h in SHORT_HOSTS):
         return info
     try:
-        response = httpx.get(info.url, follow_redirects=True, timeout=timeout,
-                             headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-                                                    "AppleWebKit/605.1.15 Mobile/15E148"})
+        fetched = _fetch_marketplace(info.url, timeout)
     except httpx.HTTPError:
         return info  # площадка не ответила: остаёмся с тем, что есть, агент разберётся
-    final = str(response.url)
+    if fetched is None:
+        return info  # переход увёл с площадки: дальше не идём
+    final, body = fetched
     full = parse_link(final)
     if full.item_id:
         return LinkInfo(info.url, full.code, full.item_id)
     # Taobao отдаёт страницу-переходник, где настоящий адрес лежит в коде страницы.
-    body = response.text[:200_000] if "text" in response.headers.get("content-type", "text") else ""
     code = full.code if full.code != "other" else info.code
     for pattern in ID_PATTERNS.get(code, []):
         found = re.search(pattern, final) or re.search(pattern, body)
