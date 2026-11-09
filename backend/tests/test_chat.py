@@ -117,3 +117,14 @@ def test_deepseek_thinking_off_by_default(settings, monkeypatch):
     assert llm.chat([{"role": "user", "content": "привет"}]).content == "ok"
     assert sent["url"] == "https://api.deepseek.com/chat/completions"
     assert sent["body"]["thinking"] == {"type": "disabled"} and sent["headers"]["Authorization"] == "Bearer k"
+
+
+def test_vague_search_falls_back_to_popular(runner, pricing_setup):
+    from assistant.chat import search_catalog
+    from pricing.services import PricingContext
+
+    exact = search_catalog("кроссовки", ctx=PricingContext())
+    assert exact and exact[0]["match"] == "exact"
+    vague = search_catalog("что-нибудь интересное", ctx=PricingContext())
+    assert vague and vague[0]["match"] == "popular"  # не пусто: модель видит, что есть в каталоге
+    assert search_catalog("что-нибудь", max_price_rub=100, ctx=PricingContext()) == []  # в бюджет не влезает

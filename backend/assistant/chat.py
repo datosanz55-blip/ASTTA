@@ -33,6 +33,8 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   уложись в бюджет и назови итог. Цены уже под ключ: товар, доставка и сбор.
 - Правила сервиса (оплата, возврат, доставка, таможня) — search_knowledge. Нет ответа — так и скажи
   и предложи написать агенту, не выдумывай.
+- Пустой результат поиска или match="popular" значит, что точных совпадений нет (это не сбой). Скажи честно,
+  что именно такого в каталоге нет, назови, что есть похожего или в бюджете, если подходит.
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -88,12 +90,17 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
     qs = _published()
     if category:
         qs = qs.filter(category__slug=category)
+    match = "exact"
     if stems:
         cond = Q()
         for st in stems:
             cond |= (Q(title_ru__icontains=st) | Q(description_ru__icontains=st) | Q(category__name_ru__icontains=st)
                      | Q(title_zh__icontains=st))
-        qs = qs.filter(cond)
+        if qs.filter(cond).exists():
+            qs = qs.filter(cond)
+        else:
+            # Размытый запрос («что-нибудь в подарок») или такого нет: даём популярное, модель честно скажет.
+            match = "popular"
     results = []
     for product in qs.order_by("-sold_count", "id")[:60]:
         try:
@@ -108,7 +115,7 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
     results.sort(key=lambda r: (-r[0], -r[1].sold_count))
     return [{"slug": p.slug, "title": p.title_ru, "price_rub": int(price) if price is not None else None,
              "category": p.category.name_ru, "supplier": p.supplier.name, "sizes": p.size_list[:12],
-             "sale_percent": p.sale_percent} for _, p, price in results[:CATALOG_LIMIT]]
+             "sale_percent": p.sale_percent, "match": match} for _, p, price in results[:CATALOG_LIMIT]]
 
 
 def get_product(slug: str, ctx=None) -> dict:
