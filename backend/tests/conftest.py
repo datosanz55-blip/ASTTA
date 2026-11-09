@@ -12,6 +12,14 @@ def _media(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path / "media"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    # Лимиты запросов и дневные счётчики живут в кэше: каждый тест начинает с нуля.
+    from django.core.cache import cache
+
+    cache.clear()
+
+
 @pytest.fixture
 def pricing_setup(db):
     PricingConfig.load()

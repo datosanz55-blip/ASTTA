@@ -157,3 +157,54 @@ def test_photo_form_reads_price_with_chat_model(pricing_setup, monkeypatch, sett
     assert resp.status_code == 200, data
     assert data["understood"] is True and float(data["price_cny"]) == 389 and float(data["estimate"]["total_rub"]) > 0
     assert seen[0][0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+def test_daily_budget_protects_balance(token, db, monkeypatch, settings):
+    from assistant import llm
+
+    settings.APIFY_DAILY_LIMIT = 1
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: Resp(201, [POIZON_ROW]))
+    assert apify.fetch_item("poizon", "111")  # первый просмотр в лимите
+    assert apify.fetch_item("poizon", "111")  # повтор из кэша лимит не тратит
+    with pytest.raises(apify.ApifyError, match="Лимит"):
+        apify.fetch_item("poizon", "222")
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
+    settings.AI_DAILY_LIMIT = 1
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: type("R", (), {
+        "status_code": 200, "json": staticmethod(lambda: {"choices": [{"message": {"content": "ok"}}]})})())
+    assert llm.chat([{"role": "user", "content": "1"}]).content == "ok"
+    with pytest.raises(llm.LLMBudgetExceeded):
+        llm.chat([{"role": "user", "content": "2"}])
+
+
+def test_buyer_photo_gets_random_name(pricing_setup, db, settings):
+    from io import BytesIO
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    from links.models import LinkRequest
+
+    buf = BytesIO()
+    Image.new("RGB", (50, 50), "white").save(buf, "PNG")
+    photo = SimpleUploadedFile("паспорт.png", buf.getvalue(), "image/png")
+    resp = Client().post("/api/link/requests", {"text": "", "contact": "@me", "consent": "true", "photo": photo})
+    assert resp.status_code == 201, resp.content
+    name = LinkRequest.objects.get().photo.name
+    assert "паспорт" not in name and len(name.rsplit("/", 1)[1]) == len("0" * 32 + ".webp")
+
+
+def test_old_buyer_photos_renamed(db):
+    from django.core.files.base import ContentFile
+    from django.core.management import call_command
+
+    from links.models import LinkRequest
+
+    item = LinkRequest(contact="@me", text="x")
+    item.photo.save("IMG_1234.webp", ContentFile(b"webp"), save=True)
+    old_path = item.photo.path
+    call_command("hide_buyer_photos")
+    item.refresh_from_db()
+    assert "IMG_1234" not in item.photo.name and item.photo.read() == b"webp"
+    import os
+    assert not os.path.exists(old_path)

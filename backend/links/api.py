@@ -9,7 +9,7 @@ from assistant import llm, yandex
 from assistant.models import AiLog
 from assistant.services import read_photo, read_photo_llm
 from catalog.api import ProductCard, _card, _pricing_context
-from catalog.images import ImageError, prepare_image
+from catalog.images import ImageError, prepare_image, private_name
 from catalog.models import Category
 from config.throttles import per_ip
 from links.models import LinkRequest, Marketplace
@@ -191,7 +191,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
     content = None
     if photo is not None:
         try:
-            content = prepare_image(photo.read(), photo.name or "photo")
+            content = prepare_image(photo.read(), private_name())
         except ImageError as exc:
             raise HttpError(400, str(exc)) from exc
     result = None
@@ -222,7 +222,7 @@ def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile |
     content = None
     if photo is not None:
         try:
-            content = prepare_image(photo.read(), photo.name or "photo")
+            content = prepare_image(photo.read(), private_name())
         except ImageError as exc:
             raise HttpError(400, str(exc)) from exc
     consent_at = require_consent(payload.consent)
@@ -251,7 +251,7 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
         raise HttpError(413, "Фото больше 15 МБ")
     data = photo.read()
     try:
-        prepared = prepare_image(data, photo.name or "photo")
+        prepared = prepare_image(data, private_name())
     except ImageError as exc:
         raise HttpError(400, str(exc)) from exc
     place = Marketplace.objects.filter(code=marketplace).first() if marketplace else None

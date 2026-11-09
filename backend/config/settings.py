@@ -136,6 +136,9 @@ AI_API_KEY = env("AI_API_KEY", "")
 AI_MODEL = env("AI_MODEL", "")
 # Цена, размеры и фото с Poizon и Taobao по ссылке — через готовые скраперы Apify. Пусто — не смотрим.
 APIFY_TOKEN = env("APIFY_TOKEN", "")
+# Общий дневной лимит запросов к платным сервисам на весь сайт (защита баланса), 0 — без лимита.
+AI_DAILY_LIMIT = int(env("AI_DAILY_LIMIT", "2000"))
+APIFY_DAILY_LIMIT = int(env("APIFY_DAILY_LIMIT", "300"))
 try:
     AI_EXTRA_BODY = json.loads(env("AI_EXTRA_BODY") or "{}")
     if not isinstance(AI_EXTRA_BODY, dict):

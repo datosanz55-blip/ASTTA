@@ -4,6 +4,7 @@
 по длинной стороне: этого хватает на экран с плотными пикселями, а весит в 10–20 раз меньше.
 """
 
+import secrets
 from io import BytesIO
 from pathlib import PurePath
 
@@ -19,6 +20,12 @@ Image.MAX_IMAGE_PIXELS = 60_000_000
 
 class ImageError(Exception):
     pass
+
+
+def private_name() -> str:
+    """Имя для фото покупателя: случайное, чтобы адрес /media/… нельзя было угадать или перебрать.
+    Исходное имя файла («IMG_1234», «паспорт») тоже не сохраняем."""
+    return secrets.token_hex(16)
 
 
 def prepare_image(data: bytes, name: str) -> ContentFile:

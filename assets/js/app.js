@@ -435,11 +435,11 @@
     // Лайки и комментарии в ленте пока только в демо: на сервере их нет, нули не показываем.
     const actions = live.on ? `<div class="post__actions">
         ${p ? `<button type="button" data-open="${p.id}">${icon('bag')}<span>Смотреть товар</span></button>` : ''}
-        <button class="push" type="button" data-open-chat="${post.sup}">Спросить поставщика</button>
+        <button class="push" type="button" data-open-chat="${esc(post.sup)}">Спросить поставщика</button>
       </div>` : `<div class="post__actions">
         <button type="button" data-like="${post.id}" aria-pressed="${liked}" aria-label="Нравится">${icon('heart')}<span>${post.likes + (liked ? 1 : 0)}</span></button>
         <button type="button" data-open="${p.id}" aria-label="Отзывы и вопросы">${icon('chat')}<span>${post.comments}</span></button>
-        <button class="push" type="button" data-open-chat="${post.sup}">Спросить поставщика</button>
+        <button class="push" type="button" data-open-chat="${esc(post.sup)}">Спросить поставщика</button>
       </div>`;
     return `<article class="post">
       <header class="post__head">
@@ -476,7 +476,7 @@
     $('#reelRail').innerHTML = TRENDS.map(reelThumbHTML).join('');
     // Пустые подборки и разделы на главной прячем: на боевом сайте нет роликов и совместного опта.
     $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
-    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${c.id}"><img src="${c.src || img(c.img)}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${c.name}</span></button>`).join('');
+    $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${esc(c.id)}"><img src="${esc(c.src || img(c.img))}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${esc(c.name)}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
@@ -497,7 +497,7 @@
       return `<label class="shipopt ${current === k ? 'is-on' : ''}">
         <input type="radio" name="${name}" value="${k}" ${current === k ? 'checked' : ''}>
         ${icon(s.icon)}
-        <div><b>${s.name}</b><span>${daysText(s.days)}</span></div>
+        <div><b>${esc(s.name)}</b><span>${daysText(s.days)}</span></div>
       </label>`;
     }).join('');
   }
@@ -519,7 +519,7 @@
   }
 
   function renderCatalog() {
-    $('#catChips').innerHTML = [...FILTERS, ...CATS].map((c) => `<button class="chip" type="button" data-chip="${c.id}" aria-pressed="${state.cat === c.id}">${c.name}</button>`).join('');
+    $('#catChips').innerHTML = [...FILTERS, ...CATS].map((c) => `<button class="chip" type="button" data-chip="${esc(c.id)}" aria-pressed="${state.cat === c.id}">${esc(c.name)}</button>`).join('');
     const priceOf = (p) => (isSupplier() ? p.tiers[0][1] : retail(p).total);
     const sorters = {
       pop: (a, b) => b.sold - a.sold,
@@ -534,8 +534,8 @@
 
   /* ---------- Лента ---------- */
   function renderFeed() {
-    $('#stories').innerHTML = Object.entries(SUPPLIERS).map(([id, s]) => `<button class="story" type="button" data-story="${id}" aria-pressed="${state.feedSup === id}">
-      <span class="ava" aria-hidden="true">${s.short}</span><span>${esc(s.name.replace('TT · ', ''))}</span></button>`).join('');
+    $('#stories').innerHTML = Object.entries(SUPPLIERS).map(([id, s]) => `<button class="story" type="button" data-story="${esc(id)}" aria-pressed="${state.feedSup === id}">
+      <span class="ava" aria-hidden="true">${esc(s.short)}</span><span>${esc(s.name.replace('TT · ', ''))}</span></button>`).join('');
     const filters = [['all', 'Все'], ['following', 'Подписки'], ['new', 'Новинки'], ['opt', 'Опт'], ['restock', 'Поступления']];
     $('#feedChips').innerHTML = filters.map(([id, name]) => `<button class="chip" type="button" data-feed="${id}" aria-pressed="${state.feed === id}">${name}</button>`).join('');
     const list = POSTS.filter((p) => {
@@ -982,7 +982,7 @@
         ? `<div class="pd__float" style="--t1:${FLOATING[p.id][0]};--t2:${FLOATING[p.id][1]}"><img src="assets/img/cut/${p.id}.webp" alt="${esc(p.t)}" width="900" height="900"></div>`
         : `<img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720">`}</div>
       <div class="pd__info">
-        <button class="supchip" type="button" data-goto-sup="${p.sup}"><span class="ava" aria-hidden="true">${s.short}</span>${esc(s.name)}</button>
+        <button class="supchip" type="button" data-goto-sup="${esc(p.sup)}"><span class="ava" aria-hidden="true">${esc(s.short)}</span>${esc(s.name)}</button>
         <h2>${esc(p.t)}</h2>
         <div class="pd__rating">${p.rating ? `<span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span>` : ''}${p.reviews ? `<span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span>` : ''}<span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
         ${priceBlock}
@@ -1003,7 +1003,7 @@
         ${DIMS[p.id] ? `<button class="btn btn--line" type="button" data-room="${p.id}">${icon('ruler')}Примерить в комнату · ${DIMS[p.id].w}×${DIMS[p.id].d} см</button>` : ''}
         ${sup || live.on ? '' : `<div class="pdextra"><button class="btn btn--ghost btn--sm" type="button" data-pool-new="${p.id}">${icon('users')}Скинуться на подарок</button><button class="btn btn--ghost btn--sm" type="button" data-family-add="${p.id}">${icon('home')}В семейный список</button></div>`}
         ${p.desc ? `<p class="pd__desc">${esc(p.desc)}</p>` : ''}
-        <button class="btn btn--ghost" type="button" data-open-chat="${p.sup}">${icon('chat')}Спросить агента</button>
+        <button class="btn btn--ghost" type="button" data-open-chat="${esc(p.sup)}">${icon('chat')}Спросить агента</button>
         ${reviews}
       </div>
     </div>`;
@@ -2810,7 +2810,7 @@ ${aiCatalogJSON()}
 
     document.documentElement.classList.add('is-live');
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
-    $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${c.id}" data-close-menu>${c.name}</a>`).join('');
+    $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${esc(c.id)}" data-close-menu>${esc(c.name)}</a>`).join('');
     if (live.tma) state.tg = live.tmaUser;
     renderAll();
     updateCartCount();
@@ -3121,7 +3121,7 @@ ${aiCatalogJSON()}
     applyTheme(document.documentElement.getAttribute('data-ui') === 'light' ? 'light' : 'dark');
     initCookies();
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
-    $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${c.id}" data-close-menu>${c.name}</a>`).join('');
+    $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${esc(c.id)}" data-close-menu>${esc(c.name)}</a>`).join('');
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
     document.addEventListener('input', onInput);
