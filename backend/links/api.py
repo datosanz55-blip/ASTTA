@@ -5,9 +5,9 @@ from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
 from accounts.api import buyer_contact, current_buyer, require_consent
-from assistant import yandex
+from assistant import llm, yandex
 from assistant.models import AiLog
-from assistant.services import read_photo
+from assistant.services import read_photo, read_photo_llm
 from catalog.api import ProductCard, _card, _pricing_context
 from catalog.images import ImageError, prepare_image
 from catalog.models import Category
@@ -257,11 +257,16 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
     place = Marketplace.objects.filter(code=marketplace).first() if marketplace else None
 
     reading = None
+    reader = None
     if yandex.enabled():
+        reader, errors = read_photo, (ValueError, yandex.AIError)
+    elif llm.enabled():
+        reader, errors = read_photo_llm, (ValueError,)  # модель чата с распознаванием картинок (DeepSeek)
+    if reader:
         try:
-            reading = read_photo(data)
-        except (ValueError, yandex.AIError):
-            reading = None  # Яндекс не ответил: не мучаем покупателя, передаём фото менеджеру
+            reading = reader(data)
+        except errors:
+            reading = None  # модель не ответила: не мучаем покупателя, передаём фото менеджеру
     # Видим цену — сразу считаем, даже если не поняли, что за вещь. Цены нет — считает менеджер вручную.
     understood = bool(reading and reading.price_cny)
     result = None
@@ -280,7 +285,7 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
             item = LinkRequest.objects.create(
                 pd_consent_at=consent_at,
                 photo=prepared, marketplace=place, contact=contact.strip()[:64], comment=comment.strip()[:2000],
-                text="Фото без ссылки: ИИ не узнал товар" if yandex.enabled() else "Фото без ссылки",
+                text="Фото без ссылки: ИИ не узнал товар" if reader else "Фото без ссылки",
                 price_cny=reading.price_cny if reading else None,
                 category=reading.category if reading else None,
             )

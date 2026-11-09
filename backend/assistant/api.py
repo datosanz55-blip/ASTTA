@@ -49,6 +49,7 @@ class ChatOut(Schema):
     handoff: bool
     log_id: int | None
     memo: str = ""
+    order: dict | None = None
 
 
 @router.get("/status", summary="Подключён ли ИИ")
@@ -85,7 +86,7 @@ def chat_view(request, payload: ChatIn):
             raise HttpError(422, "Это не фото или файл повреждён") from exc
     result = run_chat(history, buyer=current_buyer(request), photo=photo)
     return {"answer": result.text, "products": result.products, "handoff": result.handoff, "log_id": result.log_id,
-            "memo": result.memo}
+            "memo": result.memo, "order": result.order}
 
 
 @router.post("/ask", response=AskOut, throttle=LIMITS, summary="Вопрос покупателя: ответ по базе знаний")

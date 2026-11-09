@@ -39,7 +39,7 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   переведи название, проверь, нет ли товара у нас. Если вернулся on_marketplace — назови цену под ключ и размеры,
   иначе попроси цену в юанях или скриншот.
 - Строки «[Данные о товаре: …]» в истории — это уже найденное по ссылке. Не вызывай inspect_link заново,
-  отвечай по ним. Цен по каждому размеру у нас нет: назови диапазон под ключ (от и до) и скажи, что точную цену
+  отвечай по ним. Если цен по размерам в данных нет — назови диапазон под ключ (от и до) и скажи, что точную цену
   за выбранный размер агент сверит до выкупа; если покупатель знает цену своего размера в юанях — посчитай её.
 - Прислали скриншот — прочитай с него цену в юанях (обычно крупная цифра с ¥, не зачёркнутая и не доставка),
   название и выбранный размер, переведи с китайского и посчитай через estimate_link_price. Не видно цену — попроси
@@ -48,7 +48,11 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   за модель и для кого (например: «KD 19 — именная баскетбольная линейка Кевина Дюранта, лёгкая, для зала и улицы»),
   чем хороша. Для брендовых вещей вызови search_reviews и добавь 1–2 конкретных плюса или минуса из обзоров
   со ссылкой на сайт («по обзору на …»). Не придумывай оценки, рейтинги и цифры — только из найденного.
-- Оформить заказ сам ты не можешь: предложи нажать «Заказать по ссылке» (или кнопку «В корзину» для каталога).
+- Заказ по ссылке или скриншоту: когда товар понятен и покупатель выбрал размер (или размер не нужен), добавь
+  в конце служебную строку ЗАКАЗ (формат ниже) — под ответом появится кнопка «Оформить заказ» с расчётом.
+  Не пиши «нажмите Заказать по ссылке»: просто скажи, что можно оформить кнопкой ниже. Цена в строке — за
+  выбранный размер, если она известна (покупатель назвал или видно на скриншоте), иначе минимальная «от».
+  Для товаров каталога кнопка своя — «В корзину» на карточке.
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -56,6 +60,8 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 
 В конце ответа, если советуешь товары из каталога, перечисли их в последней строке так:
 ТОВАРЫ: slug1, slug2
+Если покупатель готов заказать товар по ссылке или скриншоту, последней строкой напиши так:
+ЗАКАЗ: ссылка (или «фото», если был только скриншот) | размер и цвет (или -) | цена в юанях числом | количество
 Если передаёшь агенту, последней строкой напиши: АГЕНТ
 
 ФАКТЫ:
@@ -180,7 +186,8 @@ def estimate_link_price(price_cny, qty=1) -> dict:
         result = estimate(price, qty)
     except PricingError as exc:
         return {"error": str(exc)}
-    return {"total_rub": int(result.total_rub), "qty": qty, "notes": result.notes}
+    return {"total_rub": int(result.total_rub), "qty": qty, "rate_rub_per_cny": float(result.rate),
+            "notes": result.notes}
 
 
 def inspect_link(text: str, ctx=None) -> dict:
@@ -207,11 +214,12 @@ def inspect_link(text: str, ctx=None) -> dict:
             result["on_marketplace"] = market["item"]
             result["estimate"] = market.get("estimate")
             result["next_step"] = ("Это данные с площадки сейчас. Назови цену под ключ из estimate (если есть "
-                                   "диапазон по размерам — уточни размер), предложи «Заказать по ссылке».")
+                                   "диапазон по размерам — уточни размер). Если есть size_prices — это цены по "
+                                   "размерам. Когда размер выбран — добавь строку ЗАКАЗ.")
         else:
             result["next_step"] = (market.get("note") or "Цены с площадки не видно") + (
                 ": попросите цену в юанях со страницы товара или скриншот, посчитайте через estimate_link_price. "
-                "Заказать можно кнопкой «Заказать по ссылке».")
+                "Когда цена и размер известны — добавь строку ЗАКАЗ.")
     return result
 
 
@@ -234,8 +242,8 @@ def marketplace_card(info) -> dict:
         try:
             est = estimate(Decimal(str(item["price_cny"])), 1, info.marketplace)
             out["estimate"] = {"total_rub": int(est.total_rub), "for_price_cny": item["price_cny"],
-                               "notes": est.notes}
-            # Цены по каждому размеру скрапер не даёт — только от и до. Считаем и верхнюю границу.
+                               "rate_rub_per_cny": float(est.rate), "notes": est.notes}
+            # Цены по размерам скрапер обычно не даёт — только от и до. Считаем и верхнюю границу.
             if item.get("price_cny_max") and item["price_cny_max"] > item["price_cny"]:
                 top = estimate(Decimal(str(item["price_cny_max"])), 1, info.marketplace)
                 out["estimate"].update(max_total_rub=int(top.total_rub), max_for_price_cny=item["price_cny_max"])
@@ -264,6 +272,8 @@ class ChatAnswer:
     log_id: int | None = None
     # Что ИИ узнал о товаре по ссылке: сайт хранит это в истории, чтобы на «а размер 47?» не искать заново.
     memo: str = ""
+    # Кнопка «Оформить заказ» под ответом: {"url", "title", "size", "qty", "price_cny", "total_rub"}.
+    order: dict | None = None
 
 
 def _run_tool(name: str, args: dict, buyer, ctx) -> object:
@@ -287,12 +297,15 @@ def _run_tool(name: str, args: dict, buyer, ctx) -> object:
     return {"error": f"нет инструмента {name}"}
 
 
-def _split_tail(text: str, allowed: set[str]) -> tuple[str, list[str], bool]:
-    """Служебные строки «ТОВАРЫ: …» и «АГЕНТ» в конце ответа превращаем в карточки и передачу агенту."""
-    products, handoff, lines = [], False, text.rstrip().splitlines()
+def _split_tail(text: str, allowed: set[str]) -> tuple[str, list[str], bool, str]:
+    """Служебные строки «ТОВАРЫ: …», «ЗАКАЗ: …» и «АГЕНТ» в конце ответа: карточки, кнопка заказа, агент."""
+    products, handoff, order, lines = [], False, "", text.rstrip().splitlines()
     while lines:
-        last = lines[-1].strip()
-        if last.upper().startswith("ТОВАРЫ:"):
+        last = lines[-1].strip().strip("*`")
+        if last.upper().startswith("ЗАКАЗ:"):
+            order = order or last.split(":", 1)[1].strip()
+            lines.pop()
+        elif last.upper().startswith("ТОВАРЫ:"):
             for slug in re.split(r"[,\s]+", last.split(":", 1)[1]):
                 if slug in allowed and slug not in products:
                     products.append(slug)
@@ -302,7 +315,55 @@ def _split_tail(text: str, allowed: set[str]) -> tuple[str, list[str], bool]:
             lines.pop()
         else:
             break
-    return "\n".join(lines).strip(), products, handoff
+    return "\n".join(lines).strip(), products, handoff, order
+
+
+def _num(text: str) -> float | None:
+    found = re.search(r"\d+(?:[.,]\d+)?", text or "")
+    return float(found.group(0).replace(",", ".")) if found else None
+
+
+def _order_button(line: str, conversation: str, has_photo: bool) -> dict | None:
+    """Строка «ЗАКАЗ: ссылка | размер | цена ¥ | кол-во» → данные для кнопки «Оформить заказ».
+
+    Ссылку берём, только если она была в разговоре (не придумана). Если товар уже смотрели через Apify,
+    цену сверяем с площадкой: есть цена размера — берём её, цена вне диапазона «от–до» — берём «от».
+    """
+    from links import apify
+    from links.services import estimate, parse_link
+
+    parts = [p.strip() for p in line.split("|")]
+    if len(parts) < 3:
+        return None
+    url = ""
+    match = re.search(r"https?://\S+", parts[0])
+    if match:
+        url = match.group(0).rstrip(".,;)")
+        if url not in conversation:
+            return None
+    elif not has_photo:
+        return None
+    size = "" if parts[1] in ("-", "—", "") else parts[1][:32]
+    price = _num(parts[2])
+    qty = int(_num(parts[3]) or 1) if len(parts) > 3 else 1
+    qty = max(1, min(qty, 99))
+    if not price or not 0 < price < 1_000_000:
+        return None
+    title, info = "", parse_link(url)
+    item = apify.cached_item(info.code, info.item_id) if info.item_id and apify.supported(info.code) else None
+    if item:
+        title = item.get("title") or ""
+        low, high = item.get("price_cny"), item.get("price_cny_max") or item.get("price_cny")
+        if size and size in (item.get("size_prices") or {}):
+            price = item["size_prices"][size]
+        elif low and high and not low * 0.99 <= price <= high * 1.01:
+            price = low
+    try:
+        total = int(estimate(Decimal(str(price)), qty, info.marketplace).total_rub)
+    except (PricingError, InvalidOperation):
+        return None
+    return {"url": url, "title": title[:200], "size": size, "qty": qty, "price_cny": round(price, 2),
+            "total_rub": total}
 
 
 def photo_for_model(data: bytes) -> str:
@@ -377,11 +438,13 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
         log.save()
         return ChatAnswer(text, handoff=not photo, log_id=log.pk)
     # Карточки показываем только для товаров, которые модель реально получила из каталога.
-    text, products, handoff = _split_tail(reply.content, seen_products)
+    text, products, handoff, order_line = _split_tail(reply.content, seen_products)
+    conversation = "\n".join(str(m.get("content")) for m in messages)
+    order = _order_button(order_line, conversation, bool(photo) or "[скриншот]" in conversation) if order_line else None
     log.response = text or HANDOFF_TEXT
-    log.handoff, log.tokens, log.sources = handoff, tokens, {"tools": trace, "products": products}
+    log.handoff, log.tokens, log.sources = handoff, tokens, {"tools": trace, "products": products, "order": order}
     log.save()
-    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk, memo="\n".join(memos)[:1500])
+    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk, memo="\n".join(memos)[:1500], order=order)
 
 
 def _link_memo(result: dict) -> str:
@@ -394,10 +457,14 @@ def _link_memo(result: dict) -> str:
         parts.append(f"товар «{market['title']}»")
     if market.get("price_cny"):
         top = f"–{market['price_cny_max']:g}" if market.get("price_cny_max") else ""
-        parts.append(f"цена на площадке {market['price_cny']:g}{top} ¥ (по размерам отдельно не известна)")
+        known = "" if market.get("size_prices") else " (по размерам отдельно не известна)"
+        parts.append(f"цена на площадке {market['price_cny']:g}{top} ¥{known}")
     if est.get("total_rub"):
         top = f"–{est['max_total_rub']}" if est.get("max_total_rub") else ""
         parts.append(f"под ключ {est['total_rub']}{top} ₽")
-    if market.get("sizes"):
+    if market.get("size_prices"):
+        pairs = list(market["size_prices"].items())[:30]
+        parts.append("цены по размерам " + ", ".join(f"{k}: {v:g} ¥" for k, v in pairs))
+    elif market.get("sizes"):
         parts.append("размеры " + ", ".join(market["sizes"][:30]))
     return "[Данные о товаре: " + "; ".join(parts) + "]"
