@@ -34,12 +34,21 @@ def _stems(text: str) -> set[str]:
 
 
 def find_articles(question: str, limit: int = MAX_ARTICLES) -> list[KnowledgeArticle]:
+    """Статьи по словам вопроса. Редкое слово («духи», «пуховик») весит больше частого («заказ», «как»):
+    вес слова = log(число статей / в скольких оно встречается) — так находится нужная тема, а не общая."""
+    import math
+
     words = _stems(question)
-    scored = []
+    docs = []
     for article in KnowledgeArticle.objects.filter(is_active=True):
         head = _stems(f"{article.title} {article.keywords}")
-        body = _stems(article.answer)
-        score = 3 * len(words & head) + len(words & body)
+        docs.append((article, head, _stems(article.answer) | head))
+    if not docs or not words:
+        return []
+    weight = {w: math.log(1 + len(docs) / (1 + sum(w in every for _, _, every in docs))) for w in words}
+    scored = []
+    for article, head, every in docs:
+        score = sum(weight[w] * (3 if w in head else 1) for w in words if w in every)
         if score:
             scored.append((score, article.pk, article))
     scored.sort(key=lambda x: (-x[0], x[1]))
