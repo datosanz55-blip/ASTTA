@@ -41,6 +41,9 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 - Строки «[Данные о товаре: …]» в истории — это уже найденное по ссылке. Не вызывай inspect_link заново,
   отвечай по ним. Цен по каждому размеру у нас нет: назови диапазон под ключ (от и до) и скажи, что точную цену
   за выбранный размер агент сверит до выкупа; если покупатель знает цену своего размера в юанях — посчитай её.
+- Прислали скриншот — прочитай с него цену в юанях (обычно крупная цифра с ¥, не зачёркнутая и не доставка),
+  название и выбранный размер, переведи с китайского и посчитай через estimate_link_price. Не видно цену — попроси
+  написать её текстом.
 - Оформить заказ сам ты не можешь: предложи нажать «Заказать по ссылке» (или кнопку «В корзину» для каталога).
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
@@ -287,12 +290,35 @@ def _split_tail(text: str, allowed: set[str]) -> tuple[str, list[str], bool]:
     return "\n".join(lines).strip(), products, handoff
 
 
-def chat(history: list[dict], buyer=None) -> ChatAnswer:
-    """history — сообщения покупателя и ответы ИИ: [{"role": "user"|"assistant", "content": "..."}]."""
+def photo_for_model(data: bytes) -> str:
+    """Скриншот покупателя → JPEG до 1600 px в виде data URL для модели с распознаванием картинок."""
+    import base64
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    from catalog.images import ImageError, prepare_image
+
+    try:
+        webp = prepare_image(data, "photo")  # проверка, поворот по EXIF, уменьшение
+        image = Image.open(BytesIO(webp.read())).convert("RGB")
+    except (ImageError, OSError) as exc:
+        raise ValueError("Это не фото или файл повреждён") from exc
+    out = BytesIO()
+    ImageOps.exif_transpose(image).save(out, "JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode()
+
+
+def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswer:
+    """history — сообщения покупателя и ответы ИИ: [{"role": "user"|"assistant", "content": "..."}].
+    photo — скриншот к последнему сообщению (data URL из photo_for_model)."""
     turns = [{"role": m["role"], "content": str(m.get("content", ""))[:MAX_MESSAGE]}
              for m in history[-MAX_HISTORY:] if m.get("role") in ("user", "assistant") and m.get("content")]
     question = next((m["content"] for m in reversed(turns) if m["role"] == "user"), "")
-    log = AiLog(kind=AiLog.Kind.CHAT, request=question)
+    if photo and turns and turns[-1]["role"] == "user":
+        turns[-1] = {"role": "user", "content": [{"type": "text", "text": turns[-1]["content"]},
+                                                 {"type": "image_url", "image_url": {"url": photo}}]}
+    log = AiLog(kind=AiLog.Kind.CHAT, request=("[фото] " if photo else "") + question)
     try:
         ctx = PricingContext()
     except PricingError:
@@ -330,9 +356,11 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
             reply = llm.chat(messages)  # инструменты вызывались слишком долго — просим ответить тем, что есть
             tokens += reply.tokens
     except llm.LLMError as exc:
-        log.error, log.handoff, log.response, log.tokens = str(exc)[:300], True, HANDOFF_TEXT, tokens
+        text = ("Не получилось прочитать фото. Напишите цену в юанях текстом — сразу посчитаю."
+                if photo else HANDOFF_TEXT)
+        log.error, log.handoff, log.response, log.tokens = str(exc)[:300], not photo, text, tokens
         log.save()
-        return ChatAnswer(HANDOFF_TEXT, handoff=True, log_id=log.pk)
+        return ChatAnswer(text, handoff=not photo, log_id=log.pk)
     # Карточки показываем только для товаров, которые модель реально получила из каталога.
     text, products, handoff = _split_tail(reply.content, seen_products)
     log.response = text or HANDOFF_TEXT

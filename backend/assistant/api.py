@@ -40,6 +40,7 @@ class ChatMessage(Schema):
 
 class ChatIn(Schema):
     messages: list[ChatMessage]
+    image: str | None = None  # скриншот к последнему сообщению: data:image/...;base64,…
 
 
 class ChatOut(Schema):
@@ -67,7 +68,22 @@ def chat_view(request, payload: ChatIn):
         raise HttpError(422, "Напишите вопрос")
     if len(history[-1]["content"]) > MAX_QUESTION:
         raise HttpError(422, f"Сообщение длиннее {MAX_QUESTION} символов")
-    result = run_chat(history, buyer=current_buyer(request))
+    photo = None
+    if payload.image:
+        import base64
+        import binascii
+
+        from assistant.chat import photo_for_model
+
+        head, _, b64 = payload.image.partition(",")
+        # Сайт уменьшает фото до ~1280 px перед отправкой: это 100–500 КБ, с запасом под лимит запроса Django.
+        if not head.startswith("data:image/") or len(b64) > 2_000_000:
+            raise HttpError(422, "Фото должно быть картинкой до 1,5 МБ")
+        try:
+            photo = photo_for_model(base64.b64decode(b64, validate=True))
+        except (binascii.Error, ValueError) as exc:
+            raise HttpError(422, "Это не фото или файл повреждён") from exc
+    result = run_chat(history, buyer=current_buyer(request), photo=photo)
     return {"answer": result.text, "products": result.products, "handoff": result.handoff, "log_id": result.log_id,
             "memo": result.memo}
 

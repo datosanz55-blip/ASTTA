@@ -128,3 +128,44 @@ def test_vague_search_falls_back_to_popular(runner, pricing_setup):
     vague = search_catalog("что-нибудь интересное", ctx=PricingContext())
     assert vague and vague[0]["match"] == "popular"  # не пусто: модель видит, что есть в каталоге
     assert search_catalog("что-нибудь", max_price_rub=100, ctx=PricingContext()) == []  # в бюджет не влезает
+
+
+def test_chat_sends_screenshot_to_model(ai_on, monkeypatch, db):
+    import base64
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (2400, 1800), "white").save(buf, "PNG")
+    image = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    sent = fake_llm(monkeypatch, [{"content": "На скриншоте 299 ¥ — под ключ около 4 800 ₽."}])
+    data = Client().post("/api/ai/chat", {"messages": [{"role": "user", "content": "сколько будет?"}], "image": image},
+                         content_type="application/json").json()
+    assert "299" in data["answer"]
+    parts = sent[0][-1]["content"]
+    assert parts[0] == {"type": "text", "text": "сколько будет?"}
+    assert parts[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")  # уменьшено и в JPEG
+    assert AiLog.objects.get(pk=data["log_id"]).request.startswith("[фото]")
+
+
+def test_bad_screenshot_rejected_and_model_error_explained(ai_on, monkeypatch, db):
+    bad = Client().post("/api/ai/chat", {"messages": [{"role": "user", "content": "x"}],
+                                         "image": "data:image/png;base64,bm90LWFuLWltYWdl"},
+                        content_type="application/json")
+    assert bad.status_code == 422
+
+    import base64
+    from io import BytesIO
+
+    from PIL import Image
+
+    def boom(*a, **k):
+        raise llm.LLMError("Модель вернула 400: image not supported")
+    monkeypatch.setattr(llm, "chat", boom)
+    buf = BytesIO()
+    Image.new("RGB", (10, 10)).save(buf, "PNG")
+    image = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    data = Client().post("/api/ai/chat", {"messages": [{"role": "user", "content": "x"}], "image": image},
+                         content_type="application/json").json()
+    assert "цену в юанях текстом" in data["answer"] and data["handoff"] is False

@@ -1377,3 +1377,7 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .lcmarket img { width: 88px; height: 88px; object-fit: cover; border-radius: 10px; flex: none; }
 .lcmarket div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .lcmarket span { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+
+/* Кнопка «прикрепить скриншот» в чате ИИ */
+.roundbtn--ghost { flex: none; cursor: pointer; background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.roundbtn--ghost:hover { box-shadow: inset 0 0 0 1px var(--lime); }
