@@ -234,6 +234,59 @@ def read_photo(data: bytes) -> PhotoReading:
     return reading
 
 
+def _json_from_text(text: str) -> dict:
+    """JSON из ответа модели: иногда она оборачивает его в ```json … ```."""
+    match = re.search(r"\{.*\}", text or "", re.S)
+    try:
+        data = json.loads(match.group(0)) if match else {}
+    except json.JSONDecodeError:
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+
+def read_photo_llm(data: bytes) -> PhotoReading:
+    """Скриншот читает модель чата с распознаванием картинок (DeepSeek и др.), если Yandex Vision не подключён."""
+    from assistant import llm
+    from assistant.chat import photo_for_model
+
+    photo = photo_for_model(data)  # ValueError, если это не картинка
+    categories = list(Category.objects.all())
+    log = AiLog(kind=AiLog.Kind.PHOTO, request="скриншот")
+    prompt = (
+        "Это скриншот товара с китайской площадки (Poizon/Dewu, Taobao, 1688, Pinduoduo). Верни только JSON: "
+        '{"price_cny": цена в юанях числом или null, "title_ru": "короткое название по-русски", '
+        '"size": "выбранный размер или пусто", "category": "код категории из списка или пусто", '
+        '"keywords": ["2–5 русских слов для поиска"]}. Цена — та, что платит покупатель за товар: обычно крупная '
+        "цифра с ¥ или 元, не зачёркнутая, не скидка и не доставка. Ничего не придумывай: чего не видно — null "
+        "или пустая строка.\nКатегории: " + "; ".join(f"{c.slug} — {c.name_ru}" for c in categories)
+    )
+    try:
+        reply = llm.chat([{"role": "user", "content": [{"type": "text", "text": prompt},
+                                                         {"type": "image_url", "image_url": {"url": photo}}]}],
+                         max_tokens=300, temperature=0.1)
+    except (llm.LLMError, llm.LLMUnavailable) as exc:
+        log.error = str(exc)[:300]
+        log.save()
+        raise ValueError("Модель не прочитала фото") from exc
+    found = _json_from_text(reply.content)
+    price = None
+    try:
+        price = Decimal(str(found.get("price_cny"))).quantize(Decimal("0.01")) if found.get("price_cny") else None
+    except InvalidOperation:
+        price = None
+    reading = PhotoReading(text="", price_cny=price if price and price > 0 else None, prices=[price] if price else [])
+    reading.title_ru = str(found.get("title_ru") or "")[:160]
+    reading.category = next((c for c in categories if c.slug == found.get("category")), None)
+    reading.keywords = [str(k) for k in (found.get("keywords") or []) if isinstance(k, str)][:5]
+    reading.similar = similar_products(reading.keywords or reading.title_ru.split(), reading.category)
+    log.tokens = reply.tokens
+    log.response = json.dumps({"price_cny": str(reading.price_cny) if reading.price_cny else None,
+                               "title_ru": reading.title_ru}, ensure_ascii=False)
+    log.save()
+    reading.log_id = log.pk
+    return reading
+
+
 # ---------- Перевод карточек ----------
 
 TRANSLATE_BATCH = 20

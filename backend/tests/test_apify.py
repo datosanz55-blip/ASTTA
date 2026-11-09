@@ -67,7 +67,7 @@ def test_market_endpoint_for_site(token, pricing_setup, monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda *a, **k: Resp(200, [{"title": "Пуховик", "priceCny": 329}]))
     data = Client().post("/api/link/market", {"text": "https://item.taobao.com/item.htm?id=730344766230"},
                          content_type="application/json").json()
-    assert data["item"]["price_cny"] == 329.0 and data["estimate"]["total_rub"] > 0
+    assert data["item"]["price_cny"] == 329.0 and float(data["estimate"]["total_rub"]) > 0
     assert Client().get("/api/site").json()["market"] is True
 
 
@@ -98,3 +98,63 @@ def test_chat_returns_memo_with_price_range(token, pricing_setup, monkeypatch, s
     assert "под ключ" in data["memo"] and "–" in data["memo"].split("под ключ")[1]  # диапазон в рублях
     estimate = _json.loads(sent[1][-1]["content"])["estimate"]
     assert estimate["max_for_price_cny"] == 899.0 and estimate["max_total_rub"] > estimate["total_rub"]
+
+
+def test_size_prices_only_when_believable():
+    row = dict(POIZON_ROW, skus=[{"id": 1, "price": 59900, "properties": [{"value": "40"}]},
+                                 {"id": 2, "price": 89900, "properties": [{"value": "42"}]}])
+    assert apify.normalize("poizon", row)["size_prices"] == {"40": 599.0, "42": 899.0}
+    retail = dict(POIZON_ROW, skus=[{"price": 79900, "size": "40"}, {"price": 79900, "size": "42"}])
+    assert apify.normalize("poizon", retail)["size_prices"] == {}  # одна цена у всех — это розница, не цена размера
+
+
+def test_chat_order_button_checks_link_and_price(token, pricing_setup, monkeypatch, settings):
+    from assistant import llm
+
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
+    url = "https://m.dewu.com/router/product/ProductDetail?spuId=1234567"
+    MarketplaceItem.objects.create(code="poizon", item_id="1234567", found=True,
+                                   data=dict(apify.normalize("poizon", POIZON_ROW), size_prices={"42": 700.0}))
+    answers = [f"Оформляйте кнопкой ниже.\nЗАКАЗ: {url} | 42 | 650 | 1",
+               "Оформляйте.\nЗАКАЗ: https://item.taobao.com/item.htm?id=999 | - | 100 | 1",
+               f"Ок.\nЗАКАЗ: {url} | 44 | 5 | 2"]
+
+    def chat(messages, tools=None, **kwargs):
+        return llm.Reply(content=answers.pop(0), tokens=1, tool_calls=[], raw_message={})
+    monkeypatch.setattr(llm, "chat", chat)
+    history = [{"role": "user", "content": url}, {"role": "assistant", "content": f"[Данные о товаре: ссылка {url}]"},
+               {"role": "user", "content": "давай 42"}]
+    post = lambda: Client().post("/api/ai/chat", {"messages": history}, content_type="application/json").json()  # noqa: E731
+    data = post()
+    assert "ЗАКАЗ" not in data["answer"]
+    order = data["order"]
+    assert order["url"] == url and order["size"] == "42" and order["price_cny"] == 700.0  # цена размера с площадки
+    assert order["title"].startswith("Nike Dunk") and order["total_rub"] > 700 * 11
+    assert post()["order"] is None  # ссылки не было в разговоре — кнопку не показываем
+    low = post()["order"]
+    assert low["price_cny"] == 599.0 and low["qty"] == 2  # цена вне диапазона площадки — берём «от»
+
+
+def test_photo_form_reads_price_with_chat_model(pricing_setup, monkeypatch, settings, db):
+    from io import BytesIO
+
+    from PIL import Image
+
+    from assistant import llm
+
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
+    seen = []
+
+    def chat(messages, tools=None, **kwargs):
+        seen.append(messages)
+        return llm.Reply(content='```json\n{"price_cny": 389, "title_ru": "Кроссовки Nike Air Max 90"}\n```',
+                         tokens=5, tool_calls=[], raw_message={})
+    monkeypatch.setattr(llm, "chat", chat)
+    buf = BytesIO()
+    Image.new("RGB", (300, 200), "white").save(buf, "PNG")
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    resp = Client().post("/api/link/photo", {"photo": SimpleUploadedFile("s.png", buf.getvalue(), "image/png")})
+    data = resp.json()
+    assert resp.status_code == 200, data
+    assert data["understood"] is True and float(data["price_cny"]) == 389 and float(data["estimate"]["total_rub"]) > 0
+    assert seen[0][0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")

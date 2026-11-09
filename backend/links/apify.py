@@ -44,33 +44,85 @@ def _num(value):
         return None
 
 
+SIZE_KEYS = ("size", "sizeName", "propertyValue", "value", "name")
+PROPS_KEYS = ("properties", "saleProperties", "propertyList", "props", "property", "saleProperty")
+
+
+def _scalar(value) -> str:
+    return str(value).strip() if isinstance(value, (str, int, float)) and str(value).strip() else ""
+
+
+def _sku_size(sku: dict) -> str:
+    for key in SIZE_KEYS:
+        if found := _scalar(sku.get(key)):
+            return found
+    for key in PROPS_KEYS:
+        props = sku.get(key)
+        for prop in props if isinstance(props, list) else [props]:
+            if isinstance(prop, dict):
+                for inner in SIZE_KEYS:
+                    if found := _scalar(prop.get(inner)):
+                        return found
+            elif found := _scalar(prop):
+                return found
+    return ""
+
+
+def _sku_price(sku: dict) -> float | None:
+    for key in ("priceCny", "salePriceCny", "price_cny"):
+        if (value := _num(sku.get(key))) is not None:
+            return value
+    for key in ("price", "salePrice", "priceFen", "minPrice", "authPrice"):  # в «фенах»: 1 ¥ = 100 фэней
+        if (value := _num(sku.get(key))) is not None:
+            return round(value / 100, 2)
+    return None
+
+
+def size_prices(skus, low: float | None, high: float | None) -> dict[str, float]:
+    """Цена каждого размера из skus, если скрапер её дал.
+
+    Формат skus скрапер не описывает точно («id, цена в фэнях, статус, размер»), поэтому берём цены только
+    правдоподобные: внутри диапазона от и до, и разные у разных размеров. Одинаковая цена у всех при разном
+    диапазоне — это официальная розница, а не цена продажи: тогда считаем, что цен по размерам нет.
+    """
+    if not isinstance(skus, list) or not low or not high:
+        return {}
+    found = {}
+    for sku in skus:
+        if not isinstance(sku, dict):
+            continue
+        size, price = _sku_size(sku), _sku_price(sku)
+        if size and price and low * 0.99 <= price <= high * 1.01:
+            found.setdefault(size, price)
+    if len(set(found.values())) < 2 and high > low:
+        return {}
+    return found
+
+
 def normalize(code: str, row: dict) -> dict | None:
     """Ответы скраперов разные — приводим к одному виду для ИИ и сайта."""
     if code == "poizon":
         if row.get("status") not in (None, "success"):
             return None
         price = _num(row.get("priceCny")) or _num(row.get("minSalePriceCny"))
+        top = _num(row.get("maxSalePriceCny"))
         return {"title": row.get("productTitle") or "", "brand": row.get("brandName") or "",
                 "article": row.get("articleNumber") or "", "price_cny": price,
-                "price_cny_max": _num(row.get("maxSalePriceCny")),
+                "price_cny_max": top,
                 "sizes": [str(s) for s in (row.get("sizes") or [])][:40],
+                "size_prices": size_prices(row.get("skus"), _num(row.get("minSalePriceCny")) or price, top),
                 "images": [str(i) for i in (row.get("images") or [])][:6]}
     price = _num(row.get("priceCny"))
     if not (row.get("title") or price):
         return None
     images = [str(i) for i in (row.get("images") or [])] or ([row["mainImage"]] if row.get("mainImage") else [])
     return {"title": row.get("title") or "", "brand": "", "article": "", "price_cny": price,
-            "price_cny_max": None, "sizes": [], "images": images[:6], "shop": row.get("shopName") or "",
-            "url": row.get("url") or ""}
+            "price_cny_max": None, "sizes": [], "size_prices": {}, "images": images[:6],
+            "shop": row.get("shopName") or "", "url": row.get("url") or ""}
 
 
-def fetch_item(code: str, item_id: str) -> dict | None:
-    """Карточка товара или None (не найден). ApifyError — скрапер недоступен или нет токена."""
-    if not supported(code) or not item_id:
-        return None
-    cached = MarketplaceItem.objects.filter(code=code, item_id=item_id).first()
-    if cached and cached.fetched_at > timezone.now() - timedelta(hours=CACHE_HOURS):
-        return cached.data if cached.found else None
+def run_actor(code: str, item_id: str) -> list:
+    """Сырой ответ скрапера: для fetch_item и для проверки на сервере (manage.py market_raw)."""
     if not enabled():
         raise ApifyError("Просмотр товаров на площадках не подключён: задайте APIFY_TOKEN")
     actor, make_input = ACTORS[code]
@@ -89,8 +141,24 @@ def fetch_item(code: str, item_id: str) -> dict | None:
         rows = response.json()
     except ValueError:
         raise ApifyError("Непонятный ответ Apify") from None
-    item = next((n for n in (normalize(code, r) for r in rows if isinstance(r, dict)) if n), None) \
-        if isinstance(rows, list) else None
+    return rows if isinstance(rows, list) else []
+
+
+def cached_item(code: str, item_id: str) -> dict | None:
+    """Товар из кэша без запроса к Apify (бесплатно): None, если не смотрели или не нашли."""
+    cached = MarketplaceItem.objects.filter(code=code, item_id=item_id, found=True).first()
+    return cached.data if cached else None
+
+
+def fetch_item(code: str, item_id: str) -> dict | None:
+    """Карточка товара или None (не найден). ApifyError — скрапер недоступен или нет токена."""
+    if not supported(code) or not item_id:
+        return None
+    cached = MarketplaceItem.objects.filter(code=code, item_id=item_id).first()
+    if cached and cached.fetched_at > timezone.now() - timedelta(hours=CACHE_HOURS):
+        return cached.data if cached.found else None
+    rows = run_actor(code, item_id)
+    item = next((n for n in (normalize(code, r) for r in rows if isinstance(r, dict)) if n), None)
     MarketplaceItem.objects.update_or_create(code=code, item_id=item_id,
                                              defaults={"data": item or {}, "found": item is not None})
     return item
