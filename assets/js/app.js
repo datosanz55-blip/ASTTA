@@ -1766,15 +1766,16 @@ ${aiCatalogJSON()}
       ${pre.photo ? `<img class="linkcalc__photo" src="${esc(pre.photo)}" alt="Скриншот товара">` : ''}
       ${pre.title && !url ? `<p><b>${esc(pre.title)}</b></p>` : ''}
       <div id="lcMarket"></div>
-      <p class="note" id="lcNote">${pre.price ? 'Цену и размер подставил ASTTA AI — проверьте и оформляйте. Перед выкупом агент сверит цену и наличие.' : 'В нашем каталоге этого товара пока нет. Впишите цену с площадки — сразу посчитаем цену с доставкой, и товар можно заказать. Перед выкупом агент проверит цену и наличие.'}</p>
+      <p class="note" id="lcNote">${pre.price ? 'Цену и размер подставил ASTTA AI — проверьте и оформляйте. Перед выкупом агент сверит цену и наличие.' : 'Впишите цену с площадки — сразу посчитаем цену с доставкой, и товар можно заказать. Перед выкупом агент проверит цену и наличие.'}</p>
+      ${pre.price ? '' : `<p class="lchint">${icon('spark')} <span><b>Подсказка:</b> цена часто зависит от размера и цвета. Откройте товар в приложении, выберите свой вариант и впишите его цену в юанях — или пришлите скриншот этой страницы, цену прочитаем сами.</span></p>`}
       <form class="stack" id="linkCalcForm" novalidate>
         <div class="grid2">
-          <label class="field"><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Например, 299" value="${pre.price ? esc(String(pre.price)) : ''}"></label>
+          <label class="field"><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Цена вашего размера, например 635" value="${pre.price ? esc(String(pre.price)) : ''}"></label>
           <label class="field"><span>Количество</span><input id="lcQty" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${Math.max(1, parseInt(pre.qty, 10) || 1)}"></label>
           <label class="field field--full"><span>Размер, цвет (если есть)</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off" value="${esc(pre.size || '')}"></label>
         </div>
         <div class="quick lcsizes" id="lcSizes" hidden></div>
-        ${pre.photo ? '' : '<label class="field"><span>Или скриншот с ценой: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>'}
+        ${pre.photo ? '' : '<label class="field"><span>Или скриншот с ценой вашего размера: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>'}
         <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
         <div id="lcSum"></div>
         <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
@@ -1801,14 +1802,12 @@ ${aiCatalogJSON()}
           <span>${item.price_cny ? `${cny(item.price_cny)}${range}` : 'цену уточнит агент'}</span>
 </div>
       </div>`;
-    const price = $('#lcPrice');
-    if (price && item.price_cny && !price.value) { price.value = item.price_cny; linkCalcOut(); }
+    // Цену сами не подставляем: она зависит от размера, а площадка отдаёт только «от» и «до».
+    // Покупатель вписывает цену своего размера или присылает скриншот.
     if (linkCalc) { linkCalc.title = item.title || linkCalc.title; linkCalc.item = item; }
     const note = $('#lcNote');
     if (note && !(linkCalc && linkCalc.prefilled)) {
-      note.textContent = item.price_cny_max && item.price_cny_max > item.price_cny && !Object.keys(item.size_prices || {}).length
-        ? `Подставили цену «от» — ${cny(item.price_cny)}. Цена зависит от размера: если для вашего выше, поправьте или оформляйте так — агент сверит до выкупа и напишет, если нужна доплата.`
-        : 'Цену подставили с площадки. Выберите размер и оформляйте — агент сверит цену и наличие перед выкупом.';
+      note.textContent = 'Товар нашли. Выберите размер и впишите его цену в юанях из приложения — сразу посчитаем цену с доставкой. Перед выкупом агент сверит цену и наличие.';
     }
     // Размеры кнопками: иероглифы (цвет и т. п.) пропускаем, при цене размера подставляем её.
     const sizes = (item.sizes || []).filter((x) => /\d/.test(x)).slice(0, 40);
@@ -1847,7 +1846,7 @@ ${aiCatalogJSON()}
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
     $('#lcActions').innerHTML = linkActionsHTML(price, qty);
     if (!(price > 0)) {
-      box.innerHTML = '<div class="sum"><div class="sum__note">Впишите цену в юанях, и здесь появится расчёт.</div></div>';
+      box.innerHTML = '<div class="sum"><div class="sum__note">Впишите цену вашего размера в юанях или пришлите скриншот — здесь появится расчёт.</div></div>';
       return;
     }
     box.innerHTML = linkSumHTML(price, qty);
