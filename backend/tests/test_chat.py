@@ -169,3 +169,26 @@ def test_bad_screenshot_rejected_and_model_error_explained(ai_on, monkeypatch, d
     data = Client().post("/api/ai/chat", {"messages": [{"role": "user", "content": "x"}], "image": image},
                          content_type="application/json").json()
     assert "цену в юанях текстом" in data["answer"] and data["handoff"] is False
+
+
+def test_web_search_via_deepseek(settings, monkeypatch):
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://api.deepseek.com", "k", "deepseek-flash"
+    sent = {}
+
+    class Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"results": [{"title": "Обзор Nike KD 19", "site_name": "sneakers.ru", "url": "https://s.ru/kd19",
+                                 "date": "2026-10-01T00:00:00Z", "summary": "Лёгкие, хорошее сцепление."}]}
+
+    def post(url, json=None, headers=None, timeout=None):
+        sent.update(url=url, body=json)
+        return Resp()
+    monkeypatch.setattr(llm.httpx, "post", post)
+    found = llm.web_search("Nike KD 19 обзор")
+    assert sent["url"] == "https://api.deepseek.com/v1/tools/search" and sent["body"]["query"] == "Nike KD 19 обзор"
+    assert found[0]["site"] == "sneakers.ru" and found[0]["date"] == "2026-10-01"
+    settings.AI_BASE_URL = "https://openrouter.ai/api/v1"
+    assert llm.web_search("x") == []  # поиск только у DeepSeek: у других провайдеров его нет
