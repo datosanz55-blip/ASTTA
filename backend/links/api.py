@@ -13,7 +13,7 @@ from catalog.images import ImageError, prepare_image
 from catalog.models import Category
 from config.throttles import per_ip
 from links.models import LinkRequest, Marketplace
-from links.services import estimate, find_in_catalog, parse_link
+from links.services import estimate, find_in_catalog, resolve_link
 from orders.api import OrderOut, order_out
 from orders.models import Order
 from orders.services import OrderError, create_link_order
@@ -134,7 +134,7 @@ def _category(slug):
 @router.post("/lookup", response=LookupOut, throttle=[per_ip("link_lookup", "60/m")],
              summary="Распознать ссылку и найти товар в каталоге")
 def lookup(request, payload: LookupIn):
-    info = parse_link(payload.text)
+    info = resolve_link(payload.text)
     if not info.url:
         raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")
     product = find_in_catalog(info)
@@ -165,7 +165,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
         raise HttpError(422, "Пришлите ссылку или фото товара")
     consent_at = require_consent(payload.consent)
     _check(payload.price_cny, payload.qty)
-    info = parse_link(payload.text)
+    info = resolve_link(payload.text)
     product = find_in_catalog(info)
     category = _category(payload.category)
     content = None
@@ -196,7 +196,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
 @router.post("/order", response={201: OrderOut}, throttle=[per_ip("link_order", "20/h")],
              summary="Сразу заказать товар по ссылке или скриншоту: оплата по расчёту, агент сверит цену до выкупа")
 def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile | None = File(None)):
-    info = parse_link(payload.text)
+    info = resolve_link(payload.text)
     if payload.text.strip() and not info.url:
         raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")
     content = None

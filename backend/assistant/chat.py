@@ -35,6 +35,8 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   и предложи написать агенту, не выдумывай.
 - Пустой результат поиска или match="popular" значит, что точных совпадений нет (это не сбой). Скажи честно,
   что именно такого в каталоге нет, назови, что есть похожего или в бюджете, если подходит.
+- Прислали ссылку или текст «поделиться» (часто с иероглифами) — сразу вызови inspect_link: назови площадку,
+  переведи название, проверь, нет ли товара у нас. Цену с площадки ты не видишь — попроси цену в юанях или скриншот.
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -69,6 +71,13 @@ TOOLS = [
         "description": "Цена под ключ для товара с площадки (Poizon, Taobao, 1688) по цене в юанях.",
         "parameters": {"type": "object", "properties": {
             "price_cny": {"type": "number"}, "qty": {"type": "integer"}}, "required": ["price_cny"]}}},
+    {"type": "function", "function": {
+        "name": "inspect_link",
+        "description": "Разобрать ссылку или сообщение «поделиться» с Poizon, Taobao, Tmall, 1688, Pinduoduo: "
+                       "площадка, "
+                       "номер товара, название из сообщения (часто по-китайски — переведи его покупателю), есть ли "
+                       "этот товар в нашем каталоге. Цену с площадки инструмент не видит.",
+        "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
     {"type": "function", "function": {
         "name": "order_status",
         "description": "Статус заказа покупателя по номеру вида A-000123. Работает, только если покупатель вошёл.",
@@ -154,6 +163,30 @@ def estimate_link_price(price_cny, qty=1) -> dict:
     return {"total_rub": int(result.total_rub), "qty": qty, "notes": result.notes}
 
 
+def inspect_link(text: str, ctx=None) -> dict:
+    from links.services import find_in_catalog, resolve_link, share_title
+
+    info = resolve_link(text)
+    if not info.url:
+        return {"error": "в сообщении нет ссылки"}
+    names = {"taobao": "Taobao", "tmall": "Tmall", "1688": "1688", "poizon": "Poizon (Dewu)",
+             "pinduoduo": "Pinduoduo", "other": "другой сайт"}
+    result = {"marketplace": names.get(info.code, info.code), "item_id": info.item_id or None,
+              "title_from_share": share_title(text) or None, "url": info.url}
+    product = find_in_catalog(info)
+    if product is not None:
+        try:
+            price = int(quote(product, ctx=ctx).total_rub) if ctx else None
+        except PricingError:
+            price = None
+        result["in_catalog"] = {"slug": product.slug, "title": product.title_ru, "price_rub": price}
+    else:
+        result["in_catalog"] = None
+        result["next_step"] = ("Цены с площадки не видно: попросите цену в юанях со страницы товара или скриншот, "
+                               "посчитайте через estimate_link_price. Заказать можно кнопкой «Заказать по ссылке».")
+    return result
+
+
 def order_status(number: str, buyer) -> dict:
     if buyer is None:
         return {"error": "покупатель не вошёл: попросите войти через Telegram или открыть заказ в профиле"}
@@ -184,6 +217,8 @@ def _run_tool(name: str, args: dict, buyer, ctx) -> object:
         return search_knowledge(str(args.get("query", "")))
     if name == "estimate_link_price":
         return estimate_link_price(args.get("price_cny"), args.get("qty", 1))
+    if name == "inspect_link":
+        return inspect_link(str(args.get("text", "")), ctx=ctx)
     if name == "order_status":
         return order_status(str(args.get("number", "")), buyer)
     return {"error": f"нет инструмента {name}"}
@@ -238,6 +273,8 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
                     seen_products.update(item["slug"] for item in result)
                 elif call["name"] == "get_product" and "slug" in result:
                     seen_products.add(result["slug"])
+                elif call["name"] == "inspect_link" and result.get("in_catalog"):
+                    seen_products.add(result["in_catalog"]["slug"])
                 trace.append({"tool": call["name"], "args": call["arguments"]})
                 messages.append({"role": "tool", "tool_call_id": call["id"],
                                  "content": json.dumps(result, ensure_ascii=False, default=str)[:6000]})
