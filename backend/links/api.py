@@ -13,7 +13,7 @@ from catalog.images import ImageError, prepare_image
 from catalog.models import Category
 from config.throttles import per_ip
 from links.models import LinkRequest, Marketplace
-from links.services import estimate, find_in_catalog, parse_link
+from links.services import estimate, find_in_catalog, resolve_link, share_title
 from orders.api import OrderOut, order_out
 from orders.models import Order
 from orders.services import OrderError, create_link_order
@@ -36,6 +36,7 @@ class LookupOut(Schema):
     marketplace: MarketplaceOut | None
     item_id: str
     product: ProductCard | None
+    title_from_share: str = ""
 
 
 class EstimateIn(Schema):
@@ -134,14 +135,33 @@ def _category(slug):
 @router.post("/lookup", response=LookupOut, throttle=[per_ip("link_lookup", "60/m")],
              summary="Распознать ссылку и найти товар в каталоге")
 def lookup(request, payload: LookupIn):
-    info = parse_link(payload.text)
+    info = resolve_link(payload.text)
     if not info.url:
         raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")
     product = find_in_catalog(info)
     return {
         "url": info.url, "marketplace": info.marketplace, "item_id": info.item_id,
         "product": _card(request, product, _pricing_context()) if product else None,
+        "title_from_share": share_title(payload.text),
     }
+
+
+class MarketOut(Schema):
+    item: dict | None = None  # название, цена ¥ (и максимум по размерам), размеры, фото
+    estimate: dict | None = None  # цена под ключ по минимальной цене
+    note: str = ""
+
+
+@router.post("/market", response=MarketOut,
+             throttle=[per_ip("link_market", "10/m"), per_ip("link_market_day", "100/d")],
+             summary="Товар на Poizon/Taobao/Tmall по ссылке: цена, размеры, фото (Apify, до минуты)")
+def market_view(request, payload: LookupIn):
+    from assistant.chat import marketplace_card
+
+    info = resolve_link(payload.text)
+    if not info.url:
+        raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")
+    return marketplace_card(info)
 
 
 @router.post("/estimate", response=EstimateOut, throttle=[per_ip("link_estimate", "60/m")],
@@ -165,7 +185,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
         raise HttpError(422, "Пришлите ссылку или фото товара")
     consent_at = require_consent(payload.consent)
     _check(payload.price_cny, payload.qty)
-    info = parse_link(payload.text)
+    info = resolve_link(payload.text)
     product = find_in_catalog(info)
     category = _category(payload.category)
     content = None
@@ -196,7 +216,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
 @router.post("/order", response={201: OrderOut}, throttle=[per_ip("link_order", "20/h")],
              summary="Сразу заказать товар по ссылке или скриншоту: оплата по расчёту, агент сверит цену до выкупа")
 def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile | None = File(None)):
-    info = parse_link(payload.text)
+    info = resolve_link(payload.text)
     if payload.text.strip() and not info.url:
         raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")
     content = None

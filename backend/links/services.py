@@ -27,6 +27,21 @@ MARKETPLACES = [
     ("pinduoduo", ("yangkeduo.com", "pinduoduo.com"), ("query", "goods_id")),
     ("poizon", ("dewu.com", "poizon.com", "dw4.co"), ("query", "spuId")),
 ]
+# Короткие ссылки из кнопки «поделиться»: номера товара в них нет, он появляется после перехода по ссылке.
+SHORT_HOSTS = ("m.tb.cn", "e.tb.cn", "tb.cn", "dw4.co", "qr.1688.com", "m.1688.com", "s.click.taobao.com",
+               "mobile.yangkeduo.com")
+# Запасные места, где площадки прячут номер товара (в адресе после перехода или в коде страницы-переходника).
+ID_PATTERNS = {
+    "taobao": [r"[?&]id=(\d{6,})", r"item\.htm\?.*?id=(\d{6,})", r"itemId=(\d{6,})"],
+    "tmall": [r"[?&]id=(\d{6,})"],
+    "1688": [r"/offer/(\d{6,})", r"offerId=(\d{6,})"],
+    "poizon": [r"spuId=(\d+)", r"productId=(\d+)"],
+    "pinduoduo": [r"goods_id=(\d+)"],
+}
+# Служебные фразы из текста «поделиться», которые не являются названием товара.
+SHARE_NOISE = re.compile(r"打开得物\s*App\s*查看?|点击链接直接打开|或者|淘宝搜索直接打开|复制这条信息|"
+                         r"打开【?手机淘宝】?|打开得物|得物App|"
+                         r"【[^】]*】|\$\w+\$|￥\w+￥|\(\w+\)|CZ\d+|MF\d+|\d+:/+|/+", re.IGNORECASE)
 DEFAULT_WEIGHT_KG = Decimal("1")
 
 
@@ -57,6 +72,44 @@ def parse_link(text: str) -> LinkInfo:
                 item_id = (parse_qs(parsed.query).get(rule) or [""])[0]
             return LinkInfo(url, code, item_id if item_id.isdigit() else "")
     return LinkInfo(url, "other", "")
+
+
+def share_title(text: str) -> str:
+    """Название товара из сообщения «поделиться»: 「…」 у Taobao или текст рядом со ссылкой, без служебных фраз."""
+    quoted = re.search(r"「([^」]{3,120})」", text or "")
+    if quoted:
+        return quoted.group(1).strip()
+    rest = SHARE_NOISE.sub(" ", URL_RE.sub(" ", text or ""))
+    rest = re.sub(r"\s+", " ", rest).strip(" ,.;:-—")
+    return rest[:120] if len(rest) >= 3 else ""
+
+
+def resolve_link(text: str, timeout: float = 6.0) -> LinkInfo:
+    """Как parse_link, но короткую ссылку «поделиться» (m.tb.cn, dw4.co…) раскрываем переходом и ищем номер товара."""
+    import httpx
+
+    info = parse_link(text)
+    host = (urlparse(info.url).hostname or "").lower() if info.url else ""
+    if not info.url or info.item_id or not any(host == h or host.endswith(f".{h}") for h in SHORT_HOSTS):
+        return info
+    try:
+        response = httpx.get(info.url, follow_redirects=True, timeout=timeout,
+                             headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                                                    "AppleWebKit/605.1.15 Mobile/15E148"})
+    except httpx.HTTPError:
+        return info  # площадка не ответила: остаёмся с тем, что есть, агент разберётся
+    final = str(response.url)
+    full = parse_link(final)
+    if full.item_id:
+        return LinkInfo(info.url, full.code, full.item_id)
+    # Taobao отдаёт страницу-переходник, где настоящий адрес лежит в коде страницы.
+    body = response.text[:200_000] if "text" in response.headers.get("content-type", "text") else ""
+    code = full.code if full.code != "other" else info.code
+    for pattern in ID_PATTERNS.get(code, []):
+        found = re.search(pattern, final) or re.search(pattern, body)
+        if found:
+            return LinkInfo(info.url, code, found.group(1))
+    return LinkInfo(info.url, code, "")
 
 
 def find_in_catalog(info: LinkInfo) -> Product | None:

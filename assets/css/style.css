@@ -1371,3 +1371,9 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 
 /* Ответ ИИ с переносами строк */
 .msg--ai { white-space: pre-line; }
+
+/* Товар с площадки в калькуляторе ссылки */
+.lcmarket { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: var(--r-sm); background: var(--surface-2); }
+.lcmarket img { width: 88px; height: 88px; object-fit: cover; border-radius: 10px; flex: none; }
+.lcmarket div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.lcmarket span { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }

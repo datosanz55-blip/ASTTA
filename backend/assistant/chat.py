@@ -33,6 +33,11 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   уложись в бюджет и назови итог. Цены уже под ключ: товар, доставка и сбор.
 - Правила сервиса (оплата, возврат, доставка, таможня) — search_knowledge. Нет ответа — так и скажи
   и предложи написать агенту, не выдумывай.
+- Пустой результат поиска или match="popular" значит, что точных совпадений нет (это не сбой). Скажи честно,
+  что именно такого в каталоге нет, назови, что есть похожего или в бюджете, если подходит.
+- Прислали ссылку или текст «поделиться» (часто с иероглифами) — сразу вызови inspect_link: назови площадку,
+  переведи название, проверь, нет ли товара у нас. Если вернулся on_marketplace — назови цену под ключ и размеры,
+  иначе попроси цену в юанях или скриншот.
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -68,6 +73,14 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "price_cny": {"type": "number"}, "qty": {"type": "integer"}}, "required": ["price_cny"]}}},
     {"type": "function", "function": {
+        "name": "inspect_link",
+        "description": "Разобрать ссылку или сообщение «поделиться» с Poizon, Taobao, Tmall, 1688, Pinduoduo: "
+                       "площадка, "
+                       "номер товара, название из сообщения (часто по-китайски — переведи его покупателю), есть ли "
+                       "этот товар в нашем каталоге. Для Poizon, Taobao и Tmall ещё цену в юанях, размеры и фото "
+                       "с площадки и цену под ключ (если просмотр площадок подключён). Может думать до минуты.",
+        "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
+    {"type": "function", "function": {
         "name": "order_status",
         "description": "Статус заказа покупателя по номеру вида A-000123. Работает, только если покупатель вошёл.",
         "parameters": {"type": "object", "properties": {"number": {"type": "string"}}, "required": ["number"]}}},
@@ -88,12 +101,17 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
     qs = _published()
     if category:
         qs = qs.filter(category__slug=category)
+    match = "exact"
     if stems:
         cond = Q()
         for st in stems:
             cond |= (Q(title_ru__icontains=st) | Q(description_ru__icontains=st) | Q(category__name_ru__icontains=st)
                      | Q(title_zh__icontains=st))
-        qs = qs.filter(cond)
+        if qs.filter(cond).exists():
+            qs = qs.filter(cond)
+        else:
+            # Размытый запрос («что-нибудь в подарок») или такого нет: даём популярное, модель честно скажет.
+            match = "popular"
     results = []
     for product in qs.order_by("-sold_count", "id")[:60]:
         try:
@@ -108,7 +126,7 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
     results.sort(key=lambda r: (-r[0], -r[1].sold_count))
     return [{"slug": p.slug, "title": p.title_ru, "price_rub": int(price) if price is not None else None,
              "category": p.category.name_ru, "supplier": p.supplier.name, "sizes": p.size_list[:12],
-             "sale_percent": p.sale_percent} for _, p, price in results[:CATALOG_LIMIT]]
+             "sale_percent": p.sale_percent, "match": match} for _, p, price in results[:CATALOG_LIMIT]]
 
 
 def get_product(slug: str, ctx=None) -> dict:
@@ -147,6 +165,63 @@ def estimate_link_price(price_cny, qty=1) -> dict:
     return {"total_rub": int(result.total_rub), "qty": qty, "notes": result.notes}
 
 
+def inspect_link(text: str, ctx=None) -> dict:
+    from links.services import find_in_catalog, resolve_link, share_title
+
+    info = resolve_link(text)
+    if not info.url:
+        return {"error": "в сообщении нет ссылки"}
+    names = {"taobao": "Taobao", "tmall": "Tmall", "1688": "1688", "poizon": "Poizon (Dewu)",
+             "pinduoduo": "Pinduoduo", "other": "другой сайт"}
+    result = {"marketplace": names.get(info.code, info.code), "item_id": info.item_id or None,
+              "title_from_share": share_title(text) or None, "url": info.url}
+    product = find_in_catalog(info)
+    if product is not None:
+        try:
+            price = int(quote(product, ctx=ctx).total_rub) if ctx else None
+        except PricingError:
+            price = None
+        result["in_catalog"] = {"slug": product.slug, "title": product.title_ru, "price_rub": price}
+    else:
+        result["in_catalog"] = None
+        market = marketplace_card(info)
+        if market.get("item"):
+            result["on_marketplace"] = market["item"]
+            result["estimate"] = market.get("estimate")
+            result["next_step"] = ("Это данные с площадки сейчас. Назови цену под ключ из estimate (если есть "
+                                   "диапазон по размерам — уточни размер), предложи «Заказать по ссылке».")
+        else:
+            result["next_step"] = (market.get("note") or "Цены с площадки не видно") + (
+                ": попросите цену в юанях со страницы товара или скриншот, посчитайте через estimate_link_price. "
+                "Заказать можно кнопкой «Заказать по ссылке».")
+    return result
+
+
+def marketplace_card(info) -> dict:
+    """Цена, размеры и фото с Poizon/Taobao через Apify и сразу цена под ключ по минимальной цене."""
+    from links import apify
+    from links.services import estimate
+
+    if not (info.item_id and apify.supported(info.code)):
+        return {"note": "Эту площадку автоматически не смотрим" if info.code not in ("taobao", "tmall", "poizon")
+                else "Номер товара не нашёлся в ссылке"}
+    try:
+        item = apify.fetch_item(info.code, info.item_id)
+    except apify.ApifyError as exc:
+        return {"note": str(exc)}
+    if not item:
+        return {"note": "Товар не нашёлся на площадке или снят с продажи"}
+    out = {"item": item}
+    if item.get("price_cny"):
+        try:
+            est = estimate(Decimal(str(item["price_cny"])), 1, info.marketplace)
+            out["estimate"] = {"total_rub": int(est.total_rub), "for_price_cny": item["price_cny"],
+                               "notes": est.notes}
+        except PricingError:
+            pass
+    return out
+
+
 def order_status(number: str, buyer) -> dict:
     if buyer is None:
         return {"error": "покупатель не вошёл: попросите войти через Telegram или открыть заказ в профиле"}
@@ -177,6 +252,8 @@ def _run_tool(name: str, args: dict, buyer, ctx) -> object:
         return search_knowledge(str(args.get("query", "")))
     if name == "estimate_link_price":
         return estimate_link_price(args.get("price_cny"), args.get("qty", 1))
+    if name == "inspect_link":
+        return inspect_link(str(args.get("text", "")), ctx=ctx)
     if name == "order_status":
         return order_status(str(args.get("number", "")), buyer)
     return {"error": f"нет инструмента {name}"}
@@ -231,6 +308,8 @@ def chat(history: list[dict], buyer=None) -> ChatAnswer:
                     seen_products.update(item["slug"] for item in result)
                 elif call["name"] == "get_product" and "slug" in result:
                     seen_products.add(result["slug"])
+                elif call["name"] == "inspect_link" and result.get("in_catalog"):
+                    seen_products.add(result["in_catalog"]["slug"])
                 trace.append({"tool": call["name"], "args": call["arguments"]})
                 messages.append({"role": "tool", "tool_call_id": call["id"],
                                  "content": json.dumps(result, ensure_ascii=False, default=str)[:6000]})

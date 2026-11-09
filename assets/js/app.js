@@ -1736,6 +1736,7 @@ ${aiCatalogJSON()}
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">Цена по ссылке</h2>
       <p class="linkcalc__src"><span class="linkcalc__tag">${found ? esc(found[1]) : 'Ссылка'}</span><span class="mono">${esc(url)}</span></p>
+      <div id="lcMarket"></div>
       <p class="note">В нашем каталоге этого товара пока нет. Впишите цену с площадки — сразу посчитаем цену с доставкой, и товар можно заказать. Перед выкупом агент проверит цену и наличие.</p>
       <form class="stack" id="linkCalcForm" novalidate>
         <div class="grid2">
@@ -1751,6 +1752,27 @@ ${aiCatalogJSON()}
         <div class="stack" id="lcActions"></div>
       </form></div>`);
     linkCalcOut();
+    loadMarket(text, found ? found[1] : '');
+  }
+  // Боевой сайт с подключённым Apify: сами смотрим товар на Poizon/Taobao и подставляем цену.
+  async function loadMarket(text, platform) {
+    const box = $('#lcMarket');
+    if (!box || !live.on || !live.site || !live.site.market || !['Poizon', 'Taobao', 'Tmall'].includes(platform)) return;
+    box.innerHTML = `<p class="note">${icon('spark')} Смотрим товар на ${esc(platform)}… это до минуты.</p>`;
+    let data;
+    try { data = await api('/api/link/market', { method: 'POST', body: { text } }); } catch (e) { data = { note: e.message }; }
+    if (!document.contains(box)) return;
+    const item = data.item;
+    if (!item) { box.innerHTML = data.note ? `<p class="note">${esc(data.note)}. Впишите цену вручную.</p>` : ''; return; }
+    const range = item.price_cny_max && item.price_cny_max > item.price_cny ? ` – ${cny(item.price_cny_max)} в зависимости от размера` : '';
+    box.innerHTML = `<div class="lcmarket">
+        <div><b>${esc(item.title || 'Товар с площадки')}</b>
+          <span>${item.price_cny ? `${cny(item.price_cny)}${range}` : 'цену уточнит агент'}</span>
+          ${item.sizes && item.sizes.length ? `<span>Размеры: ${item.sizes.slice(0, 16).map(esc).join(', ')}</span>` : ''}</div>
+      </div>`;
+    const price = $('#lcPrice');
+    if (price && item.price_cny && !price.value) { price.value = item.price_cny; linkCalcOut(); }
+    if (linkCalc) linkCalc.title = item.title || '';
   }
   function linkCalcOut() {
     const box = $('#lcSum');
@@ -1925,7 +1947,7 @@ ${aiCatalogJSON()}
     if (!(price > 0)) { toast('Впишите цену в юанях'); $('#lcPrice').focus(); return; }
     if (!contactOk($('#lcContact')) || !consentOk('lcConsent')) return;
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
-    placeLinkOrder({ title: linkCalc.platform ? `Товар с ${linkCalc.platform}` : 'Товар по ссылке', url: linkCalc.url,
+    placeLinkOrder({ title: (linkCalc.title || (linkCalc.platform ? `Товар с ${linkCalc.platform}` : 'Товар по ссылке')).slice(0, 200), url: linkCalc.url,
       price, qty, note: $('#lcSize').value.trim(), contact: $('#lcContact').value.trim(), file: $('#lcPhoto').files[0],
       btn: $('#lcActions [data-act=order]') });
   }

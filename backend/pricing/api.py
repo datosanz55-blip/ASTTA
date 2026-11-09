@@ -74,6 +74,7 @@ def site(request):
     from django.conf import settings
 
     from assistant import llm, yandex
+    from links import apify
     from pricing.models import PricingConfig
 
     config = PricingConfig.load()
@@ -91,4 +92,5 @@ def site(request):
         "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",
         "ai": yandex.enabled(),
         "chat": llm.enabled(),
+        "market": apify.enabled(),
     }
