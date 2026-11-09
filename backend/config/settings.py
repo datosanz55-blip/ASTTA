@@ -134,6 +134,8 @@ YANDEX_GPT_MODEL = env("YANDEX_GPT_MODEL", "yandexgpt/latest")
 AI_BASE_URL = env("AI_BASE_URL", "")
 AI_API_KEY = env("AI_API_KEY", "")
 AI_MODEL = env("AI_MODEL", "")
+# Цена, размеры и фото с Poizon и Taobao по ссылке — через готовые скраперы Apify. Пусто — не смотрим.
+APIFY_TOKEN = env("APIFY_TOKEN", "")
 try:
     AI_EXTRA_BODY = json.loads(env("AI_EXTRA_BODY") or "{}")
     if not isinstance(AI_EXTRA_BODY, dict):

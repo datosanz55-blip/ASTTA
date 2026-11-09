@@ -69,3 +69,21 @@ class LinkRequest(models.Model):
 
     def __str__(self):
         return f"#{self.pk} {self.marketplace or ''} {self.contact}".strip()
+
+
+class MarketplaceItem(models.Model):
+    """Карточка товара с площадки, полученная через Apify. Храним несколько часов: повторная ссылка бесплатна."""
+
+    code = models.SlugField(_("площадка"), max_length=20)
+    item_id = models.CharField(_("номер товара"), max_length=40)
+    data = models.JSONField(_("данные"), default=dict)
+    found = models.BooleanField(_("найден"), default=True)
+    fetched_at = models.DateTimeField(_("получено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("товар с площадки")
+        verbose_name_plural = _("товары с площадок (кэш)")
+        constraints = [models.UniqueConstraint(fields=["code", "item_id"], name="uniq_marketplace_item")]
+
+    def __str__(self):
+        return f"{self.code} {self.item_id}"
