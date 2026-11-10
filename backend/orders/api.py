@@ -39,6 +39,22 @@ class ItemOut(Schema):
     unit_cny: Decimal
     shipping_code: str
     total_rub: Decimal
+    # Для профиля: фото покупки и ссылка на товар в каталоге (у заказа по ссылке — скриншот и адрес).
+    product_slug: str | None = None
+    image: str | None = None
+    source_url: str = ""
+
+    @staticmethod
+    def resolve_product_slug(obj):
+        return obj.product.slug if obj.product_id else None
+
+    @staticmethod
+    def resolve_image(obj, context):
+        request = context["request"]
+        if obj.product_id:
+            first = next(iter(obj.product.images.all()), None)
+            return request.build_absolute_uri(first.image.url) if first else None
+        return request.build_absolute_uri(obj.photo.url) if obj.photo else None
 
 
 class EventOut(Schema):
@@ -69,7 +85,7 @@ def order_out(request, order: Order) -> dict:
         "number": order.number, "token": order.token, "status": order.status,
         "status_label": order.get_status_display(), "mode": order.mode, "rate": order.rate,
         "total_rub": order.total_rub, "paid_at": order.paid_at, "refund_rub": order.refund_rub,
-        "items": list(order.items.all()),
+        "items": list(order.items.select_related("product").prefetch_related("product__images")),
         "events": [{
             "status": e.status, "status_label": e.get_status_display(), "note": e.note,
             "photo": request.build_absolute_uri(e.photo.url) if e.photo else None,

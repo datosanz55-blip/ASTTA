@@ -45,6 +45,9 @@ class AiLog(models.Model):
                                                   "станет статьёй базы знаний, и ИИ будет отвечать так."))
     article = models.ForeignKey(KnowledgeArticle, verbose_name=_("статья из исправления"), null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="corrections")
+    # Чей вопрос: покупатель видит историю чата в профиле. Нет — гость.
+    buyer = models.ForeignKey("accounts.User", verbose_name=_("покупатель"), null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="ai_logs")
     created_at = models.DateTimeField(_("создан"), auto_now_add=True)
 
     class Meta:
