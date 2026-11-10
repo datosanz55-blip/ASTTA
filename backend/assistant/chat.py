@@ -393,7 +393,7 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
     if photo and turns and turns[-1]["role"] == "user":
         turns[-1] = {"role": "user", "content": [{"type": "text", "text": turns[-1]["content"]},
                                                  {"type": "image_url", "image_url": {"url": photo}}]}
-    log = AiLog(kind=AiLog.Kind.CHAT, request=("[фото] " if photo else "") + question)
+    log = AiLog(kind=AiLog.Kind.CHAT, request=("[фото] " if photo else "") + question, buyer=buyer)
     try:
         ctx = PricingContext()
     except PricingError:

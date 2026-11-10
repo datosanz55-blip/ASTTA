@@ -243,6 +243,7 @@
     cat: 'all', q: '', sort: 'pop',
     feed: 'all', feedSup: null,
     liked: new Set(), joined: new Set(),
+    favs: new Set(), viewed: [], // избранное и недавно смотрели (гость и демо — в браузере)
     orders: [],
     tg: null, // покупатель, вошедший через Telegram: { name, username }
     ptab: 'orders',
@@ -281,6 +282,8 @@
         }
         if (Array.isArray(d.liked)) state.liked = new Set(d.liked);
         if (Array.isArray(d.joined)) state.joined = new Set(d.joined);
+        if (Array.isArray(d.favs)) state.favs = new Set(d.favs.filter((x) => typeof x === 'string'));
+        if (Array.isArray(d.viewed)) state.viewed = d.viewed.filter((x) => typeof x === 'string').slice(0, 40);
         if (d.measures && typeof d.measures === 'object') state.measures = d.measures;
         if (d.family && Array.isArray(d.family.items)) state.family = d.family;
         if (Array.isArray(d.pools)) state.pools = d.pools.filter((g) => byId[g.pid]);
@@ -291,7 +294,7 @@
       try {
         localStorage.setItem('astta-demo', JSON.stringify({
           mode: state.mode, ship: state.ship, carts: state.carts,
-          liked: [...state.liked], joined: [...state.joined],
+          liked: [...state.liked], joined: [...state.joined], favs: [...state.favs], viewed: state.viewed,
           measures: state.measures, family: state.family, pools: state.pools, tg: state.tg,
         }));
       } catch (e) { /* ничего */ }
@@ -387,6 +390,7 @@
       <div class="card__media">
         <img class="card__img" src="${pimg(p)}" alt="" loading="lazy" width="720" height="720">
         ${badge}
+        ${favBtnHTML(p, 'card__fav')}
         <button class="card__add" type="button" data-add="${p.id}" aria-label="В корзину: ${esc(p.t)}">${icon('plus')}</button>
       </div>
       <div class="card__body">
@@ -396,6 +400,54 @@
         <div class="card__meta">${p.rating ? `<span>${icon('star', 'ic--fill')}${nf1.format(p.rating)}</span>` : ''}<span>${daysText(days)}</span></div>
       </div>
     </article>`;
+  }
+
+  /* ---------- Избранное и недавно смотрели ----------
+     Гость и демо хранят их в браузере, вошедший покупатель — на сервере (/api/me/favorites, /api/me/viewed).
+     После входа собранное в браузере переносится в аккаунт. */
+  function favBtnHTML(p, cls) {
+    const on = state.favs.has(p.id);
+    return `<button class="${cls}${on ? ' is-on' : ''}" type="button" data-fav="${esc(p.id)}" aria-pressed="${on}" aria-label="${on ? 'Убрать из избранного' : 'В избранное'}: ${esc(p.t)}">${icon('heart')}</button>`;
+  }
+  function syncFavButtons(id) {
+    const on = state.favs.has(id);
+    $$('[data-fav]').filter((b) => b.dataset.fav === id).forEach((b) => {
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+      if (on) { b.classList.remove('is-pop'); void b.offsetWidth; b.classList.add('is-pop'); }
+    });
+  }
+  const onServer = (id) => live.on && live.me && byId[id] && byId[id].live;
+  async function toggleFav(id) {
+    if (!byId[id]) return;
+    const on = !state.favs.has(id);
+    if (on) state.favs.add(id); else state.favs.delete(id);
+    store.save();
+    syncFavButtons(id);
+    toast(on ? 'Добавили в избранное' : 'Убрали из избранного');
+    if (onServer(id)) {
+      try {
+        await api(`/api/me/favorites/${encodeURIComponent(id)}`, { method: on ? 'PUT' : 'DELETE' });
+        prof.favs = null;
+      } catch (e) {
+        if (on) state.favs.delete(id); else state.favs.add(id);
+        store.save(); syncFavButtons(id); toast(e.message);
+      }
+    }
+    if (currentView === 'profile') renderProfile();
+  }
+  function trackView(id) {
+    state.viewed = [id, ...state.viewed.filter((x) => x !== id)].slice(0, 40);
+    store.save();
+    if (onServer(id)) { prof.viewed = null; api(`/api/me/viewed/${encodeURIComponent(id)}`, { method: 'POST' }).catch(() => {}); }
+  }
+  // «Для вас» без сервера: любимые категории из избранного и просмотров, сначала то, что ещё не смотрели.
+  function localRecommended(limit = 12) {
+    const weight = {};
+    [...state.favs].forEach((id) => { if (byId[id]) weight[byId[id].cat] = (weight[byId[id].cat] || 0) + 3; });
+    state.viewed.forEach((id) => { if (byId[id]) weight[byId[id].cat] = (weight[byId[id].cat] || 0) + 1; });
+    const score = (p) => (weight[p.cat] || 0) * 10 - (state.viewed.includes(p.id) ? 5 : 0) + (p.rating || 0) + Math.min(5, (p.sold || p.reviews || 0) / 100);
+    return PRODUCTS.filter((p) => !state.favs.has(p.id)).sort((a, b) => score(b) - score(a)).slice(0, limit);
   }
 
   function groupHTML(p) {
@@ -723,15 +775,293 @@
     </article>`;
   }
 
+  /* ---------- Профиль: заказы, избранное, «Для вас», недавно смотрели, чат с ИИ, траты, данные, мерки ----------
+     Вошедший покупатель берёт всё с сервера (/api/me/…), гость и демо — из браузера. */
+  const prof = { favs: null, viewed: null, rec: null, chat: null, loading: new Set(), ofilter: 'all' };
+  const PROFILE_TABS = {
+    orders: ['Заказы', 'box'], favs: ['Избранное', 'heart'], rec: ['Для вас', 'spark'], viewed: ['Смотрели', 'clock'],
+    chat: ['Чат с ИИ', 'chat'], spend: ['Траты', 'tag'], data: ['Данные и оплата', 'card'], size: ['Мерки', 'ruler'],
+    family: ['Семья', 'users'], gifts: ['Подарки', 'star'],
+  };
+  const PROFILE_API = { favs: '/api/me/favorites', rec: '/api/me/recommended', viewed: '/api/me/viewed', chat: '/api/me/ai-history' };
+  const ordersList = () => (live.on ? live.orders : [...state.orders, ...DEMO_ORDERS]);
+  const resetProfileCache = () => { prof.favs = null; prof.viewed = null; prof.rec = null; prof.chat = null; };
+
+  function profileTabIds() {
+    if (!live.on) return ['orders', 'favs', 'rec', 'viewed', 'chat', 'size', 'family', 'gifts'];
+    return live.me ? ['orders', 'favs', 'rec', 'viewed', 'chat', 'spend', 'data', 'size'] : ['orders', 'favs', 'rec', 'viewed', 'size'];
+  }
+
   function renderProfile() {
-    if (live.on) { renderLiveProfile(); return; }
-    const tabs = [['orders', 'Заказы'], ['family', 'Семья'], ['gifts', 'Подарки'], ['size', 'Мерки']];
-    if (!tabs.some(([id]) => id === state.ptab)) state.ptab = 'orders';
+    const ids = profileTabIds();
+    if (!ids.includes(state.ptab)) state.ptab = 'orders';
+    const counts = { orders: ordersList().length, favs: state.favs.size };
+    const tabs = ids.map((id) => {
+      const [name, ic] = PROFILE_TABS[id];
+      const n = counts[id];
+      return `<button class="ptab" type="button" role="tab" data-ptab="${id}" aria-selected="${state.ptab === id}">${icon(ic)}<span>${name}</span>${n ? `<i>${n}</i>` : ''}</button>`;
+    }).join('');
     const body = {
-      orders: () => (live.on ? liveOrdersHTML() : `<div class="orders">${[...state.orders, ...DEMO_ORDERS].map(orderHTML).join('')}</div>`),
-      family: familyHTML, gifts: giftsHTML, size: measuresHTML,
+      orders: ordersTabHTML, favs: favsTabHTML, rec: recTabHTML, viewed: viewedTabHTML, chat: chatTabHTML,
+      spend: spendingHTML, data: meDataHTML, size: measuresHTML, family: familyHTML, gifts: giftsHTML,
     }[state.ptab]();
-    $('#profileBody').innerHTML = `${tgCardHTML()}<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
+    $('#profileBody').innerHTML = `${profileHeadHTML()}<div class="ptabs2" role="tablist" aria-label="Разделы профиля">${tabs}</div><div class="pbody">${body}</div>`;
+    const active = $('.ptab[aria-selected="true"]');
+    if (active) active.scrollIntoView({ block: 'nearest', inline: 'center' });
+    loadProfileTab(state.ptab);
+  }
+
+  async function loadProfileTab(tab) {
+    if (!(live.on && live.me) || !PROFILE_API[tab] || prof[tab] !== null || prof.loading.has(tab)) return;
+    prof.loading.add(tab);
+    try {
+      const data = await api(PROFILE_API[tab]);
+      prof[tab] = tab === 'chat' ? data : adoptCards(data);
+      if (tab === 'favs') { state.favs = new Set(prof.favs.map((p) => p.id)); store.save(); }
+    } catch (e) {
+      prof[tab] = [];
+      toast(e.message);
+    } finally {
+      prof.loading.delete(tab);
+    }
+    if (currentView === 'profile' && state.ptab === tab) renderProfile();
+  }
+  // Карточки с сервера: товар может быть не из первых страниц каталога — тогда добавляем его в справочник.
+  function adoptCards(list) {
+    return list.map((c) => {
+      if (!byId[c.slug]) byId[c.slug] = liveProduct(c);
+      return byId[c.slug];
+    });
+  }
+
+  /* Шапка: аватар (можно сменить), имя, цифры, текущий заказ */
+  function profileHeadHTML() {
+    const me = live.on ? live.me : null;
+    if ((live.on && !me) || (!live.on && !state.tg)) {
+      return `${tgCardHTML()}<p class="note pguest">${icon('heart')}Избранное и просмотры пока хранятся в этом браузере. Войдите — перенесём их в аккаунт и покажем на любом устройстве.</p>`;
+    }
+    const name = me ? ([me.first_name, me.last_name].filter(Boolean).join(' ') || 'Покупатель') : (state.tg.name || 'Вы');
+    const username = me ? me.username : state.tg.username;
+    const ava = me && me.photo_url
+      ? `<img class="phead__ava" src="${esc(me.photo_url)}" alt="" width="72" height="72" referrerpolicy="no-referrer">`
+      : `<span class="phead__ava phead__ava--txt" aria-hidden="true">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+    const cam = me ? `<label class="phead__cam" title="Сменить фото" aria-label="Сменить фото профиля">${icon('camera')}<input id="avaInput" type="file" accept="image/*" hidden></label>` : '';
+    let since = '';
+    if (me) {
+      const d = new Date(me.member_since + 'T12:00:00');
+      since = `с нами с ${MONTHS_OF[d.getMonth()]} ${d.getFullYear()}`;
+    }
+    const orders = ordersList();
+    let spent, active, delivered;
+    if (me) {
+      spent = Number(me.stats.spent_rub); active = me.stats.active; delivered = me.stats.delivered;
+    } else {
+      spent = orders.filter((o) => !o.unpaid).reduce((s, o) => s + (o.total || 0), 0);
+      active = orders.filter((o) => !o.delivered && !o.unpaid).length;
+      delivered = orders.filter((o) => o.delivered).length;
+    }
+    return `<div class="phead">
+      <div class="phead__avawrap">${ava}${cam}</div>
+      <div class="phead__txt"><b>${esc(name)}</b><span>${username ? `@${esc(username)}` : ''}${username && since ? ' · ' : ''}${since}</span>
+        ${me && me.avatar_url ? '<button class="linkbtn" type="button" data-ava-reset>Вернуть фото из Telegram</button>' : ''}</div>
+      ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
+    </div>
+    <div class="pstats">
+      <button type="button" data-ptab="spend"${me ? '' : ' disabled'}><b>${rub(spent)}</b><span>потрачено</span></button>
+      <button type="button" data-ptab="orders"><b>${active}</b><span>в пути</span></button>
+      <button type="button" data-ptab="orders"><b>${delivered}</b><span>получено</span></button>
+      <button type="button" data-ptab="favs"><b>${state.favs.size}</b><span>в избранном</span></button>
+    </div>
+    ${activeOrderHTML()}`;
+  }
+
+  // Ближайший заказ в пути — крупно, с полосой прогресса. Касание открывает подробности.
+  function activeOrderHTML() {
+    const o = ordersList().find((x) => (live.on ? PAID_STEPS.includes(x.status) && x.status !== 'delivered' : !x.delivered && !x.unpaid));
+    if (!o) return '';
+    const v = orderView(o);
+    return `<button class="oactive" type="button" data-order-open="${esc(v.key)}">
+      <div class="oactive__top"><span>${icon('truck')}Сейчас в пути</span><b>${esc(v.status)}</b></div>
+      <div class="oactive__mid">${v.thumbs.slice(0, 3).map(thumbHTML).join('')}<div><b>${esc(v.title)}</b><span>${esc(v.num)} · ${rub(v.total)}</span></div></div>
+      <div class="obar"><i style="width:${v.pct}%"></i></div>
+      <div class="oactive__steps"><span>Выкуп</span><span>Склад</span><span>Граница</span><span>У вас</span></div>
+    </button>`;
+  }
+
+  /* Заказы: карточки с фото, статусом и прогрессом; подробности — в отдельном окне */
+  function orderView(o) {
+    if (live.on) {
+      const step = PAID_STEPS.indexOf(o.status);
+      const first = o.items[0] || {};
+      return {
+        key: o.token, num: o.number, status: o.status_label, total: Number(o.total_rub),
+        title: (first.title || 'Заказ') + (o.items.length > 1 ? ` и ещё ${o.items.length - 1}` : ''),
+        thumbs: o.items.map((i) => ({ src: i.image || '', alt: i.title })),
+        date: o.events.length ? dateTime(o.events[0].created_at) : '',
+        pct: o.status === 'cancelled' ? 0 : Math.round(((step + 1) / PAID_STEPS.length) * 100),
+        done: o.status === 'delivered', cancelled: o.status === 'cancelled', unpaid: o.status === 'awaiting_payment',
+      };
+    }
+    const items = o.items.map((id) => byId[id]).filter(Boolean);
+    return {
+      key: `demo:${o.num}`, num: o.num, total: o.total, date: o.date,
+      status: o.delivered ? 'Получен' : (o.unpaid ? 'Ждёт оплаты' : (o.fresh ? 'Выкупаем' : 'В пути')),
+      title: o.link ? o.link.title : ((items[0] ? items[0].t : 'Заказ') + (items.length > 1 ? ` и ещё ${items.length - 1}` : '')),
+      thumbs: o.link ? [{ src: '', alt: o.link.title }] : items.map((p) => ({ src: pimg(p), alt: p.t })),
+      pct: o.delivered ? 100 : Math.round(((o.now + 1) / o.stages.length) * 100),
+      done: !!o.delivered, cancelled: false, unpaid: !!o.unpaid,
+    };
+  }
+  const thumbHTML = (t) => (t.src
+    ? `<img src="${esc(t.src)}" alt="${esc(t.alt || '')}" width="56" height="56" loading="lazy">`
+    : `<span class="othumb">${icon('box')}</span>`);
+
+  function ordersTabHTML() {
+    if (live.on && !live.loaded) return '<p class="empty">Загружаем заказы…</p>';
+    const all = ordersList().map(orderView);
+    if (!all.length) {
+      return `<div class="emptystate">${icon('box')}<h2>Заказов пока нет</h2><p>Оформленные заказы появятся здесь: фото со склада, вес, где сейчас посылка. Статусы придут и в Telegram.</p><a class="btn btn--lime" href="#catalog">Открыть каталог</a></div>`;
+    }
+    const filters = [['all', 'Все'], ['active', 'В пути'], ['done', 'Получены'], ['unpaid', 'Ждут оплаты']];
+    const list = all.filter((v) => ({
+      all: true, active: !v.done && !v.cancelled && !v.unpaid, done: v.done, unpaid: v.unpaid,
+    }[prof.ofilter]));
+    return `<div class="ofilter" role="group" aria-label="Какие заказы показать">${filters.map(([id, name]) => `<button class="chip" type="button" data-ofilter="${id}" aria-pressed="${prof.ofilter === id}">${name}</button>`).join('')}</div>
+      ${list.length ? `<div class="olist">${list.map((v) => `<button class="ocard${v.done ? ' is-done' : ''}${v.cancelled ? ' is-off' : ''}" type="button" data-order-open="${esc(v.key)}">
+        <div class="ocard__thumbs">${v.thumbs.slice(0, 4).map(thumbHTML).join('')}${v.thumbs.length > 4 ? `<span class="othumb">+${v.thumbs.length - 4}</span>` : ''}</div>
+        <div class="ocard__info"><b>${esc(v.title)}</b><span>${esc(v.num)}${v.date ? ` · ${esc(v.date)}` : ''}</span></div>
+        <div class="ocard__side"><span class="pill${v.done || v.cancelled ? '' : ' pill--go'}">${esc(v.status)}</span><b>${rub(v.total)}</b></div>
+        ${v.cancelled ? '' : `<div class="obar"><i style="width:${v.pct}%"></i></div>`}
+      </button>`).join('')}</div>` : '<p class="empty">Таких заказов нет.</p>'}`;
+  }
+
+  function openOrder(key) {
+    if (key.startsWith('demo:')) {
+      const o = ordersList().find((x) => !live.on && x.num === key.slice(5));
+      if (o) openSheet(`<div class="stack"><h2 class="sheet__title">Заказ ${esc(o.num)}</h2>${orderHTML(o)}</div>`, { narrow: true });
+      return;
+    }
+    const o = live.orders.find((x) => x.token === key);
+    if (!o) return;
+    const items = o.items.map((i) => {
+      const inCatalog = i.product_slug && byId[i.product_slug];
+      const body = `${thumbHTML({ src: i.image || '', alt: i.title })}<div><b>${esc(i.title)}</b><span>${[i.size, i.color].filter(Boolean).map(esc).join(', ')}${i.size || i.color ? ' · ' : ''}${i.qty} шт · ${rub(Number(i.total_rub))}</span></div>`;
+      if (inCatalog) return `<button class="oitem" type="button" data-open="${esc(i.product_slug)}">${body}${icon('arrow')}</button>`;
+      if (i.source_url) return `<a class="oitem" href="${esc(i.source_url)}" target="_blank" rel="noopener nofollow">${body}${icon('arrow-ur')}</a>`;
+      return `<div class="oitem">${body}</div>`;
+    }).join('');
+    openSheet(`<div class="stack">
+      <h2 class="sheet__title">Заказ ${esc(o.number)}</h2>
+      <div class="oitems">${items}</div>
+      ${serverOrderHTML(o)}
+    </div>`, { narrow: true });
+  }
+
+  /* Избранное, «Для вас», недавно смотрели — сетка обычных карточек */
+  function productsTabHTML(list, empty) {
+    if (list === null) return '<p class="empty">Загружаем…</p>';
+    const items = list.filter(Boolean);
+    if (!items.length) return empty;
+    return `<div class="grid">${items.map(cardHTML).join('')}</div>`;
+  }
+  function favsTabHTML() {
+    const list = live.on && live.me ? prof.favs : [...state.favs].map((id) => byId[id]);
+    return `<div class="phint"><b>Избранное</b><span>Нажмите ${icon('heart')} на карточке товара, чтобы отложить его сюда.</span></div>
+      ${productsTabHTML(list, `<div class="emptystate">${icon('heart')}<h2>Здесь пока пусто</h2><p>Отмечайте сердечком товары, которые понравились: соберём их здесь, чтобы вернуться и заказать.</p><a class="btn btn--lime" href="#catalog">Выбрать в каталоге</a></div>`)}`;
+  }
+  function recTabHTML() {
+    const list = live.on && live.me ? prof.rec : localRecommended();
+    return `<div class="phint"><b>Подобрали для вас</b><span>По избранному, просмотрам и покупкам. Чем чаще заходите, тем точнее.</span></div>
+      ${productsTabHTML(list, `<div class="emptystate">${icon('spark')}<h2>Скоро подберём</h2><p>Посмотрите пару товаров или добавьте их в избранное — и здесь появятся похожие.</p></div>`)}`;
+  }
+  function viewedTabHTML() {
+    const list = live.on && live.me ? prof.viewed : state.viewed.map((id) => byId[id]);
+    const has = list && list.filter(Boolean).length;
+    return `<div class="phint"><b>Недавно смотрели</b><span>Последние 40 товаров.</span>${has ? '<button class="linkbtn" type="button" data-viewed-clear>Очистить</button>' : ''}</div>
+      ${productsTabHTML(list, `<div class="emptystate">${icon('clock')}<h2>Вы ещё ничего не смотрели</h2><p>Открытые товары появятся здесь, чтобы не искать их снова.</p><a class="btn btn--lime" href="#catalog">Открыть каталог</a></div>`)}`;
+  }
+  async function clearViewed() {
+    state.viewed = [];
+    store.save();
+    if (live.on && live.me) {
+      try { await api('/api/me/viewed', { method: 'DELETE' }); prof.viewed = []; } catch (e) { toast(e.message); }
+    }
+    renderProfile();
+  }
+
+  /* Чат с ИИ: вопросы и ответы, можно продолжить разговор */
+  function chatTabHTML() {
+    const fromServer = live.on && live.me;
+    let rows;
+    if (fromServer) {
+      if (prof.chat === null) return '<p class="empty">Загружаем историю…</p>';
+      rows = prof.chat.map((r) => ({ q: r.question, a: r.answer, photo: r.photo, at: dateTime(r.at) }));
+    } else {
+      rows = [];
+      for (let i = 0; i < ai.log.length; i += 1) {
+        const m = ai.log[i];
+        if (m.me) rows.unshift({ q: m.text, a: (ai.log[i + 1] && (ai.log[i + 1].reply || ai.log[i + 1].text)) || '', photo: !!m.thumb, at: 'сегодня' });
+      }
+    }
+    if (!rows.length) {
+      return `<div class="emptystate">${icon('spark')}<h2>Вы ещё не спрашивали ASTTA AI</h2><p>ИИ подберёт товары под задачу и бюджет, посчитает цену по ссылке или скриншоту и ответит про доставку.</p><button class="btn btn--lime" type="button" data-ai-open>Спросить ИИ</button></div>`;
+    }
+    return `<div class="phint"><b>История с ASTTA AI</b><span>${fromServer ? 'Видите только вы.' : 'Сохраняется до закрытия страницы. Войдите, чтобы история не терялась.'}</span>
+        ${fromServer ? '<button class="linkbtn" type="button" data-ai-history-clear>Очистить</button>' : ''}</div>
+      <div class="chatlog">${rows.map((r, i) => `<article class="chatlog__item">
+        <span class="chatlog__time">${esc(r.at)}</span>
+        <div class="msg msg--me">${r.photo ? `${icon('camera')} ` : ''}${esc(r.q)}</div>
+        ${r.a ? `<div class="msg msg--ai chatlog__a">${esc(r.a.length > 420 ? r.a.slice(0, 420) + '…' : r.a)}</div>` : ''}
+      </article>`).join('')}</div>
+      <button class="btn btn--lime btn--wide" type="button" data-ai-continue>${icon('chat')}Продолжить в чате</button>`;
+  }
+  function continueAiChat() {
+    if (live.on && live.me && prof.chat && prof.chat.length && !ai.turns.length) {
+      // Последние вопросы возвращаем в разговор, чтобы ИИ помнил контекст.
+      const recent = prof.chat.slice(0, 5).reverse();
+      recent.forEach((r) => {
+        ai.turns.push({ role: 'user', content: r.question }, { role: 'assistant', content: r.answer });
+        ai.log.push({ me: true, text: r.question }, { reply: r.answer });
+      });
+    }
+    openAI();
+  }
+  async function clearAiHistory() {
+    if (!window.confirm('Очистить историю чата с ИИ? Восстановить её будет нельзя.')) return;
+    try { await api('/api/me/ai-history', { method: 'DELETE' }); prof.chat = []; toast('История очищена'); } catch (e) { toast(e.message); }
+    renderProfile();
+  }
+
+  /* Аватар и способ оплаты */
+  async function uploadAvatar(file) {
+    if (!file || !live.me) return;
+    if (!file.type.startsWith('image/')) { toast('Нужна картинка'); return; }
+    const fd = new FormData();
+    fd.append('photo', file);
+    try {
+      live.me = await api('/api/me/avatar', { method: 'POST', body: fd });
+      toast('Фото обновили');
+    } catch (e) { toast(e.message); }
+    renderProfile();
+  }
+  async function resetAvatar() {
+    try { live.me = await api('/api/me/avatar', { method: 'DELETE' }); } catch (e) { toast(e.message); }
+    renderProfile();
+  }
+  function payMethodHTML() {
+    const cur = live.me ? live.me.pay_method : '';
+    const opts = [['sbp', 'СБП', 'По QR-коду или в приложении банка, без комиссии'], ['card', 'Банковская карта', 'Мир, Visa, Mastercard российских банков']];
+    return `<div class="panel">
+      <h3>Способ оплаты</h3>
+      <p class="note">Онлайн-оплата подключается. Выберите, как удобнее, — предложим этот способ первым. Данные карты мы не храним: их вводят на странице банка.</p>
+      <div class="paym">${opts.map(([id, name, sub]) => `<button class="paym__opt${cur === id ? ' is-on' : ''}" type="button" data-pay-method="${id}" aria-pressed="${cur === id}">
+        <span class="paym__ic">${icon(id === 'sbp' ? 'send' : 'card')}</span><span><b>${name}</b><small>${sub}</small></span><span class="paym__check">${icon('check')}</span></button>`).join('')}</div>
+    </div>`;
+  }
+  async function setPayMethod(id) {
+    if (!live.me) return;
+    try { live.me = await api('/api/me', { method: 'PATCH', body: { pay_method: live.me.pay_method === id ? '' : id } }); } catch (e) { toast(e.message); }
+    renderProfile();
   }
 
   // Вход через Telegram. На сайте это официальная кнопка Telegram (/api/auth/telegram), в мини-приложении
@@ -909,6 +1239,7 @@
     if (!p) return;
     pdState = { id, size: null, ship: shipFor(p), qty: isSupplier() ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
     openSheet(productHTML(), {});
+    trackView(id);
     if (opts.needSize) toast('Выберите размер');
     loadProductDetail(p);
   }
@@ -980,7 +1311,7 @@
     return `<div class="pd" data-id="${p.id}">
       <div class="pd__media">${FLOATING[p.id]
         ? `<div class="pd__float" style="--t1:${FLOATING[p.id][0]};--t2:${FLOATING[p.id][1]}"><img src="assets/img/cut/${p.id}.webp" alt="${esc(p.t)}" width="900" height="900"></div>`
-        : `<img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720">`}</div>
+        : `<img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720">`}${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
         <button class="supchip" type="button" data-goto-sup="${esc(p.sup)}"><span class="ava" aria-hidden="true">${esc(s.short)}</span>${esc(s.name)}</button>
         <h2>${esc(p.t)}</h2>
@@ -2248,6 +2579,14 @@ ${aiCatalogJSON()}
     if (d.closeMenu !== undefined) { closeMenu(); if (t.tagName !== 'A' && d.openChat === undefined) return; }
     if (d.photoOrder !== undefined) { openPhotoOrder(); return; }
     if (d.lcSize !== undefined) { pickLinkSize(d.lcSize); return; }
+    if (d.fav !== undefined) { toggleFav(d.fav); return; }
+    if (d.orderOpen !== undefined) { openOrder(d.orderOpen); return; }
+    if (d.ofilter) { prof.ofilter = d.ofilter; renderProfile(); return; }
+    if (d.viewedClear !== undefined) { clearViewed(); return; }
+    if (d.aiContinue !== undefined) { continueAiChat(); return; }
+    if (d.aiHistoryClear !== undefined) { clearAiHistory(); return; }
+    if (d.avaReset !== undefined) { resetAvatar(); return; }
+    if (d.payMethod) { setPayMethod(d.payMethod); return; }
 
     if (d.filter) {
       state.cat = d.filter; state.q = ''; $('#q').value = '';
@@ -2530,6 +2869,7 @@ ${aiCatalogJSON()}
   function onChange(e) {
     const t = e.target;
     if (t.id === 'aiPhoto') { aiPhotoPicked(t.files[0]); t.value = ''; return; }
+    if (t.id === 'avaInput') { uploadAvatar(t.files[0]); t.value = ''; return; }
     if (t.type === 'radio' && t.closest('.ship')) {
       $$('.shipopt', t.closest('.ship')).forEach((l) => l.classList.toggle('is-on', $('input', l).checked));
     }
@@ -2829,6 +3169,13 @@ ${aiCatalogJSON()}
       signedFlag(true);
       state.tg = { name: live.me.first_name, username: live.me.username || '' };
       if (live.me.measures && Object.keys(live.me.measures).length) state.measures = live.me.measures;
+      const fromBrowser = [...state.favs].filter((id) => !live.me.favorites.includes(id));
+      if (fromBrowser.length) {
+        try { live.me.favorites = (await api('/api/me/favorites', { method: 'POST', body: { slugs: fromBrowser } })).favorites; } catch (e) { /* перенесём при следующем входе */ }
+      }
+      state.favs = new Set(live.me.favorites);
+      resetProfileCache();
+      store.save();
     } catch (e) { live.me = null; if (!live.tma) state.tg = null; if (e.status === 401) signedFlag(false); }
     const tokens = [...new Set([...(live.me ? live.me.orders.map((o) => o.token) : []), ...guestTokens()])].slice(0, 20);
     const got = await Promise.all(tokens.map((t) => api(`/api/orders/${encodeURIComponent(t)}`).catch(() => null)));
@@ -2859,7 +3206,6 @@ ${aiCatalogJSON()}
         ${e.note ? `<span>${esc(e.note)}</span>` : ''}
         ${e.photo ? `<a class="tl__photo" href="${esc(e.photo)}" target="_blank" rel="noopener"><img src="${esc(e.photo)}" alt="" width="84" height="60" loading="lazy"><span>Фото со склада</span></a>` : ''}
       </div></li>`).join('');
-    const items = o.items.map((i) => `${esc(i.title)}${i.size ? `, ${esc(i.size)}` : ''} × ${i.qty}`).join(' · ');
     return `<article class="order">
       <div class="order__head">
         <div>
@@ -2868,16 +3214,10 @@ ${aiCatalogJSON()}
         </div>
         <span class="${pill}">${esc(o.status_label)}</span>
       </div>
-      <p class="order__link">${icon('box')}<span>${items}</span></p>
       ${unpaid ? `<p class="note">Оплата картой и СБП подключается. Агент напишет вам со ссылкой на оплату, после неё сразу заказываем у поставщика.</p>` : ''}
       ${events ? `<ol class="timeline">${events}</ol>` : ''}
       <button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>
     </article>`;
-  }
-  function liveOrdersHTML() {
-    if (!live.loaded) return '<p class="empty">Загружаем заказы…</p>';
-    if (!live.orders.length) return `<div class="emptystate">${icon('box')}<h2>Заказов пока нет</h2><p>Оформленные заказы появятся здесь, а статусы придут в Telegram.</p><a class="btn btn--lime" href="#catalog">Открыть каталог</a></div>`;
-    return `<div class="orders">${live.orders.map(serverOrderHTML).join('')}</div>`;
   }
 
   function orderPlacedSheet(order, extra = '') {
@@ -3000,6 +3340,7 @@ ${aiCatalogJSON()}
   async function logoutLive() {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* выходим локально */ }
     live.csrf = ''; live.me = null; state.tg = null;
+    state.favs = new Set(); state.viewed = []; resetProfileCache(); store.save();
     signedFlag(false);
     live.orders = []; live.loaded = false;
     await loadMe();
@@ -3018,28 +3359,6 @@ ${aiCatalogJSON()}
   const MONTHS_OF = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
   const spentOf = (o) => Number(o.total_rub) - Number(o.refund_rub || 0);
   const isPaid = (o) => o.paid_at && o.status !== 'cancelled';
-
-  function profileHeadHTML() {
-    const me = live.me;
-    if (!me) return tgCardHTML();
-    const name = [me.first_name, me.last_name].filter(Boolean).join(' ') || 'Покупатель';
-    const since = new Date(me.member_since + 'T12:00:00');
-    const ava = me.photo_url
-      ? `<img class="phead__ava" src="${esc(me.photo_url)}" alt="" width="64" height="64" referrerpolicy="no-referrer">`
-      : `<span class="phead__ava phead__ava--txt" aria-hidden="true">${esc(name.slice(0, 1).toUpperCase())}</span>`;
-    const st = me.stats;
-    return `<div class="phead">
-      ${ava}
-      <div class="phead__txt"><b>${esc(name)}</b><span>${me.username ? `@${esc(me.username)} · ` : ''}с нами с ${MONTHS_OF[since.getMonth()]} ${since.getFullYear()}</span></div>
-      ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
-    </div>
-    <div class="pstats">
-      <div><b>${rub(Number(st.spent_rub))}</b><span>потрачено</span></div>
-      <div><b>${st.orders}</b><span>${plural(st.orders, 'заказ', 'заказа', 'заказов')}</span></div>
-      <div><b>${st.active}</b><span>в пути</span></div>
-      <div><b>${st.delivered}</b><span>получено</span></div>
-    </div>`;
-  }
 
   function spendingHTML() {
     const paid = live.orders.filter(isPaid);
@@ -3073,16 +3392,7 @@ ${aiCatalogJSON()}
         <label class="field field--full"><span>Пункт выдачи или адрес</span><input id="meeAddr" autocomplete="street-address" maxlength="300" placeholder="СДЭК, ул. Ленина, 1" value="${esc(me.delivery_address)}"></label>
       </div>
       <button class="btn btn--lime" type="submit">Сохранить</button>
-    </form>`;
-  }
-
-  function renderLiveProfile() {
-    const tabs = live.me
-      ? [['orders', 'Заказы'], ['spend', 'Траты'], ['data', 'Мои данные'], ['size', 'Мерки']]
-      : [['orders', 'Заказы'], ['size', 'Мерки']];
-    if (!tabs.some(([id]) => id === state.ptab)) state.ptab = 'orders';
-    const body = { orders: liveOrdersHTML, spend: spendingHTML, data: meDataHTML, size: measuresHTML }[state.ptab]();
-    $('#profileBody').innerHTML = `${profileHeadHTML()}<div class="ptabs chips" role="tablist">${tabs.map(([id, name]) => `<button class="chip" type="button" role="tab" data-ptab="${id}" aria-pressed="${state.ptab === id}">${name}</button>`).join('')}</div>${body}`;
+    </form>${payMethodHTML()}`;
   }
 
   async function saveProfile(fields, btn, done) {
