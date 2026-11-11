@@ -76,6 +76,10 @@ def create_order(lines: list[CartLine], contact: str, mode: str = "retail", ship
     checked = []
     for line in lines:
         product = products[line.product]
+        if product.is_market:
+            # Цена размера на площадке своя: такой товар заказывают по цене, которую назвал покупатель.
+            raise OrderError(f"{product.title_ru}: цена зависит от размера — откройте товар и укажите цену "
+                             "своего размера")
         if not 1 <= line.qty <= MAX_QTY:
             raise OrderError(f"{product.title_ru}: количество от 1 до {MAX_QTY}")
         checked.append(CartLine(line.product, line.qty,

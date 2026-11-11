@@ -306,6 +306,7 @@
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
   const nf1 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
+  const nf0 = new Intl.NumberFormat('ru-RU');
   const rub = (n) => nf.format(Math.round(n)) + ' ₽';
   const cny = (n) => nf.format(Math.round(n)) + ' ¥';
   const round10 = (n) => Math.round(n / 10) * 10;
@@ -370,7 +371,38 @@
   let rateText = RATE.toFixed(2).replace('.', ',');
 
   /* ---------- Карточки ---------- */
+  /* ---------- Товары с Poizon и Taobao ----------
+     Цена размера на площадке разная: показываем «от» и «до», заказ — по цене размера, которую называет покупатель
+     (форма «Цена по ссылке»). Цены считает сервер той же формулой, что заказ по ссылке. */
+  const MARKET_NAME = { poizon: 'Poizon', taobao: 'Taobao' };
+  const isMarket = (p) => !!(p && p.market);
+  const marketFrom = (p) => (p.retailRub != null ? p.retailRub : linkTotal(p.cny));
+  const marketTo = (p) => {
+    const m = p.market || {};
+    if (m.retail_max_rub != null) return Number(m.retail_max_rub);
+    return m.price_cny_max ? linkTotal(Number(m.price_cny_max)) : null;
+  };
+  function marketCardHTML(p) {
+    const src = p.market.source;
+    const days = SHIP.auto.days;
+    return `<article class="card card--market">
+      <div class="card__media">
+        <img class="card__img" src="${pimg(p)}" alt="" loading="lazy" width="720" height="720">
+        <span class="mkbadge mkbadge--${esc(src)}">${esc(MARKET_NAME[src] || src)}</span>
+        ${favBtnHTML(p, 'card__fav')}
+        <button class="card__add" type="button" data-open="${esc(p.id)}" aria-label="Подробнее: ${esc(p.t)}">${icon('arrow')}</button>
+      </div>
+      <div class="card__body">
+        <div class="card__price"><small class="card__from">от</small>${rub(marketFrom(p))}</div>
+        <div class="card__unit">${src === 'poizon' ? `${icon('check')}Оригинал` : 'Цена зависит от варианта'}</div>
+        <h3 class="card__title"><button class="card__hit" type="button" data-open="${esc(p.id)}">${esc(p.t)}</button></h3>
+        <div class="card__meta"><span>${daysText(days)}</span>${p.sold ? `<span>${nf0.format(p.sold)} продаж</span>` : ''}</div>
+      </div>
+    </article>`;
+  }
+
   function cardHTML(p) {
+    if (isMarket(p)) return marketCardHTML(p);
     let price, sub, old = '';
     if (isSupplier()) {
       price = cny(p.tiers[0][1]);
@@ -530,9 +562,10 @@
     $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${esc(c.id)}"><img src="${esc(c.src || img(c.img))}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${esc(c.name)}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
-    $('#popular').innerHTML = [...PRODUCTS].sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
+    $('#popular').innerHTML = [...PRODUCTS].filter((p) => !isMarket(p)).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
+    $('#poizonGrid').innerHTML = PRODUCTS.filter(isPoizon).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
-    ['#reelRail', '#groups', '#popular', '#feedPreview', '#homeCats'].forEach((sel) => {
+    ['#reelRail', '#groups', '#popular', '#poizonGrid', '#feedPreview', '#homeCats'].forEach((sel) => {
       const box = $(sel);
       box.closest('section').hidden = !box.innerHTML.trim();
     });
@@ -555,14 +588,16 @@
   }
 
   /* ---------- Каталог ---------- */
-  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }, { id: 'group', name: 'Совместный опт' }];
+  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'poizon', name: 'Оригиналы Poizon' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }, { id: 'group', name: 'Совместный опт' }];
+  const isPoizon = (p) => !!(p.market && p.market.source === 'poizon');
 
   function filterProducts(filter, q) {
     const ql = (q || '').toLowerCase();
     return PRODUCTS.filter((p) => {
       if (filter === 'new' && !p.isNew) return false;
       if (filter === 'group' && !p.group) return false;
-      if (filter === 'budget' && (isSupplier() ? wholesale(p, p.tiers[0][0]).landed : retail(p).total) > 1000) return false;
+      if (filter === 'poizon' && !isPoizon(p)) return false;
+      if (filter === 'budget' && (isMarket(p) ? marketFrom(p) : (isSupplier() ? wholesale(p, p.tiers[0][0]).landed : retail(p).total)) > 1000) return false;
       if (CATS.some((c) => c.id === filter) && p.cat !== filter) return false;
       if (!ql) return true;
       const catName = (CATS.find((c) => c.id === p.cat) || {}).name || '';
@@ -571,7 +606,7 @@
   }
 
   function renderCatalog() {
-    $('#catChips').innerHTML = [...FILTERS, ...CATS].map((c) => `<button class="chip" type="button" data-chip="${esc(c.id)}" aria-pressed="${state.cat === c.id}">${esc(c.name)}</button>`).join('');
+    $('#catChips').innerHTML = [...FILTERS.filter((f) => f.id !== 'poizon' || PRODUCTS.some(isPoizon)), ...CATS].map((c) => `<button class="chip" type="button" data-chip="${esc(c.id)}" aria-pressed="${state.cat === c.id}">${esc(c.name)}</button>`).join('');
     const priceOf = (p) => (isSupplier() ? p.tiers[0][1] : retail(p).total);
     const sorters = {
       pop: (a, b) => b.sold - a.sold,
@@ -1244,8 +1279,60 @@
     loadProductDetail(p);
   }
 
+  function marketProductHTML(p) {
+    const m = p.market;
+    const src = m.source;
+    const name = MARKET_NAME[src] || src;
+    const from = marketFrom(p), to = marketTo(p);
+    const sizes = (m.sizes || []).filter((x) => x && x.size);
+    const cheaper = m.poizon_rub_min && from && from < m.poizon_rub_min
+      ? `<div class="mkcompare">${icon('tag')}<span>В приложении Poizon — от <s>${rub(m.poizon_rub_min)}</s>. У нас дешевле на <b>${rub(m.poizon_rub_min - from)}</b></span></div>` : '';
+    return `<div class="pd" data-market="1" data-id="${esc(p.id)}">
+      <div class="pd__media"><img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720"><span class="mkbadge mkbadge--${esc(src)}">${esc(name)}</span>${favBtnHTML(p, 'pd__fav')}</div>
+      <div class="pd__info">
+        <div class="mkhead">${m.brand ? `<b>${esc(m.brand)}</b>` : ''}${src === 'poizon' ? `<span class="mkauth">${icon('check')}Оригинал · проверка подлинности Poizon</span>` : `<span class="mkauth mkauth--plain">с ${esc(name)}</span>`}</div>
+        <h2>${esc(p.t)}</h2>
+        <div class="pd__rating">${m.article ? `<span class="mono">${esc(m.article)}</span>` : ''}${p.sold ? `<span>${nf0.format(p.sold)} продаж на ${esc(name)}</span>` : ''}<span>Доставка ${daysText(SHIP.auto.days)}</span></div>
+        <div class="mkprice">
+          <div class="mkprice__row"><small>от</small><b>${rub(from)}</b>${to && to > from ? `<span>до ${rub(to)}</span>` : ''}</div>
+          <p>Под ключ: товар, доставка до России и наш сбор. ${to && to > from ? 'Точная цена зависит от размера.' : 'Точная цена зависит от варианта.'}</p>
+        </div>
+        ${cheaper}
+        ${sizes.length ? `<div class="stack" style="gap:10px">
+          <span class="sublabel">Размер${src === 'poizon' ? ' · китайский и наш' : ''}</span>
+          <div class="mksizes" role="group" aria-label="Размер">${sizes.map((x) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.size)}</b>${x.ru ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
+          ${m.fit_advice ? `<p class="mkfit">${icon('ruler')}<span>${esc(m.fit_advice)}</span></p>` : ''}
+        </div>` : ''}
+        <div class="mksteps">
+          <h3>Узнайте точную цену своего размера</h3>
+          <ol>
+            <li><b>Откройте товар на ${esc(name)}</b><span>Выберите размер${pdState.size ? ` ${esc(pdState.size)}` : ''} и посмотрите цену в юанях (¥).</span></li>
+            <li><b>Впишите цену или пришлите скриншот</b><span>Сразу посчитаем итог в рублях с доставкой.</span></li>
+            <li><b>Оплатите — агент выкупит</b><span>Перед выкупом сверит цену и наличие. Нет товара — вернём деньги.</span></li>
+          </ol>
+          <div class="mkbtns">
+            <a class="btn btn--line" href="${esc(m.url)}" target="_blank" rel="noopener nofollow">${icon('arrow-ur')}Открыть на ${esc(name)}</a>
+            <button class="btn btn--lime" type="button" data-mk-order>Указать цену и заказать</button>
+          </div>
+        </div>
+        <button class="btn btn--ghost" type="button" data-mk-ai>${icon('spark')}Спросить ASTTA AI про эту модель</button>
+        ${p.desc ? `<p class="pd__desc">${esc(p.desc)}</p>` : ''}
+      </div>
+    </div>`;
+  }
+  function orderMarketProduct() {
+    const p = byId[pdState.id];
+    if (!isMarket(p)) return;
+    const m = p.market;
+    const item = { title: p.t, price_cny: p.cny, price_cny_max: m.price_cny_max, sizes: (m.sizes || []).map((x) => x.size), size_prices: {} };
+    const size = pdState.size || '';
+    closeSheet(); // обнуляет pdState — размер взяли выше
+    openLinkCalc(m.url, { title: p.t, size, item });
+  }
+
   function productHTML() {
     const p = byId[pdState.id];
+    if (isMarket(p)) return marketProductHTML(p);
     const s = SUPPLIERS[p.sup];
     const sup = isSupplier();
     let priceBlock, breakdown;
@@ -2090,7 +2177,7 @@ ${aiCatalogJSON()}
   function openLinkCalc(text, pre = {}) {
     const url = text ? extractUrl(text) : '';
     const found = url && PLATFORMS.find(([re]) => re.test(url));
-    linkCalc = { text, url, platform: found ? found[1] : '', title: pre.title || '', photo: pre.photo || '', prefilled: Boolean(pre.price) };
+    linkCalc = { text, url, platform: found ? found[1] : '', title: pre.title || '', photo: pre.photo || '', prefilled: Boolean(pre.price), priced: Boolean(pre.price) };
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">${url ? 'Цена по ссылке' : 'Заказ по скриншоту'}</h2>
       ${url ? `<p class="linkcalc__src"><span class="linkcalc__tag">${found ? esc(found[1]) : 'Ссылка'}</span><span class="mono">${esc(url)}</span></p>` : ''}
@@ -2114,7 +2201,8 @@ ${aiCatalogJSON()}
         <div class="stack" id="lcActions"></div>
       </form></div>`);
     linkCalcOut();
-    if (url) loadMarket(text, found ? found[1] : '');
+    if (pre.item) renderMarket(pre.item);
+    else if (url) loadMarket(text, found ? found[1] : '');
   }
   // Боевой сайт с подключённым Apify: сами смотрим товар на Poizon/Taobao и подставляем цену.
   // Короткие ссылки «поделиться» (dw4.co, m.tb.cn) раскрывает сервер, поэтому спрашиваем его про любую ссылку, кроме 1688 и Pinduoduo.
@@ -2127,6 +2215,11 @@ ${aiCatalogJSON()}
     if (!document.contains(box)) return;
     const item = data.item;
     if (!item) { box.innerHTML = data.note && platform ? `<p class="note">${esc(data.note)}. Впишите цену вручную.</p>` : ''; return; }
+    renderMarket(item);
+  }
+  function renderMarket(item) {
+    const box = $('#lcMarket');
+    if (!box) return;
     const range = item.price_cny_max && item.price_cny_max > item.price_cny ? ` – ${cny(item.price_cny_max)} в зависимости от размера` : '';
     box.innerHTML = `<div class="lcmarket">
         <div><b>${esc(item.title || 'Товар с площадки')}</b>
@@ -2137,7 +2230,7 @@ ${aiCatalogJSON()}
     // Покупатель вписывает цену своего размера или присылает скриншот.
     if (linkCalc) { linkCalc.title = item.title || linkCalc.title; linkCalc.item = item; }
     const note = $('#lcNote');
-    if (note && !(linkCalc && linkCalc.prefilled)) {
+    if (note && !(linkCalc && linkCalc.prefilled && linkCalc.priced)) {
       note.textContent = 'Товар нашли. Выберите размер и впишите его цену в юанях из приложения — сразу посчитаем цену с доставкой. Перед выкупом агент сверит цену и наличие.';
     }
     // Размеры кнопками: иероглифы (цвет и т. п.) пропускаем, при цене размера подставляем её.
@@ -2145,8 +2238,9 @@ ${aiCatalogJSON()}
     const chips = $('#lcSizes');
     if (chips && sizes.length) {
       const prices = item.size_prices || {};
+      const chosen = ($('#lcSize') || {}).value || '';
       chips.hidden = false;
-      chips.innerHTML = sizes.map((x) => `<button class="chip" type="button" data-lc-size="${esc(x)}">${esc(x)}${prices[x] ? ` · ${cny(prices[x])}` : ''}</button>`).join('');
+      chips.innerHTML = sizes.map((x) => `<button class="chip${x === chosen ? ' is-on' : ''}" type="button" data-lc-size="${esc(x)}">${esc(x)}${prices[x] ? ` · ${cny(prices[x])}` : ''}</button>`).join('');
     }
   }
   function pickLinkSize(size) {
@@ -2580,6 +2674,10 @@ ${aiCatalogJSON()}
     if (d.photoOrder !== undefined) { openPhotoOrder(); return; }
     if (d.lcSize !== undefined) { pickLinkSize(d.lcSize); return; }
     if (d.fav !== undefined) { toggleFav(d.fav); return; }
+    if (d.gotoChip) { state.cat = d.gotoChip; go('catalog'); renderCatalog(); return; }
+    if (d.mkSize !== undefined) { pdState.size = pdState.size === d.mkSize ? null : d.mkSize; rerenderProduct(); return; }
+    if (d.mkOrder !== undefined) { orderMarketProduct(); return; }
+    if (d.mkAi !== undefined) { const p = byId[pdState.id]; closeSheet(); aiAsk(`Расскажи коротко про ${p.t}: для кого, плюсы и минусы по обзорам, как садится по размеру`); return; }
     if (d.orderOpen !== undefined) { openOrder(d.orderOpen); return; }
     if (d.ofilter) { prof.ofilter = d.ofilter; renderProfile(); return; }
     if (d.viewedClear !== undefined) { clearViewed(); return; }
@@ -3072,6 +3170,7 @@ ${aiCatalogJSON()}
       sizes: c.size_grid || null, sale: c.sale_percent || 0, isNew: !!c.is_new, bulky: !!c.bulky,
       desc: '', image: c.image || '',
       feeR: c.fee_retail != null ? Number(c.fee_retail) : null, feeW: c.fee_wholesale != null ? Number(c.fee_wholesale) : null,
+      market: c.market || null, retailRub: c.retail_rub != null ? Number(c.retail_rub) : null,
       live: true,
     };
   }

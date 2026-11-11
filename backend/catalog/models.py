@@ -106,6 +106,9 @@ class Product(models.Model):
     # По ссылке агент перезаказывает товар у поставщика, а покупатель находит его, вставив ту же ссылку.
     source_url = models.URLField(_("ссылка у поставщика"), max_length=500, blank=True,
                                  help_text=_("1688, Taobao, Poizon или сайт поставщика"))
+    # Товар с площадки (Poizon, Taobao): цена «от–до», размеры, ссылки. Заказывается по цене размера,
+    # которую называет покупатель, как заказ по ссылке. Пусто — обычный товар поставщика.
+    market = models.JSONField(_("данные площадки"), default=dict, blank=True)
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.MODERATION)
     moderation_note = models.CharField(_("комментарий модератора"), max_length=300, blank=True)
     rating = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
@@ -126,6 +129,10 @@ class Product(models.Model):
 
     def __str__(self):
         return self.title_ru
+
+    @property
+    def is_market(self) -> bool:
+        return bool((self.market or {}).get("source"))
 
     @property
     def size_list(self) -> list[str]:
@@ -238,3 +245,50 @@ class PostImage(models.Model):
 
     def __str__(self):
         return f"{self.post} #{self.position}"
+
+
+class MarketImport(models.Model):
+    """Загрузка товаров с Poizon или Taobao по поисковым запросам (через Apify)."""
+
+    class Source(models.TextChoices):
+        POIZON = "poizon", "Poizon"
+        TAOBAO = "taobao", "Taobao"
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", _("В очереди")
+        RUNNING = "running", _("Собираем")
+        DONE = "done", _("Готово")
+        FAILED = "failed", _("Ошибка")
+
+    source = models.CharField(_("площадка"), max_length=16, choices=Source.choices, default=Source.POIZON)
+    queries = models.TextField(_("что искать"), help_text=_(
+        "По одному запросу в строке: «nike dunk low», «new balance 530», «худи оверсайз». "
+        "Для Taobao запросы сами переведём на китайский."))
+    category = models.ForeignKey(Category, verbose_name=_("категория на сайте"), on_delete=models.PROTECT,
+                                 related_name="+")
+    per_query = models.PositiveSmallIntegerField(_("товаров на запрос"), default=30,
+                                                 validators=[MinValueValidator(1), MaxValueValidator(300)],
+                                                 help_text=_("Poizon ≈ 0,25 ₽ за товар, Taobao ≈ 0,3 ₽."))
+    publish = models.BooleanField(_("сразу опубликовать"), default=False,
+                                  help_text=_("Выключено — товары придут черновиками, опубликуете сами."))
+    status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.QUEUED)
+    created = models.PositiveIntegerField(_("новых"), default=0)
+    updated = models.PositiveIntegerField(_("обновлено"), default=0)
+    skipped = models.PositiveIntegerField(_("пропущено"), default=0)
+    log = models.TextField(_("журнал"), blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("кто запустил"), null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(_("создан"), auto_now_add=True)
+    finished_at = models.DateTimeField(_("завершён"), null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("импорт с площадки")
+        verbose_name_plural = _("импорт с Poizon и Taobao")
+
+    def __str__(self):
+        return f"{self.get_source_display()}: {self.queries.splitlines()[0][:60] if self.queries else ''}"
+
+    @property
+    def query_list(self) -> list[str]:
+        return [q.strip() for q in self.queries.splitlines() if q.strip()][:20]

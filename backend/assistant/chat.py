@@ -15,8 +15,9 @@ from django.db.models import Q
 from assistant import llm
 from assistant.models import AiLog
 from assistant.services import facts_text, find_articles
+from catalog.market import retail_rub
 from catalog.models import Product
-from pricing.services import PricingContext, PricingError, quote
+from pricing.services import PricingContext, PricingError
 
 MAX_ROUNDS = 4  # сколько раз подряд модель может вызвать инструменты, прежде чем ответить
 MAX_HISTORY = 12
@@ -139,10 +140,7 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
             match = "popular"
     results = []
     for product in qs.order_by("-sold_count", "id")[:60]:
-        try:
-            price = quote(product, ctx=ctx).total_rub if ctx else None
-        except PricingError:
-            price = None
+        price = retail_rub(product, ctx)
         if max_price_rub and price is not None and price > Decimal(str(max_price_rub)):
             continue
         hay = f"{product.title_ru} {product.description_ru} {product.category.name_ru}".lower()
@@ -151,22 +149,31 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
     results.sort(key=lambda r: (-r[0], -r[1].sold_count))
     return [{"slug": p.slug, "title": p.title_ru, "price_rub": int(price) if price is not None else None,
              "category": p.category.name_ru, "supplier": p.supplier.name, "sizes": p.size_list[:12],
-             "sale_percent": p.sale_percent, "match": match} for _, p, price in results[:CATALOG_LIMIT]]
+             "sale_percent": p.sale_percent, "match": match, **_market_note(p)}
+            for _, p, price in results[:CATALOG_LIMIT]]
+
+
+def _market_note(product) -> dict:
+    """Товар с Poizon/Taobao: цена «от» — точную покупатель смотрит для своего размера по ссылке."""
+    if not product.is_market:
+        return {}
+    return {"price_is_from": True, "marketplace": product.market.get("source"),
+            "note": "цена «от»: точная зависит от размера — пусть покупатель откроет товар на сайте, нажмёт "
+                    "«Открыть на площадке» и пришлёт цену своего размера в юанях или скриншот"}
 
 
 def get_product(slug: str, ctx=None) -> dict:
     product = _published().filter(slug=slug).first()
     if product is None:
         return {"error": "товар не найден"}
-    try:
-        price = int(quote(product, ctx=ctx).total_rub) if ctx else None
-    except PricingError:
-        price = None
+    retail = retail_rub(product, ctx)
+    price = int(retail) if retail is not None else None
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     return {"slug": product.slug, "title": product.title_ru, "description": product.description_ru[:1200],
             "price_rub": price, "sizes": product.size_list, "colors": product.color_list,
             "weight_kg": float(product.weight_kg), "bulky": product.bulky,
-            "wholesale": [{"from_qty": t.min_qty, "price_cny": float(t.price_cny)} for t in tiers]}
+            "wholesale": [{"from_qty": t.min_qty, "price_cny": float(t.price_cny)} for t in tiers],
+            **_market_note(product)}
 
 
 def search_knowledge(query: str) -> list[dict]:
@@ -203,10 +210,8 @@ def inspect_link(text: str, ctx=None) -> dict:
               "title_from_share": share_title(text) or None, "url": info.url}
     product = find_in_catalog(info)
     if product is not None:
-        try:
-            price = int(quote(product, ctx=ctx).total_rub) if ctx else None
-        except PricingError:
-            price = None
+        retail = retail_rub(product, ctx)
+        price = int(retail) if retail is not None else None
         result["in_catalog"] = {"slug": product.slug, "title": product.title_ru, "price_rub": price}
     else:
         result["in_catalog"] = None
