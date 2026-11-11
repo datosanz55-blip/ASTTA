@@ -7,7 +7,7 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 
 from catalog.models import Category, Product, Supplier, SupplierPost
-from pricing.services import PricingContext, PricingError, quote
+from pricing.services import PricingContext, PricingError
 
 router = Router(tags=["Каталог"])
 
@@ -48,6 +48,8 @@ class ProductCard(Schema):
     tiers: list[TierOut]
     fee_retail: Decimal | None
     fee_wholesale: Decimal | None
+    # Товар с Poizon или Taobao: цена «от–до», размеры, ссылка на площадку. None — обычный товар.
+    market: dict | None = None
 
 
 class SupplierOut(Schema):
@@ -96,10 +98,9 @@ def _image_urls(request, product):
 
 
 def _card(request, product, ctx):
-    try:
-        retail = quote(product, ctx=ctx).total_rub if ctx else None
-    except PricingError:
-        retail = None
+    from catalog.market import market_out, retail_rub
+
+    retail = retail_rub(product, ctx)
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     images = _image_urls(request, product)
     return {
@@ -124,6 +125,7 @@ def _card(request, product, ctx):
         "tiers": tiers,
         "fee_retail": ctx.fee_for(product, "retail") if ctx else None,
         "fee_wholesale": ctx.fee_for(product, "wholesale") if ctx else None,
+        "market": market_out(product),
     }
 
 

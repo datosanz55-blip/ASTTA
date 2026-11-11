@@ -169,6 +169,8 @@ CELERY_BEAT_SCHEDULE = {
     "update-cny-rate": {"task": "pricing.tasks.update_cny_rate", "schedule": 60 * 60 * 3},
     # Неоплаченные за сутки заказы снимаем: цена и наличие у поставщика уже могли измениться.
     "cancel-unpaid-orders": {"task": "orders.tasks.cancel_unpaid_orders", "schedule": 60 * 60},
+    # Цены товаров с Poizon и Taobao меняются: раз в неделю обновляем, снятые с продажи прячем.
+    "refresh-market-prices": {"task": "catalog.tasks.refresh_market_prices", "schedule": 60 * 60 * 24 * 7},
 }
 
 # Защита админки (подробно в accounts/security.py).

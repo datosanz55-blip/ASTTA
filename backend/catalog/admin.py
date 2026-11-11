@@ -17,6 +17,7 @@ from catalog.images import ImageError, prepare_image
 from catalog.importer import build_template, import_catalog
 from catalog.models import (
     Category,
+    MarketImport,
     PostImage,
     PriceTier,
     Product,
@@ -347,3 +348,58 @@ class ProductAdmin(ModelAdmin):
             "suppliers": Supplier.objects.filter(is_active=True),
         }
         return TemplateResponse(request, "admin/catalog/product/import.html", context)
+
+
+@admin.register(MarketImport)
+class MarketImportAdmin(ModelAdmin):
+    """Загрузка товаров с Poizon и Taobao: заполнили запросы — сохранили — через пару минут товары в каталоге."""
+
+    list_display = ("__str__", "source", "category", "status_badge", "created", "updated", "skipped", "created_at")
+    list_filter = ("source", "status")
+    fields = ("source", "queries", "category", "per_query", "publish", "status", "created", "updated", "skipped",
+              "log", "products_link", "created_by", "created_at", "finished_at")
+    readonly_fields = ("status", "created", "updated", "skipped", "log", "products_link", "created_by", "created_at",
+                       "finished_at")
+    actions = ["run_again"]
+
+    @display(description=_("статус"), label={"Готово": "success", "Ошибка": "danger", "Собираем": "warning",
+                                              "В очереди": "info"})
+    def status_badge(self, obj):
+        return obj.get_status_display()
+
+    @display(description=_("товары"))
+    def products_link(self, obj):
+        if not obj.pk:
+            return "Появятся после загрузки"
+        url = reverse("admin:catalog_product_changelist") + f"?supplier__code__exact={obj.source}"
+        return format_html('<a href="{}">Открыть товары {} в каталоге →</a>', url, obj.get_source_display())
+
+    def get_readonly_fields(self, request, obj=None):
+        # Запущенный импорт не меняем: чтобы загрузить ещё, создайте новый или нажмите «Запустить снова».
+        if obj and obj.pk:
+            return [f for f in self.fields if f != "publish"]
+        return self.readonly_fields
+
+    def save_model(self, request, obj, form, change):
+        from django.db import transaction
+
+        from catalog.tasks import run_market_import
+
+        is_new = obj.pk is None
+        if is_new:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+        if is_new:
+            transaction.on_commit(lambda: run_market_import.delay(obj.pk))
+            messages.info(request, "Импорт запущен. Обновите страницу через пару минут: здесь появится, сколько "
+                                   "товаров загрузили.")
+
+    @admin.action(description=_("Запустить снова (обновить цены и добавить новые)"))
+    def run_again(self, request, queryset):
+        from catalog.tasks import run_market_import
+
+        for job in queryset:
+            MarketImport.objects.filter(pk=job.pk).update(status=MarketImport.Status.QUEUED, created=0, updated=0,
+                                                           skipped=0, finished_at=None)
+            run_market_import.delay(job.pk)
+        messages.info(request, f"Запущено: {queryset.count()}")
