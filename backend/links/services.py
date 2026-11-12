@@ -195,17 +195,26 @@ def category_weight(category: Category | None) -> Decimal | None:
     return Decimal(avg).quantize(Decimal("0.01")) if avg else None
 
 
+def link_pricing() -> tuple:
+    """Настройки цены для заказа по ссылке: (PricingConfig, PricingContext)."""
+    config = PricingConfig.load()
+    ctx = PricingContext(config=config, rate=config.link_rate) if config.link_rate is not None \
+        else PricingContext(config=config)
+    return config, ctx
+
+
 def estimate(price_cny: Decimal, qty: int = 1, marketplace: Marketplace | None = None,
-             category: Category | None = None, weight_kg: Decimal | None = None, bulky: bool = False) -> Estimate:
+             category: Category | None = None, weight_kg: Decimal | None = None, bulky: bool = False,
+             pricing: tuple | None = None) -> Estimate:
     """Предварительная цена под ключ по цене с площадки.
 
     Если в настройках цены задан курс для заказа по ссылке, считаем просто: цена × этот курс + логистика за штуку
     (сбор уже в курсе). Иначе как товары каталога: курс ЦБ с надбавкой, доставка по весу, сервисный сбор.
     Надбавка площадки и доставка по Китаю добавляются в обоих случаях.
     """
-    config = PricingConfig.load()
+    # pricing — (config, ctx) из link_pricing(): для списка товаров настройки читаем один раз, а не на каждый товар.
+    config, ctx = pricing or link_pricing()
     simple = config.link_rate is not None
-    ctx = PricingContext(config=config, rate=config.link_rate) if simple else PricingContext(config=config)
     notes = ["Цена предварительная: точную пришлёт агент после проверки товара и продавца."]
     if config.link_delivery_rub is not None:
         weight_kg = weight_kg or Decimal("0")

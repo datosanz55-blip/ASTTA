@@ -1559,3 +1559,9 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .pd__media--market .gal__thumb { background: #fff; }
 .pd__media--market .gal__thumb img { background: #fff; }
 .mkbtns .btn { width: 100%; white-space: normal; }
+
+/* Боевой сайт грузит настоящий каталог: демо-витрину на это время прячем (см. loadLive) */
+.is-booting main { visibility: hidden; }
+.is-booting body::after { content: ""; position: fixed; left: 50%; top: 45%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--lime); animation: bootSpin .8s linear infinite; }
+@keyframes bootSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .is-booting body::after { animation: none; } }

@@ -3219,17 +3219,17 @@ ${aiCatalogJSON()}
 
   async function loadLive() {
     if (!/^https?:$/.test(location.protocol)) return;
-    let site;
-    try { site = await api('/api/site'); } catch (e) { return; } // сервера нет: остаёмся в демо
-    let sups, cats, feed, items = [];
+    // Сайт показываем по первой странице товаров (60 самых популярных), остальные страницы догружаем в фоне:
+    // раньше ждали весь каталог по очереди, и 10+ секунд на экране висела демо-витрина.
+    let site, sups, cats, feed, first;
     try {
-      [sups, cats, feed] = await Promise.all([api('/api/suppliers'), api('/api/categories'), api('/api/feed?page_size=60')]);
-      for (let page = 1, total = 1; items.length < total && page <= 20; page++) {
-        const r = await api(`/api/products?sort=popular&page_size=60&page=${page}`);
-        items = items.concat(r.items); total = r.total;
-        if (!r.items.length) break;
-      }
+      site = await api('/api/site');
+    } catch (e) { return; } // сервера нет: остаёмся в демо
+    try {
+      [sups, cats, feed, first] = await Promise.all([api('/api/suppliers'), api('/api/categories'),
+        api('/api/feed?page_size=60'), api('/api/products?sort=popular&page_size=60&page=1')]);
     } catch (e) { return; }
+    const items = first.items;
 
     live.on = true; live.site = site;
     if (site.rate) { RATE = Number(site.rate); rateText = RATE.toFixed(2).replace('.', ','); }
@@ -3246,16 +3246,7 @@ ${aiCatalogJSON()}
       SUPPLIERS[s.code] = { name: s.name, about: s.about || s.city || '', short: s.code.slice(0, 2).toUpperCase(), followers: 0,
         fact: s.fact_days || (SHIP.auto ? SHIP.auto.days : [18, 25]) };
     });
-    const products = items.map(liveProduct).filter((p) => SUPPLIERS[p.sup]);
-    replaceAll(PRODUCTS, products);
-    Object.keys(byId).forEach((k) => delete byId[k]);
-    products.forEach((p) => { byId[p.id] = p; });
-
-    const demoCat = Object.fromEntries(CATS.map((c) => [c.id, c.img]));
-    replaceAll(CATS, cats.filter((c) => products.some((p) => p.cat === c.slug)).map((c) => {
-      const first = products.find((p) => p.cat === c.slug);
-      return { id: c.slug, name: c.name_ru, img: demoCat[c.slug] || 'cat-home', src: demoCat[c.slug] ? '' : (first && first.image) || '' };
-    }));
+    applyLiveProducts(items, cats);
     replaceAll(POSTS, feed.items.map((f) => ({
       id: f.id, sup: f.supplier_code, supName: f.supplier, pid: f.product ? f.product.slug : null, time: relTime(f.created_at),
       auto: false, kind: f.kind, likes: 0, comments: 0, text: f.text, photo: f.images[0] || '',
@@ -3266,8 +3257,7 @@ ${aiCatalogJSON()}
     tr.rendered = false;
     AI_INTENTS.forEach((i) => { i.slots = i.slots.map((sl) => sl.filter((id) => byId[id])).filter((sl) => sl.length); });
     replaceAll(AI_INTENTS, AI_INTENTS.filter((i) => i.slots.length));
-    const saved = state.savedCarts || state.carts;
-    ['buyer', 'supplier'].forEach((m) => { state.carts[m] = (saved[m] || []).filter((i) => byId[i.id]); });
+    filterCarts();
     state.family.items = state.family.items.filter((it) => byId[it.pid]);
     state.pools = state.pools.filter((g) => byId[g.pid]);
     state.tg = null;
@@ -3278,7 +3268,41 @@ ${aiCatalogJSON()}
     if (live.tma) state.tg = live.tmaUser;
     renderAll();
     updateCartCount();
+    document.documentElement.classList.remove('is-booting');
+    loadRestOfCatalog(items, first.total, cats);
     await loadMe();
+  }
+
+  function applyLiveProducts(items, cats) {
+    const products = items.map(liveProduct).filter((p) => SUPPLIERS[p.sup]);
+    replaceAll(PRODUCTS, products);
+    Object.keys(byId).forEach((k) => delete byId[k]);
+    products.forEach((p) => { byId[p.id] = p; });
+    const demoCat = Object.fromEntries(CATS.map((c) => [c.id, c.img]));
+    replaceAll(CATS, cats.filter((c) => products.some((p) => p.cat === c.slug)).map((c) => {
+      const top = products.find((p) => p.cat === c.slug);
+      return { id: c.slug, name: c.name_ru, img: demoCat[c.slug] || 'cat-home', src: demoCat[c.slug] ? '' : (top && top.image) || '' };
+    }));
+  }
+  // Корзина из браузера: только товары, которые есть в каталоге. Сохранённую копию не трогаем —
+  // после догрузки остальных страниц вернутся и товары оттуда.
+  function filterCarts() {
+    const saved = state.savedCarts || state.carts;
+    ['buyer', 'supplier'].forEach((m) => { state.carts[m] = (saved[m] || []).filter((i) => byId[i.id]); });
+  }
+  async function loadRestOfCatalog(items, total, cats) {
+    const pages = Math.min(20, Math.ceil(total / 60));
+    if (pages < 2) return;
+    let rest;
+    try {
+      rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => api(`/api/products?sort=popular&page_size=60&page=${i + 2}`)));
+    } catch (e) { return; } // часть каталога не догрузилась: остаёмся с первой страницей
+    const ids = new Set(items.map((c) => c.slug));
+    const all = items.concat(...rest.map((r) => r.items.filter((c) => !ids.has(c.slug))));
+    applyLiveProducts(all, cats);
+    filterCarts();
+    renderAll();
+    if (pdState) rerenderProduct();
   }
 
   // Профиль и заказы: вошедший покупатель — из /api/me, гость — по токенам заказов, сохранённым в браузере.
@@ -3580,7 +3604,11 @@ ${aiCatalogJSON()}
     setMode(state.mode, true);
     route();
     initHero();
-    loadLive().then(() => { if (live.on) finishWidgetLogin(); });
+    if (/(^|\.)astta\.ru$/.test(location.hostname)) {
+      document.documentElement.classList.add('is-booting');
+      setTimeout(() => document.documentElement.classList.remove('is-booting'), 6000);
+    }
+    loadLive().then(() => { if (live.on) finishWidgetLogin(); }).finally(() => document.documentElement.classList.remove('is-booting'));
     // Ширина кнопок меняется, когда загрузится шрифт и когда переключатель переезжает из шапки в строку ниже.
     window.addEventListener('resize', placeModeThumbs);
     if (document.fonts) document.fonts.ready.then(placeModeThumbs);

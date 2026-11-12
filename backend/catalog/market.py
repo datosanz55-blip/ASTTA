@@ -70,39 +70,53 @@ def _num(value) -> float | None:
 
 # ---------- Цена на сайте ----------
 
-def link_total(product: Product, price_cny) -> Decimal | None:
-    """Товар с площадки заказывают как по ссылке: и цену считаем той же формулой (links.services.estimate)."""
+def _memo(memo: dict | None) -> dict:
+    """Настройки цены и площадки для заказа по ссылке — один раз на страницу каталога, а не на каждый товар
+    (иначе 8 лишних запросов к базе на товар, и список из 60 товаров отвечает секунды)."""
     from links.models import Marketplace
+    from links.services import link_pricing
+
+    memo = memo if memo is not None else {}
+    if "pricing" not in memo:
+        memo["pricing"] = link_pricing()
+        memo["places"] = {m.code: m for m in Marketplace.objects.all()}
+    return memo
+
+
+def link_total(product: Product, price_cny, memo: dict | None = None) -> Decimal | None:
+    """Товар с площадки заказывают как по ссылке: и цену считаем той же формулой (links.services.estimate)."""
     from links.services import estimate
     from pricing.services import PricingError
 
     if not price_cny:
         return None
     try:
-        place = Marketplace.objects.filter(code=product.market.get("source")).first()
-        return estimate(Decimal(str(price_cny)), 1, place).total_rub
+        memo = _memo(memo)
+        place = memo["places"].get(product.market.get("source"))
+        return estimate(Decimal(str(price_cny)), 1, place, pricing=memo["pricing"]).total_rub
     except (PricingError, InvalidOperation):
         return None
 
 
-def retail_rub(product: Product, ctx) -> Decimal | None:
+def retail_rub(product: Product, ctx, memo: dict | None = None) -> Decimal | None:
     """Цена под ключ за штуку для карточки и для ИИ: у товара с площадки — «от» по формуле ссылки."""
     from pricing.services import PricingError, quote
 
     if product.is_market:
-        return link_total(product, product.price_cny)
+        return link_total(product, product.price_cny, memo)
     try:
         return quote(product, ctx=ctx).total_rub if ctx else None
     except PricingError:
         return None
 
 
-def market_out(product: Product) -> dict | None:
+def market_out(product: Product, memo: dict | None = None) -> dict | None:
     if not product.is_market:
         return None
     m = product.market
     return {"source": m.get("source"), "url": m.get("url", ""), "poizon_url": m.get("poizon_url", ""),
-            "price_cny_max": m.get("price_cny_max"), "retail_max_rub": link_total(product, m.get("price_cny_max")),
+            "price_cny_max": m.get("price_cny_max"),
+            "retail_max_rub": link_total(product, m.get("price_cny_max"), memo),
             "poizon_rub_min": m.get("poizon_rub_min"), "sizes": m.get("sizes", []),
             "fit_advice": m.get("fit_advice", ""), "brand": m.get("brand", ""), "article": m.get("article", ""),
             "model3d": m.get("model3d", "")}
