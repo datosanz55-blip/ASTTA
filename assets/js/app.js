@@ -563,11 +563,13 @@
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${esc(c.id)}"><img src="${esc(c.src || img(c.img))}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${esc(c.name)}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     $('#popular').innerHTML = [...PRODUCTS].filter((p) => !isMarket(p)).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
-    $('#poizonGrid').innerHTML = PRODUCTS.filter(isPoizon).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
+    // Блока может не быть, если сервер отдал старый index.html к новому app.js: тогда просто пропускаем его.
+    const poizonGrid = $('#poizonGrid');
+    if (poizonGrid) poizonGrid.innerHTML = PRODUCTS.filter(isPoizon).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
     ['#reelRail', '#groups', '#popular', '#poizonGrid', '#feedPreview', '#homeCats'].forEach((sel) => {
       const box = $(sel);
-      box.closest('section').hidden = !box.innerHTML.trim();
+      if (box) box.closest('section').hidden = !box.innerHTML.trim();
     });
     const empty = $('#liveEmpty');
     if (empty) empty.hidden = !(live.on && !PRODUCTS.length);
