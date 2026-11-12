@@ -350,6 +350,25 @@ class ProductAdmin(ModelAdmin):
         return TemplateResponse(request, "admin/catalog/product/import.html", context)
 
 
+def _start_import(request, job_id: int):
+    """Отправить импорт в фоновую очередь. Очередь недоступна — не 500, а понятная ошибка у импорта."""
+    from django.utils import timezone
+
+    from catalog.tasks import run_market_import
+
+    try:
+        run_market_import.delay(job_id)
+    except Exception as exc:  # брокер Redis недоступен или не настроен
+        MarketImport.objects.filter(pk=job_id).update(
+            status=MarketImport.Status.FAILED, finished_at=timezone.now(),
+            log=f"Фоновые задачи недоступны ({exc.__class__.__name__}: {str(exc)[:200]}). "
+                "Проверьте контейнеры worker и redis, потом выберите импорт и «Запустить снова».")
+        messages.error(request, "Не удалось запустить импорт: фоновые задачи на сервере недоступны.")
+        return
+    messages.info(request, "Импорт запущен. Обновите страницу через пару минут: здесь появится, сколько "
+                           "товаров загрузили.")
+
+
 @admin.register(MarketImport)
 class MarketImportAdmin(ModelAdmin):
     """Загрузка товаров с Poizon и Taobao: заполнили запросы — сохранили — через пару минут товары в каталоге."""
@@ -383,23 +402,16 @@ class MarketImportAdmin(ModelAdmin):
     def save_model(self, request, obj, form, change):
         from django.db import transaction
 
-        from catalog.tasks import run_market_import
-
         is_new = obj.pk is None
         if is_new:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
         if is_new:
-            transaction.on_commit(lambda: run_market_import.delay(obj.pk))
-            messages.info(request, "Импорт запущен. Обновите страницу через пару минут: здесь появится, сколько "
-                                   "товаров загрузили.")
+            transaction.on_commit(lambda: _start_import(request, obj.pk))
 
     @admin.action(description=_("Запустить снова (обновить цены и добавить новые)"))
     def run_again(self, request, queryset):
-        from catalog.tasks import run_market_import
-
         for job in queryset:
             MarketImport.objects.filter(pk=job.pk).update(status=MarketImport.Status.QUEUED, created=0, updated=0,
                                                            skipped=0, finished_at=None)
-            run_market_import.delay(job.pk)
-        messages.info(request, f"Запущено: {queryset.count()}")
+            _start_import(request, job.pk)

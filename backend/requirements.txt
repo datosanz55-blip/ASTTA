@@ -4,6 +4,8 @@ django-unfold==0.110.0
 psycopg[binary]==3.3.6
 celery==5.6.3
 redis==8.1.0
+# Нужен клиенту Redis внутри Celery (kombu); без него фоновые задачи не запускаются.
+packaging==25.0
 openpyxl==3.1.5
 pillow==13.0.0
 httpx==0.28.1
