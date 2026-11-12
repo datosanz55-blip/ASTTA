@@ -1318,7 +1318,6 @@
           </div>
         </div>
         <button class="btn btn--ghost" type="button" data-mk-ai>${icon('spark')}Спросить ASTTA AI про эту модель</button>
-        ${p.desc ? `<p class="pd__desc">${esc(p.desc)}</p>` : ''}
       </div>
     </div>`;
   }

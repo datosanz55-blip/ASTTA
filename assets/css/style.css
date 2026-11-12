@@ -1488,7 +1488,7 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .is-pop { animation: favPop .45s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes favPop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .is-pop { animation: none; } }
-.pd__media { position: relative; }
+@media (max-width: 899px) { .pd__media { position: relative; } }
 @media (max-width: 480px) {
   .card__media .badge { max-width: calc(100% - 64px); padding: 5px 8px; font-size: 11px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -1530,9 +1530,8 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .mksteps li { position: relative; display: flex; flex-direction: column; gap: 2px; padding-left: 42px; counter-increment: mk; }
 .mksteps li::before { content: counter(mk); position: absolute; left: 0; top: -2px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--lime); color: var(--on-lime); font: 700 15px/1 var(--font-display); }
 .mksteps li span { color: var(--muted); font-size: 14px; }
-.mkbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mkbtns { display: flex; flex-direction: column-reverse; gap: 10px; }
 .mkbtns .btn { justify-content: center; text-align: center; }
-@media (max-width: 420px) { .mkbtns { grid-template-columns: 1fr; } }
 .mkblock__sub { display: flex; gap: 8px; align-items: flex-start; margin-top: -8px; color: var(--muted); font-size: 14.5px; }
 .mkblock__sub .ic { width: 18px; height: 18px; flex: none; color: var(--lime); stroke-width: 2.4; }
 .block__head button.more { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; }
@@ -1559,3 +1558,4 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .pd__media--market .pd__fav.is-on { color: #ff4d6d; }
 .pd__media--market .gal__thumb { background: #fff; }
 .pd__media--market .gal__thumb img { background: #fff; }
+.mkbtns .btn { width: 100%; white-space: normal; }
