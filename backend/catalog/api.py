@@ -100,7 +100,8 @@ def _image_urls(request, product):
 def _card(request, product, ctx):
     from catalog.market import market_out, retail_rub
 
-    retail = retail_rub(product, ctx)
+    memo = request.__dict__.setdefault("_link_pricing", {})  # один раз на запрос, см. catalog.market._memo
+    retail = retail_rub(product, ctx, memo)
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     images = _image_urls(request, product)
     return {
@@ -125,7 +126,7 @@ def _card(request, product, ctx):
         "tiers": tiers,
         "fee_retail": ctx.fee_for(product, "retail") if ctx else None,
         "fee_wholesale": ctx.fee_for(product, "wholesale") if ctx else None,
-        "market": market_out(product),
+        "market": market_out(product, memo),
     }
 
 
