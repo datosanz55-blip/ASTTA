@@ -1538,3 +1538,24 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .block__head button.more { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; }
 .pd__fav { top: auto; bottom: 14px; }
 .card__meta span { white-space: nowrap; }
+
+/* Фото товаров с площадок — целиком на белом фоне: кроссовок не обрезается по краям */
+.card--market .card__media { background: #fff; }
+.card--market .card__img { object-fit: contain; padding: 8% 6%; background: #fff; }
+.pd__media--market { background: #fff; border-radius: var(--r-md); overflow: hidden; }
+.pd__media--market .gal__img, .pd__media--market > img { object-fit: contain; background: #fff; padding: 6%; border-radius: 0; }
+.gal { position: relative; }
+.gal__track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.gal__track::-webkit-scrollbar { display: none; }
+.gal__track .gal__img { flex: 0 0 100%; width: 100%; aspect-ratio: 1 / 1; scroll-snap-align: center; }
+.gal__count { position: absolute; left: 14px; bottom: 90px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #111; background: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.gal__thumbs { display: flex; gap: 8px; padding: 10px 12px 12px; overflow-x: auto; scrollbar-width: none; background: #fff; }
+.gal__thumbs::-webkit-scrollbar { display: none; }
+.gal__thumb { flex: none; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 10px; background: #f4f4f4; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); cursor: pointer; overflow: hidden; }
+.gal__thumb img { width: 100%; height: 100%; object-fit: contain; }
+.gal__thumb.is-on { box-shadow: inset 0 0 0 2px #111; }
+.pd__media--market .pd__fav { background: rgba(255,255,255,.85); color: #111; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.pd__media--market:has(.gal) .pd__fav { bottom: 90px; }
+.pd__media--market .pd__fav.is-on { color: #ff4d6d; }
+.pd__media--market .gal__thumb { background: #fff; }
+.pd__media--market .gal__thumb img { background: #fff; }

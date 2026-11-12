@@ -40,7 +40,7 @@ SUPPLIERS = {
 IMAGE_HOSTS = ("poizon.com", "dewu.com", "dewucdn.com", "poizon.net", "thepoizon.ru", "alicdn.com", "taobaocdn.com",
                "tbcdn.cn", "tmall.com", "taobao.com")
 MAX_IMAGE = 10 * 1024 * 1024
-IMAGES_PER_PRODUCT = 4
+IMAGES_PER_PRODUCT = 8
 RUN_TIMEOUT = 30 * 60
 POLL_SECONDS = 10
 GONE_NOTE = "Нет в продаже на площадке (скрыт при обновлении цен)"
@@ -104,7 +104,8 @@ def market_out(product: Product) -> dict | None:
     return {"source": m.get("source"), "url": m.get("url", ""), "poizon_url": m.get("poizon_url", ""),
             "price_cny_max": m.get("price_cny_max"), "retail_max_rub": link_total(product, m.get("price_cny_max")),
             "poizon_rub_min": m.get("poizon_rub_min"), "sizes": m.get("sizes", []),
-            "fit_advice": m.get("fit_advice", ""), "brand": m.get("brand", ""), "article": m.get("article", "")}
+            "fit_advice": m.get("fit_advice", ""), "brand": m.get("brand", ""), "article": m.get("article", ""),
+            "model3d": m.get("model3d", "")}
 
 
 # ---------- Apify ----------
@@ -183,6 +184,8 @@ def poizon_item(row: dict) -> dict | None:
         "poizon_url": row.get("poizonUrl") or "",
         "poizon_rub_min": _num(row.get("poizonMinPriceRub")),
         "fit_advice": str(row.get("poizonFitAdvice") or "")[:200],
+        # 3D/AR-модель Poizon, если есть: формат пока не известен — сохраняем ссылку, чтобы потом сделать просмотр.
+        "model3d": row.get("model3dUrl") if isinstance(row.get("model3dUrl"), str) else "",
         "category": str(row.get("poizonCategory") or row.get("categoryName") or ""),
         "sold": int(sold) if sold.isdigit() and len(sold) < 9 else 0,
     }
@@ -316,6 +319,7 @@ def market_data(source: str, item: dict) -> dict:
         "source": source, "url": item["url"], "poizon_url": item.get("poizon_url", ""),
         "price_cny_max": item.get("price_cny_max"), "poizon_rub_min": item.get("poizon_rub_min"),
         "sizes": item.get("sizes", []), "fit_advice": item.get("fit_advice", ""), "brand": item.get("brand", ""),
+        "model3d": item.get("model3d", ""),
         "article": item.get("article", ""), "shop": item.get("shop", ""),
         "synced_at": timezone.now().isoformat(timespec="minutes"),
     }
@@ -341,6 +345,17 @@ def _apply(product: Product, source: str, item: dict):
         product.sold_count = item["sold"]
 
 
+def _top_up_images(product: Product, source: str, item: dict):
+    """У товара меньше фото, чем есть на площадке, — докачиваем недостающие (при повторном импорте и обновлении)."""
+    have = product.images.count()
+    urls = item.get("images", [])[:IMAGES_PER_PRODUCT]
+    if have >= len(urls):
+        return
+    for position, image in enumerate(download_images(urls[have:], f"{source}-{item['id']}-{have}",
+                                                     limit=IMAGES_PER_PRODUCT - have), start=have):
+        ProductImage.objects.create(product=product, image=image, position=position)
+
+
 def save_item(source: str, item: dict, category: Category, publish: bool) -> str:
     """Создать или обновить товар. Возвращает «created» или «updated»."""
     from links.services import category_weight
@@ -354,6 +369,7 @@ def save_item(source: str, item: dict, category: Category, publish: bool) -> str
             product.moderation_note = ""
             product.status = Product.Status.PUBLISHED
         product.save()
+        _top_up_images(product, source, item)
         return "updated"
     title = (item.get("title_ru") or item.get("title_zh") or f"Товар {item['id']}")[:160]
     product = Product(supplier=supplier, category=category, sku=item["id"], slug=unique_slug(supplier, item["id"]),

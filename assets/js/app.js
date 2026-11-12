@@ -1290,7 +1290,7 @@
     const cheaper = m.poizon_rub_min && from && from < m.poizon_rub_min
       ? `<div class="mkcompare">${icon('tag')}<span>В приложении Poizon — от <s>${rub(m.poizon_rub_min)}</s>. У нас дешевле на <b>${rub(m.poizon_rub_min - from)}</b></span></div>` : '';
     return `<div class="pd" data-market="1" data-id="${esc(p.id)}">
-      <div class="pd__media"><img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720"><span class="mkbadge mkbadge--${esc(src)}">${esc(name)}</span>${favBtnHTML(p, 'pd__fav')}</div>
+      <div class="pd__media pd__media--market">${galleryHTML(p)}<span class="mkbadge mkbadge--${esc(src)}">${esc(name)}</span>${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
         <div class="mkhead">${m.brand ? `<b>${esc(m.brand)}</b>` : ''}${src === 'poizon' ? `<span class="mkauth">${icon('check')}Оригинал · проверка подлинности Poizon</span>` : `<span class="mkauth mkauth--plain">с ${esc(name)}</span>`}</div>
         <h2>${esc(p.t)}</h2>
@@ -1322,6 +1322,27 @@
       </div>
     </div>`;
   }
+  // Галерея: фото листаются пальцем (scroll-snap), снизу миниатюры и счётчик.
+  function galleryHTML(p) {
+    const imgs = (p.images && p.images.length ? p.images : [pimg(p)]).slice(0, 8);
+    if (imgs.length < 2) return `<img class="gal__img" src="${esc(imgs[0])}" alt="${esc(p.t)}" width="720" height="720">`;
+    return `<div class="gal">
+      <div class="gal__track" data-gal-track>${imgs.map((src, i) => `<img class="gal__img" src="${esc(src)}" alt="${esc(p.t)}${i ? `, фото ${i + 1}` : ''}" width="720" height="720"${i ? ' loading="lazy"' : ''}>`).join('')}</div>
+      <span class="gal__count" data-gal-count>1 / ${imgs.length}</span>
+      <div class="gal__thumbs">${imgs.map((src, i) => `<button type="button" class="gal__thumb${i ? '' : ' is-on'}" data-gal-go="${i}" aria-label="Фото ${i + 1}"><img src="${esc(src)}" alt="" width="64" height="64" loading="lazy"></button>`).join('')}</div>
+    </div>`;
+  }
+  function galleryGo(i) {
+    const track = $('[data-gal-track]');
+    if (track) track.scrollTo({ left: track.clientWidth * i, behavior: 'smooth' });
+  }
+  function galleryScrolled(track) {
+    const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+    const count = $('[data-gal-count]');
+    if (count) count.textContent = `${i + 1} / ${track.children.length}`;
+    $$('.gal__thumb').forEach((b, n) => b.classList.toggle('is-on', n === i));
+  }
+
   function orderMarketProduct() {
     const p = byId[pdState.id];
     if (!isMarket(p)) return;
@@ -1461,8 +1482,10 @@
     const tmp = document.createElement('div');
     tmp.innerHTML = productHTML();
     // фото не трогаем, чтобы парящий товар не дёргался при смене доставки или количества
-    if (old && old.dataset.id === pdState.id) $('.pd__info', old).replaceWith($('.pd__info', tmp));
-    else body.innerHTML = tmp.innerHTML;
+    if (old && old.dataset.id === pdState.id) {
+      $('.pd__info', old).replaceWith($('.pd__info', tmp));
+      if (pdState.mediaDirty) { $('.pd__media', old).replaceWith($('.pd__media', tmp)); pdState.mediaDirty = false; }
+    } else body.innerHTML = tmp.innerHTML;
     body.scrollTop = top;
   }
 
@@ -2679,6 +2702,7 @@ ${aiCatalogJSON()}
     if (d.gotoChip) { state.cat = d.gotoChip; go('catalog'); renderCatalog(); return; }
     if (d.mkSize !== undefined) { pdState.size = pdState.size === d.mkSize ? null : d.mkSize; rerenderProduct(); return; }
     if (d.mkOrder !== undefined) { orderMarketProduct(); return; }
+    if (d.galGo !== undefined) { galleryGo(Number(d.galGo)); return; }
     if (d.mkAi !== undefined) { const p = byId[pdState.id]; closeSheet(); aiAsk(`Расскажи коротко про ${p.t}: для кого, плюсы и минусы по обзорам, как садится по размеру`); return; }
     if (d.orderOpen !== undefined) { openOrder(d.orderOpen); return; }
     if (d.ofilter) { prof.ofilter = d.ofilter; renderProfile(); return; }
@@ -3291,7 +3315,10 @@ ${aiCatalogJSON()}
       const d = await api(`/api/products/${encodeURIComponent(p.id)}`);
       p.detail = true;
       p.desc = d.description || '';
-      if (d.images && d.images.length) p.image = d.images[0];
+      if (d.images && d.images.length) {
+        p.image = d.images[0]; p.images = d.images;
+        if (pdState && pdState.id === p.id && d.images.length > 1) pdState.mediaDirty = true; // подгрузились все фото — обновить галерею
+      }
       if (d.sizes && d.sizes.length) { p.grid = d.sizes.map((x) => [x, '']); p.sizes = p.sizes || 'custom'; }
       if (d.supplier_fact_days && SUPPLIERS[p.sup]) SUPPLIERS[p.sup].fact = d.supplier_fact_days;
       if (pdState && pdState.id === p.id && $('.pd')) rerenderProduct();
@@ -3538,6 +3565,7 @@ ${aiCatalogJSON()}
     document.addEventListener('input', onInput);
     document.addEventListener('submit', onSubmit);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('scroll', (e) => { if (e.target.matches && e.target.matches('[data-gal-track]')) galleryScrolled(e.target); }, true);
     $('#menuBtn').addEventListener('click', openMenu);
     $('#searchBtn').addEventListener('click', () => {
       go('catalog');
