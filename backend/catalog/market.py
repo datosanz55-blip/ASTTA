@@ -242,6 +242,26 @@ def titles_to_russian(titles: list[str]) -> list[str]:
                               "латиницей как есть, тип товара и главное свойство по-русски, до 80 символов.")
 
 
+SHORT_TITLE_RULES = (
+    "Сделай короткие названия для карточек магазина кроссовок и одежды, как пишут в хороших магазинах. "
+    "Формат: Бренд Модель «Народное название расцветки» цвет по-русски. Пример: Nike Dunk Low «Panda» чёрно-белые; "
+    "New Balance 530 серебристые; Air Jordan 1 Mid «Chicago» красно-белые; Stone Island худи чёрное. "
+    "Народное название (Panda, Chicago, Triple White, Bred и т. п.) ставь, только если точно знаешь его по артикулу "
+    "или названию; не уверен — не пиши. Убери материалы, назначение, «низкие/высокие» (если это не часть модели), "
+    "«унисекс», «мужские/женские», «скейтбординг», «амортизация», «нескользящие». Бренд и модель — латиницей. "
+    "До 60 символов. На входе для каждого товара: артикул | русское название | китайское название."
+)
+
+
+def short_titles(items: list[dict]) -> list[str]:
+    """Короткие названия вида «Nike Dunk Low «Panda» чёрно-белые». items: {"article", "title_ru", "title_zh"}."""
+    lines = [" | ".join(str(i.get(k) or "-")[:150] for k in ("article", "title_ru", "title_zh")) for i in items]
+    short = _translate(lines, SHORT_TITLE_RULES)
+    # Модель недоступна — _translate вернёт входные строки; тогда оставляем прежнее название.
+    return [s if s != line else (i.get("title_ru") or i.get("title_zh") or "")
+            for s, line, i in zip(short, lines, items, strict=True)]
+
+
 def queries_to_chinese(queries: list[str]) -> list[str]:
     return _translate(queries, "Переведи поисковые запросы для Taobao на китайский. Бренды оставь латиницей.")
 
@@ -338,6 +358,7 @@ def save_item(source: str, item: dict, category: Category, publish: bool) -> str
     title = (item.get("title_ru") or item.get("title_zh") or f"Товар {item['id']}")[:160]
     product = Product(supplier=supplier, category=category, sku=item["id"], slug=unique_slug(supplier, item["id"]),
                       title_ru=title, title_zh=item.get("title_zh", "")[:160],
+                      description_ru=item.get("full_title", "") if item.get("full_title") != title else "",
                       weight_kg=category_weight(category) or Decimal("1.0"), size_grid=_size_grid(item),
                       is_new=True, status=Product.Status.PUBLISHED if publish else Product.Status.DRAFT)
     _apply(product, source, item)
@@ -375,6 +396,10 @@ def run_import(job: MarketImport) -> MarketImport:
         need = [i for i in items if not i["title_ru"] and i["title_zh"]]
         for item, title in zip(need, titles_to_russian([i["title_zh"] for i in need]), strict=True):
             item["title_ru"] = title
+        # Длинное название площадки («…Низкие Синтетическая кожа Унисекс») — в описание, на карточку — короткое.
+        for item, title in zip(items, short_titles(items), strict=True):
+            item["full_title"] = item["title_ru"]
+            item["title_ru"] = title or item["title_ru"]
         for item in items:
             try:
                 result = save_item(job.source, item, job.category, job.publish)

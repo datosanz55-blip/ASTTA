@@ -204,7 +204,7 @@ class ProductAdmin(ModelAdmin):
     save_on_top = True
     readonly_fields = ("site_price_breakdown",)
     inlines = [ProductImageInline, PriceTierInline]
-    actions = ["publish", "reject", "translate"]
+    actions = ["publish", "reject", "translate", "shorten_titles"]
     # Ссылку без схемы считаем https://, как будет по умолчанию в Django 6.
     formfield_overrides = {models.URLField: {"assume_scheme": "https"}}
     change_list_template = "admin/catalog/product/change_list.html"
@@ -293,6 +293,32 @@ class ProductAdmin(ModelAdmin):
                 product.description_ru = item["description"]
             product.save(update_fields=["title_ru", "description_ru"])
         self.message_user(request, _("Переведено: %(n)s. Проверьте названия перед публикацией.") % {"n": len(todo)})
+
+    @admin.action(description=_("Сократить названия (ИИ): «Nike Dunk Low «Panda» чёрно-белые»"))
+    def shorten_titles(self, request, queryset):
+        from catalog.market import short_titles
+
+        todo = list(queryset[:300])
+        if not todo:
+            return
+        items = [{"article": (p.market or {}).get("article") or p.sku, "title_ru": p.title_ru, "title_zh": p.title_zh}
+                 for p in todo]
+        changed = 0
+        for product, title in zip(todo, short_titles(items), strict=True):
+            title = (title or "").strip()[:160]
+            if not title or title == product.title_ru:
+                continue
+            if not product.description_ru:
+                product.description_ru = product.title_ru  # длинное название площадки не теряем
+            product.title_ru = title
+            product.save(update_fields=["title_ru", "description_ru", "updated_at"])
+            changed += 1
+        if changed:
+            self.message_user(request, _("Названия сокращены: %(n)s. Проверьте их; любое можно поправить вручную.")
+                              % {"n": changed})
+        else:
+            self.message_user(request, _("Ничего не поменялось: ИИ недоступен или названия уже короткие."),
+                              messages.WARNING)
 
     @admin.action(description=_("Опубликовать"))
     def publish(self, request, queryset):
