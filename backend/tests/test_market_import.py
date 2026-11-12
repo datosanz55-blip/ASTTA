@@ -108,7 +108,8 @@ def test_taobao_import_translates(apify, shoes, pricing_setup, monkeypatch, sett
     from assistant import llm
 
     settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
-    answers = iter(['{"items": ["卫衣 oversize"]}', '{"items": ["Худи оверсайз хлопок"]}'])
+    answers = iter(['{"items": ["卫衣 oversize"]}', '{"items": ["Худи оверсайз хлопок"]}',
+                    '{"items": ["Худи оверсайз"]}'])
     monkeypatch.setattr(llm, "chat", lambda *a, **k: llm.Reply(content=next(answers), tool_calls=[], tokens=1,
                                                                raw_message={}))
     apify["rows"] = [{"title": "卫衣 oversize 纯棉", "priceCny": 89, "itemId": "730344766230",
@@ -117,7 +118,7 @@ def test_taobao_import_translates(apify, shoes, pricing_setup, monkeypatch, sett
     market.run_import(job)
     assert apify["payloads"][0]["keywords"] == ["卫衣 oversize"]  # запрос переведён на китайский
     product = Product.objects.get(sku="730344766230")
-    assert product.title_ru == "Худи оверсайз хлопок" and product.status == "draft"
+    assert product.title_ru == "Худи оверсайз" and product.status == "draft"
 
 
 def test_import_fails_cleanly_without_money(settings, shoes, monkeypatch):
@@ -164,3 +165,33 @@ def test_admin_explains_when_queue_is_down(db, shoes, monkeypatch, django_captur
 def test_redis_queue_client_imports():
     # Клиент Redis для Celery тянет packaging: без него на сервере не работала ни одна фоновая задача.
     import kombu.transport.redis  # noqa: F401
+
+
+def test_short_titles_on_import_and_in_admin(apify, shoes, pricing_setup, monkeypatch, settings):
+    from accounts.models import User
+    from assistant import llm
+
+    settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL = "https://llm.example", "k", "m"
+    prompts = []
+
+    def chat(messages, **kwargs):
+        prompts.append(messages[0]["content"])
+        return llm.Reply(content='{"items": ["Nike A\'One розовые"]}', tool_calls=[], tokens=1, raw_message={})
+    monkeypatch.setattr(llm, "chat", chat)
+    market.run_import(MarketImport.objects.create(source="poizon", queries="x", category=shoes))
+    product = Product.objects.get(sku="33425209")
+    assert product.title_ru == "Nike A'One розовые"
+    assert product.description_ru.startswith("NIKE A'One Баскетбольные")  # длинное название площадки — в описании
+    assert "FZ8606-200" in prompts[0]  # модель видит артикул: по нему узнаёт народное название расцветки
+
+    product.title_ru, product.description_ru = "NIKE Dunk Low Скейтбординг Низкие Синтетическая кожа", ""
+    product.save()
+    monkeypatch.setattr(llm, "chat", lambda *a, **k: llm.Reply(
+        content='{"items": ["Nike Dunk Low «Panda» чёрно-белые"]}', tool_calls=[], tokens=1, raw_message={}))
+    client = Client()
+    client.force_login(User.objects.create_superuser("boss", "b@x.ru", "pw-123456!"))
+    resp = client.post("/admin/catalog/product/", {"action": "shorten_titles", "_selected_action": [product.pk]})
+    assert resp.status_code == 302
+    product.refresh_from_db()
+    assert product.title_ru == "Nike Dunk Low «Panda» чёрно-белые"
+    assert product.description_ru.startswith("NIKE Dunk Low Скейтбординг")
