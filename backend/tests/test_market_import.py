@@ -142,3 +142,25 @@ def test_admin_starts_import(db, shoes, monkeypatch, django_capture_on_commit_ca
     assert resp.status_code == 302, resp.content.decode()[:2000]
     job = MarketImport.objects.get()
     assert job.created_by == admin and started == [job.pk]
+
+
+def test_admin_explains_when_queue_is_down(db, shoes, monkeypatch, django_capture_on_commit_callbacks):
+    from accounts.models import User
+    from catalog import tasks
+
+    def broken(pk):
+        raise ModuleNotFoundError("No module named 'packaging'")  # так падало на сервере
+    monkeypatch.setattr(tasks.run_market_import, "delay", broken)
+    client = Client()
+    client.force_login(User.objects.create_superuser("boss", "b@x.ru", "pw-123456!"))
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = client.post("/admin/catalog/marketimport/add/", {"source": "poizon", "queries": "nike",
+                                                                "category": shoes.pk, "per_query": 10})
+    assert resp.status_code == 302  # не 500
+    job = MarketImport.objects.get()
+    assert job.status == "failed" and "Фоновые задачи недоступны" in job.log
+
+
+def test_redis_queue_client_imports():
+    # Клиент Redis для Celery тянет packaging: без него на сервере не работала ни одна фоновая задача.
+    import kombu.transport.redis  # noqa: F401
