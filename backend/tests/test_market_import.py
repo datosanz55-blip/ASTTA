@@ -195,3 +195,15 @@ def test_short_titles_on_import_and_in_admin(apify, shoes, pricing_setup, monkey
     product.refresh_from_db()
     assert product.title_ru == "Nike Dunk Low «Panda» чёрно-белые"
     assert product.description_ru.startswith("NIKE Dunk Low Скейтбординг")
+
+
+def test_reimport_tops_up_photos_and_keeps_3d_link(apify, shoes, pricing_setup):
+    row = dict(POIZON_ROW, images=[f"https://cdn.poizon.com/pro-img/{n}.jpg" for n in range(6)], model3dUrl="https://cdn.poizon.com/3d/m.glb")
+    apify["rows"] = [dict(row, images=row["images"][:1])]
+    market.run_import(MarketImport.objects.create(source="poizon", queries="x", category=shoes))
+    product = Product.objects.get(sku="33425209")
+    assert product.images.count() == 2  # обложка + одно фото
+    apify["rows"] = [row]
+    market.run_import(MarketImport.objects.create(source="poizon", queries="x", category=shoes))
+    assert product.images.count() == 7  # докачали до всех фото площадки (обложка + 6)
+    assert product.market["model3d"] == "https://cdn.poizon.com/3d/m.glb"
