@@ -148,7 +148,7 @@ def create_link_order(price_cny: Decimal | None, qty: int, contact: str, *, url:
     except PricingError as exc:
         raise OrderError(str(exc)) from exc
     with transaction.atomic():
-        order = Order.objects.create(contact=contact.strip()[:64], name=name.strip()[:80], comment=comment.strip(),
+        order = Order.objects.create(contact=contact.strip()[:254], name=name.strip()[:80], comment=comment.strip(),
                                      buyer=buyer, rate=e.rate, total_rub=Decimal(e.total_rub).quantize(Decimal("0.01")))
         part = SupplierOrder.objects.create(order=order, marketplace=marketplace)
         goods = e.goods_rub + e.china_delivery_rub + e.marketplace_fee_rub

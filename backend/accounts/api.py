@@ -6,6 +6,9 @@
 Cookie в мини-приложении не используем: в Telegram Web оно открыто во фрейме, и браузер их не сохранит.
 """
 
+import secrets
+from uuid import UUID
+
 from django.conf import settings
 from django.contrib.auth import login, logout
 from django.middleware.csrf import get_token
@@ -13,7 +16,9 @@ from django.utils import timezone
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja.utils import check_csrf
+from pydantic import Field
 
+from accounts import email_auth
 from accounts.models import User
 from accounts.telegram import TelegramAuthError, buyer_for, verify_login_widget, verify_webapp_init_data
 from config.throttles import per_ip
@@ -53,7 +58,11 @@ def buyer_contact(buyer: User | None, contact: str) -> str:
     """Контакт для заказа: что ввёл покупатель, иначе его ник в Telegram."""
     contact = contact.strip()
     if not contact and buyer is not None:
-        contact = f"@{buyer.telegram_username}" if buyer.telegram_username else f"tg://user?id={buyer.telegram_id}"
+        if buyer.telegram_id:
+            contact = f"@{buyer.telegram_username}" if buyer.telegram_username else f"tg://user?id={buyer.telegram_id}"
+        else:
+            identity = getattr(buyer, "email_identity", None)
+            contact = identity.email if identity else ""
     return contact
 
 
@@ -85,6 +94,8 @@ class StatsOut(Schema):
 
 
 class MeOut(Schema):
+    email: str = ""
+    email_verified: bool = False
     telegram_id: int | None
     username: str
     first_name: str
@@ -132,7 +143,9 @@ def buyer_stats(user: User) -> dict:
 
 def me_out(user: User) -> dict:
     orders = user.orders.order_by("-created_at")[:50]
+    identity = getattr(user, "email_identity", None)
     return {
+        "email": identity.email if identity else "", "email_verified": identity is not None,
         "telegram_id": user.telegram_id, "username": user.telegram_username, "first_name": user.first_name,
         "last_name": user.last_name, "photo_url": user.avatar.url if user.avatar else user.telegram_photo_url,
         "avatar_url": user.avatar.url if user.avatar else "", "pay_method": user.pay_method,
@@ -169,6 +182,63 @@ def telegram_login(request, payload: TelegramWidgetIn):
         raise HttpError(401, str(exc)) from exc
     User.objects.filter(pk=user.pk).update(pd_consent_at=consent_at)
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return me_out(user)
+
+
+class EmailCodeIn(Schema):
+    email: str = Field(max_length=254)
+    purpose: str = Field(default="login", pattern="^(login|link)$")
+    consent: bool = False
+
+
+class EmailVerifyIn(Schema):
+    challenge_id: UUID
+    code: str = Field(pattern=r"^[0-9]{6}$")
+    purpose: str = Field(default="login", pattern="^(login|link)$")
+
+
+def _email_context(request, purpose, *, create=False):
+    tma = request.headers.get("Authorization", "").startswith("tma ")
+    if not tma and check_csrf(request):
+        raise HttpError(403, "Обновите страницу и повторите: нужен токен защиты")
+    if purpose == "link":
+        buyer = current_buyer(request)
+        if buyer is None:
+            raise HttpError(401, "Сначала войдите в аккаунт")
+        return "", buyer
+    if tma or request.user.is_authenticated:
+        raise HttpError(409, "Вы уже вошли. Привяжите почту в профиле или сначала выйдите")
+    nonce = request.session.get("email_login_nonce", "")
+    if not nonce and create:
+        nonce = secrets.token_urlsafe(32)
+        request.session["email_login_nonce"] = nonce
+    return email_auth.digest(nonce) if nonce else "", None
+
+
+@router.post("/auth/email/request", throttle=[per_ip("email_request", "10/h")],
+             summary="Отправить одноразовый код для входа или привязки почты")
+def email_request(request, payload: EmailCodeIn):
+    browser_key, buyer = _email_context(request, payload.purpose, create=True)
+    consent_at = require_consent(payload.consent)
+    try:
+        challenge = email_auth.start(payload.email, payload.purpose, consent_at, browser_key=browser_key, buyer=buyer)
+    except email_auth.EmailAuthError as exc:
+        raise HttpError(exc.status, str(exc)) from exc
+    return {"challenge_id": str(challenge.pk), "expires_in": email_auth.CODE_MINUTES * 60,
+            "resend_after": email_auth.RESEND_SECONDS}
+
+
+@router.post("/auth/email/verify", response=MeOut, throttle=[per_ip("email_verify", "30/h")],
+             summary="Проверить код и войти или привязать почту")
+def email_verify(request, payload: EmailVerifyIn):
+    browser_key, buyer = _email_context(request, payload.purpose)
+    try:
+        user = email_auth.verify(payload.challenge_id, payload.code, browser_key=browser_key, buyer=buyer)
+    except email_auth.EmailAuthError as exc:
+        raise HttpError(exc.status, str(exc)) from exc
+    if payload.purpose == "login":
+        request.session.pop("email_login_nonce", None)
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     return me_out(user)
 
 

@@ -73,6 +73,7 @@ def get_quote(request, product: str, qty: int = 1, mode: str = "retail", shippin
 def site(request):
     from django.conf import settings
 
+    from accounts.email_auth import enabled as email_enabled
     from assistant import llm, yandex
     from links import apify
     from pricing.models import PricingConfig
@@ -89,6 +90,7 @@ def site(request):
         "link_rate": config.link_rate,
         "link_delivery_rub": config.link_delivery_rub,
         "shipping": [ShippingOut.from_orm(m).dict() for m in ShippingMethod.objects.filter(is_active=True)],
+        "email_login": email_enabled(),
         "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",
         "ai": yandex.enabled(),
         "chat": llm.enabled(),

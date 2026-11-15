@@ -30,7 +30,7 @@ class Order(models.Model):
                               on_delete=models.SET_NULL, related_name="orders")
     agent = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("агент"), null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="agent_orders")
-    contact = models.CharField(_("телефон или Telegram"), max_length=64)
+    contact = models.CharField(_("телефон, Telegram или почта"), max_length=254)
     name = models.CharField(_("имя"), max_length=80, blank=True)
     comment = models.TextField(_("комментарий покупателя"), blank=True)
     mode = models.CharField(_("режим"), max_length=16, choices=Mode.choices, default=Mode.RETAIL)

@@ -165,6 +165,7 @@ if env("REDIS_URL"):
 CELERY_BROKER_URL = env("REDIS_URL", "redis://localhost:6379/0")
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
+    "cleanup-email-codes": {"task": "accounts.tasks.cleanup_email_codes", "schedule": 60 * 60 * 24},
     # ЦБ публикует курс на следующий день во второй половине дня по Москве.
     "update-cny-rate": {"task": "pricing.tasks.update_cny_rate", "schedule": 60 * 60 * 3},
     # Неоплаченные за сутки заказы снимаем: цена и наличие у поставщика уже могли измениться.
@@ -242,3 +243,18 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {"django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False}},
 }
+
+# Вход по почте выключен до настройки рабочего SMTP. Коды не отправляем в console backend на сервере.
+EMAIL_LOGIN_ENABLED = env_bool("EMAIL_LOGIN_ENABLED", False)
+EMAIL_LOGIN_DAILY_LIMIT = int(env("EMAIL_LOGIN_DAILY_LIMIT", "1000"))
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = env("EMAIL_HOST", "")
+EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "")
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise RuntimeError("SMTP: выберите EMAIL_USE_TLS или EMAIL_USE_SSL, а не оба сразу")

@@ -53,7 +53,7 @@ class LinkRequest(models.Model):
                                  on_delete=models.SET_NULL)
     estimate_rub = models.DecimalField(_("предварительная цена, ₽"), max_digits=12, decimal_places=2, null=True,
                                        blank=True)
-    contact = models.CharField(_("телефон или Telegram"), max_length=64)
+    contact = models.CharField(_("телефон, Telegram или почта"), max_length=254)
     comment = models.TextField(_("комментарий покупателя"), blank=True)
     pd_consent_at = models.DateTimeField(_("согласие на обработку ПДн"), null=True, blank=True)
     status = models.CharField(_("статус"), max_length=16, choices=Status.choices, default=Status.NEW)

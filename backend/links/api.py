@@ -24,7 +24,7 @@ router = Router(tags=["Заказ по ссылке"])
 
 
 class SupportIn(Schema):
-    contact: str = Field(min_length=1, max_length=64)
+    contact: str = Field(min_length=1, max_length=254)
     message: str = Field(min_length=1, max_length=2000)
     consent: bool = False
 
@@ -91,7 +91,7 @@ class RequestIn(Schema):
     size: str = ""
     color: str = ""
     category: str = ""
-    contact: str
+    contact: str = Field(max_length=254)
     comment: str = ""
     consent: bool = False
 
@@ -103,7 +103,7 @@ class LinkOrderIn(Schema):
     size: str = ""
     color: str = ""
     title: str = ""
-    contact: str = ""
+    contact: str = Field(default="", max_length=254)
     name: str = ""
     comment: str = ""
     consent: bool = False
@@ -225,7 +225,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
     item = LinkRequest.objects.create(
         url=info.url, text=payload.text.strip()[:2000], marketplace=info.marketplace, item_id=info.item_id,
         photo=content or "", price_cny=payload.price_cny, qty=payload.qty, size=payload.size.strip()[:32],
-        color=payload.color.strip()[:40], category=category, contact=payload.contact.strip()[:64],
+        color=payload.color.strip()[:40], category=category, contact=payload.contact.strip()[:254],
         comment=payload.comment.strip()[:2000], estimate_rub=result.total_rub if result else None,
         pd_consent_at=consent_at,
     )
@@ -306,7 +306,7 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
             consent_at = require_consent(consent)
             item = LinkRequest.objects.create(
                 pd_consent_at=consent_at,
-                photo=prepared, marketplace=place, contact=contact.strip()[:64], comment=comment.strip()[:2000],
+                photo=prepared, marketplace=place, contact=contact.strip()[:254], comment=comment.strip()[:2000],
                 text="Фото без ссылки: ИИ не узнал товар" if reader else "Фото без ссылки",
                 price_cny=reading.price_cny if reading else None,
                 category=reading.category if reading else None,
