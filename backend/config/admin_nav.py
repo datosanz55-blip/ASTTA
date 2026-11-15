@@ -43,7 +43,7 @@ NAVIGATION = [
               "orders.change_supplierorder", "to_order"),
         _item(_("Части заказов у поставщиков"), "local_shipping", "admin:orders_supplierorder_changelist",
               "orders.view_supplierorder"),
-        _item(_("Заявки по ссылке и фото"), "link", "admin:links_linkrequest_changelist", "links.view_linkrequest",
+        _item(_("Заявки и обращения к агенту"), "link", "admin:links_linkrequest_changelist", "links.view_linkrequest",
               "new_link_requests"),
         _item(_("Выплаты поставщикам"), "payments", "admin:orders_payout_changelist", "orders.view_payout"),
     ]},

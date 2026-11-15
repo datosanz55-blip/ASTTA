@@ -12,8 +12,9 @@ from django.conf import settings
 from accounts.models import User
 from bot.telegram_api import call
 
-HELP = ("Вопрос по товару или заказу задайте агенту в ASTTA: откройте по кнопке ниже и нажмите «Написать агенту». "
-        "Здесь бот показывает заказы (/orders) и присылает, когда у заказа меняется статус.")
+HELP = ("Чтобы задать вопрос команде ASTTA, откройте форму по кнопке ниже, "
+        "напишите вопрос и контакт для ответа, затем нажмите «Отправить агенту». "
+        "Обращение попадёт в очередь команды. Здесь бот показывает заказы (/orders) и уведомления о статусах.")
 
 
 def open_button(text="Открыть ASTTA", path=""):
@@ -43,20 +44,23 @@ def handle_update(update: dict):
     # Отвечаем только в личных сообщениях: в группах кнопка мини-приложения не работает.
     if chat.get("type") != "private" or "text" not in message:
         return
-    command = message["text"].strip().split()[0].split("@")[0].lower()
+    parts = message["text"].strip().split()
+    if not parts:
+        return
+    command = parts[0].split("@")[0].lower()
     chat_id = chat["id"]
     first_name = (message.get("from") or {}).get("first_name") or ""
-    if command == "/start":
+    if command == "/help" or (command == "/start" and parts[1:] == ["help"]):
+        send(chat_id, HELP, open_button("Написать агенту", "/#support"))
+    elif command == "/start":
         send(chat_id, f"Здравствуйте{', ' + first_name if first_name else ''}! Это ASTTA — товары из Китая "
                       "с ценой в рублях сразу с доставкой. Каталог, заказ по ссылке или фото и отслеживание — "
                       "по кнопке ниже.", open_button())
     elif command == "/orders":
         send(chat_id, orders_text(message["from"]["id"]), open_button("Открыть заказы", "/#profile"))
-    elif command == "/help":
-        send(chat_id, HELP, open_button())
     else:
         # Переписки с агентом в боте пока нет: честно отправляем туда, где она есть.
-        send(chat_id, "Сообщения здесь агент пока не читает. " + HELP, open_button())
+        send(chat_id, "Сообщения здесь агент пока не читает. " + HELP, open_button("Написать агенту", "/#support"))
 
 
 def notify_status(event) -> bool:

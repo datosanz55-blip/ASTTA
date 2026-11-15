@@ -1,6 +1,7 @@
 // Тема и заставка решаются до отрисовки страницы: при выбранной светлой теме тёмная не мелькает при загрузке.
 // Отдельным файлом, потому что политика CSP сайта запрещает встроенные скрипты.
 (function () {
+  if (document.currentScript && document.currentScript.hasAttribute('data-storefront') && location.protocol !== 'file:' && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) document.documentElement.classList.add('is-booting');
   var theme = 'dark';
   try { if (localStorage.getItem('astta-theme') === 'light') theme = 'light'; } catch (e) { /* без хранилища — тёмная */ }
   document.documentElement.setAttribute('data-ui', theme);

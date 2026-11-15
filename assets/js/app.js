@@ -291,9 +291,14 @@
       } catch (e) { /* хранилище недоступно: работаем без него */ }
     },
     save() {
+      if (state.savedCarts) {
+        ['buyer', 'supplier'].forEach((mode) => {
+          state.savedCarts[mode] = [...state.carts[mode], ...state.savedCarts[mode].filter((i) => !byId[i.id])];
+        });
+      }
       try {
         localStorage.setItem('astta-demo', JSON.stringify({
-          mode: state.mode, ship: state.ship, carts: state.carts,
+          mode: state.mode, ship: state.ship, carts: state.savedCarts || state.carts,
           liked: [...state.liked], joined: [...state.joined], favs: [...state.favs], viewed: state.viewed,
           measures: state.measures, family: state.family, pools: state.pools, tg: state.tg,
         }));
@@ -376,6 +381,7 @@
      (форма «Цена по ссылке»). Цены считает сервер той же формулой, что заказ по ссылке. */
   const MARKET_NAME = { poizon: 'Poizon', taobao: 'Taobao' };
   const isMarket = (p) => !!(p && p.market);
+  const hasWholesale = (p) => !isMarket(p) && !!p.tiers.length;
   const marketFrom = (p) => (p.retailRub != null ? p.retailRub : linkTotal(p.cny));
   const marketTo = (p) => {
     const m = p.market || {};
@@ -402,6 +408,7 @@
   }
 
   function cardHTML(p) {
+    if (isSupplier() && !hasWholesale(p)) return '';
     if (isMarket(p)) return marketCardHTML(p);
     let price, sub, old = '';
     if (isSupplier()) {
@@ -509,7 +516,7 @@
     const s = SUPPLIERS[post.sup] || { name: post.supName || 'Поставщик', about: '', short: '··' };
     const p = byId[post.pid];
     const liked = state.liked.has(post.id);
-    const price = !p ? '' : (isSupplier() ? `${cny(p.tiers[0][1])} · от ${p.tiers[0][0]} шт` : `${rub(retail(p).total)} под ключ`);
+    const price = !p ? '' : (isSupplier() && hasWholesale(p) ? `${cny(p.tiers[0][1])} · от ${p.tiers[0][0]} шт` : `${rub(isMarket(p) ? marketFrom(p) : retail(p).total)} под ключ`);
     const photo = post.photo || (p ? pimg(p) : '');
     const product = p ? `<div class="post__product">
         <img src="${pimg(p)}" alt="" loading="lazy" width="46" height="46">
@@ -578,7 +585,7 @@
   const PLATFORMS = [[/1688\./i, '1688'], [/taobao\.|tb\.cn/i, 'Taobao'], [/tmall\./i, 'Tmall'], [/poizon|dewu|dw4\.co/i, 'Poizon'], [/pinduoduo|yangkeduo/i, 'Pinduoduo']];
 
   function shipOptionsHTML(name, current, onlyCargo) {
-    const keys = onlyCargo ? ['cargo'] : ['auto', 'air'];
+    const keys = (onlyCargo ? ['cargo'] : ['auto', 'air']).filter((k) => SHIP[k]);
     return keys.map((k) => {
       const s = SHIP[k];
       return `<label class="shipopt ${current === k ? 'is-on' : ''}">
@@ -596,6 +603,7 @@
   function filterProducts(filter, q) {
     const ql = (q || '').toLowerCase();
     return PRODUCTS.filter((p) => {
+      if (isSupplier() && !hasWholesale(p)) return false;
       if (filter === 'new' && !p.isNew) return false;
       if (filter === 'group' && !p.group) return false;
       if (filter === 'poizon' && !isPoizon(p)) return false;
@@ -607,9 +615,20 @@
     });
   }
 
+  const catalogView = { key: '', limit: 60 };
+  const catalogLoad = { running: false, total: 0, failed: [] };
+
+  function catalogStatus() {
+    const el = $('#catalogStatus');
+    if (!el) return;
+    el.textContent = catalogLoad.running ? `Загружаем каталог: ${PRODUCTS.length} из ${catalogLoad.total}. Результаты поиска дополняются.`
+      : catalogLoad.failed.length ? 'Часть каталога не загрузилась. Повторите загрузку, чтобы искать по всем товарам.' : '';
+    $('#catalogRetry').hidden = catalogLoad.running || !catalogLoad.failed.length;
+  }
+
   function renderCatalog() {
     $('#catChips').innerHTML = [...FILTERS.filter((f) => f.id !== 'poizon' || PRODUCTS.some(isPoizon)), ...CATS].map((c) => `<button class="chip" type="button" data-chip="${esc(c.id)}" aria-pressed="${state.cat === c.id}">${esc(c.name)}</button>`).join('');
-    const priceOf = (p) => (isSupplier() ? p.tiers[0][1] : retail(p).total);
+    const priceOf = (p) => (isSupplier() ? p.tiers[0][1] : (isMarket(p) ? marketFrom(p) : retail(p).total));
     const sorters = {
       pop: (a, b) => b.sold - a.sold,
       cheap: (a, b) => priceOf(a) - priceOf(b),
@@ -617,8 +636,14 @@
       rating: (a, b) => b.rating - a.rating,
     };
     const list = filterProducts(state.cat, state.q).sort(sorters[state.sort]);
-    $('#catalogGrid').innerHTML = list.map(cardHTML).join('');
-    $('#catalogEmpty').hidden = list.length > 0;
+    const key = [state.mode, state.cat, state.q, state.sort].join('|');
+    if (catalogView.key !== key) { catalogView.key = key; catalogView.limit = 60; }
+    $('#catalogGrid').innerHTML = list.slice(0, catalogView.limit).map(cardHTML).join('');
+    $('#catalogEmpty').hidden = list.length > 0 || catalogLoad.running || catalogLoad.failed.length > 0;
+    const more = $('#catalogMore');
+    more.hidden = list.length <= catalogView.limit;
+    more.textContent = `Показать ещё · осталось ${Math.max(0, list.length - catalogView.limit)}`;
+    catalogStatus();
   }
 
   /* ---------- Лента ---------- */
@@ -638,20 +663,25 @@
 
   /* ---------- Корзина ---------- */
   const cart = () => state.carts[state.mode];
-  const cartKey = (i) => i.id + '|' + (i.size || '');
+  const cartKey = (i) => JSON.stringify([i.id, i.size || '', i.color || '']);
 
   function addToCart(id, opts = {}) {
     const p = byId[id];
     if (!p) return;
+    if (isMarket(p)) { openProduct(id); return; }
+    if (isSupplier() && !hasWholesale(p)) { toast('Этот товар доступен только в розницу'); return; }
+    if (live.on && (!p.detail || ((p.grid || []).length && (!opts.size || opts.size === '?')) || ((p.colors || []).length && !opts.color))) {
+      openProduct(id, { needSize: true }); return;
+    }
     if (!isSupplier() && p.sizes && !opts.size) {
       openProduct(id, { needSize: true });
       return;
     }
     const min = isSupplier() ? p.tiers[0][0] : 1;
     const qty = Math.max(min, opts.qty || min);
-    const item = cart().find((i) => cartKey(i) === cartKey({ id, size: opts.size }));
+    const item = cart().find((i) => cartKey(i) === cartKey({ id, size: opts.size, color: opts.color }));
     if (item) { item.qty += isSupplier() ? qty : (opts.qty || 1); if (opts.proof) item.proof = true; }
-    else cart().push({ id, qty, size: opts.size || null, proof: !!opts.proof });
+    else cart().push({ id, qty, size: opts.size || null, color: opts.color || '', proof: !!opts.proof });
     store.save();
     updateCartCount();
     if (currentView === 'cart') renderCart();
@@ -691,7 +721,7 @@
     const anyLight = items.some((i) => !byId[i.id].bulky);
     const rows = items.map((i, idx) => {
       const p = byId[i.id];
-      const sizeLabel = (i.size === '?' ? ' · размер подберёт агент' : (i.size ? ` · размер CN ${esc(i.size)}` : '')) + (i.proof ? ' · с проверкой Proof' : '');
+      const sizeLabel = (i.size === '?' ? ' · размер подберёт агент' : (i.size ? ` · размер CN ${esc(i.size)}` : '')) + (i.color ? ` · ${esc(i.color)}` : '') + (i.proof ? ' · с проверкой Proof' : '');
       let price, hint = '', min = 1;
       if (isSupplier()) {
         const w = wholesale(p, i.qty);
@@ -727,7 +757,7 @@
         <div class="sum__row"><span>Доставка</span><span>${rub(t.delivery)}</span></div>
         ${t.proof ? `<div class="sum__row"><span>ASTTA Proof, проверка</span><span>${rub(t.proof)}</span></div>` : ''}
         <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(t.total)}</span></div>
-        <p class="sum__note">Оплата сразу при заказе. Нет товара у поставщика — вернём деньги за него.</p>
+        <p class="sum__note">${live.on ? 'После оформления агент пришлёт реквизиты для оплаты.' : 'Оплата сразу при заказе.'} Нет товара у поставщика — вернём деньги за него.</p>
       </div>`;
     root.innerHTML = `<div class="cart">
       <div class="cartlist">${rows}</div>
@@ -750,7 +780,7 @@
         <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}" required></label>
         ${consentHTML('ckConsent')}
         <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
-        <button class="btn btn--lime btn--wide" type="submit">Перейти к оплате</button>
+        <button class="btn btn--lime btn--wide" type="submit">${live.on ? 'Оформить заказ' : 'Перейти к оплате'}</button>
       </form>
     </div>`;
   }
@@ -1274,10 +1304,10 @@
   function openProduct(id, opts = {}) {
     const p = byId[id];
     if (!p) return;
-    pdState = { id, size: null, ship: shipFor(p), qty: isSupplier() ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
+    pdState = { id, size: null, color: null, ship: shipFor(p), qty: isSupplier() && hasWholesale(p) ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
     openSheet(productHTML(), {});
     trackView(id);
-    if (opts.needSize) toast('Выберите размер');
+    if (opts.needSize) toast('Выберите вариант товара');
     loadProductDetail(p);
   }
 
@@ -1356,7 +1386,7 @@
     const p = byId[pdState.id];
     if (isMarket(p)) return marketProductHTML(p);
     const s = SUPPLIERS[p.sup];
-    const sup = isSupplier();
+    const sup = isSupplier() && hasWholesale(p);
     let priceBlock, breakdown;
     if (sup) {
       const w = wholesale(p, pdState.qty, pdState.ship);
@@ -1386,9 +1416,9 @@
     const smart = !p.sizes ? '' : (rec
       ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size: вам CN ${esc(rec.size)}</b><span>${esc(rec.why)}${rec.over ? '. Это самый большой размер модели, уточните у агента' : ''}</span></div>${pdState.size === rec.size ? '' : `<button class="btn btn--line btn--sm" type="button" data-size="${esc(rec.size)}">Выбрать</button>`}</div>`
       : (MEAS[p.id] ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size</b><span>Укажите мерки один раз, и мы подскажем размер по реальным замерам этой модели</span></div><button class="btn btn--line btn--sm" type="button" data-measures>Указать</button></div>` : ''));
-    const sizes = (!sup && p.sizes) ? `<div class="stack" style="gap:10px">
+    const sizes = (p.sizes && (!sup || live.on)) ? `<div class="stack" style="gap:10px">
         <span class="sublabel">Размер · китайский и наш</span>
-        <div class="sizes" role="group" aria-label="Размер">${(p.grid || SIZE_GRID[p.sizes] || []).map(([cn, ru]) => `<button class="size${rec && rec.size === cn ? ' size--rec' : ''}" type="button" data-size="${cn}" aria-pressed="${pdState.size === cn}"><b>CN ${cn}</b><span>${rec && rec.size === cn ? 'ваш размер' : ru}</span></button>`).join('')}</div>
+        <div class="sizes" role="group" aria-label="Размер">${(p.grid || SIZE_GRID[p.sizes] || []).map(([cn, ru]) => `<button class="size${rec && rec.size === cn ? ' size--rec' : ''}" type="button" data-size="${esc(cn)}" aria-pressed="${pdState.size === cn}"><b>CN ${esc(cn)}</b><span>${rec && rec.size === cn ? 'ваш размер' : esc(ru)}</span></button>`).join('')}</div>
         ${smart}
       </div>` : '';
 
@@ -1405,7 +1435,8 @@
       </div>`;
     }
 
-    const optNote = !sup ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b></span><button class="linkbtn" type="button" data-switch-mode="supplier">Перейти в «Опт»</button></div>` : '';
+    const colors = (p.colors || []).length ? `<div class="stack" style="gap:10px"><span class="sublabel">Цвет</span><div class="sizes" role="group" aria-label="Цвет">${p.colors.map((color) => `<button class="size" type="button" data-color="${esc(color)}" aria-pressed="${pdState.color === color}">${esc(color)}</button>`).join('')}</div></div>` : '';
+    const optNote = !sup && hasWholesale(p) ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b></span><button class="linkbtn" type="button" data-switch-mode="supplier">Перейти в «Опт»</button></div>` : '';
 
     const minQty = sup ? p.tiers[0][0] : 1;
     const qty = `<div class="qty" role="group" aria-label="Количество">
@@ -1420,19 +1451,20 @@
     return `<div class="pd" data-id="${p.id}">
       <div class="pd__media">${FLOATING[p.id]
         ? `<div class="pd__float" style="--t1:${FLOATING[p.id][0]};--t2:${FLOATING[p.id][1]}"><img src="assets/img/cut/${p.id}.webp" alt="${esc(p.t)}" width="900" height="900"></div>`
-        : `<img src="${pimg(p)}" alt="${esc(p.t)}" width="720" height="720">`}${favBtnHTML(p, 'pd__fav')}</div>
+        : galleryHTML(p)}${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
         <button class="supchip" type="button" data-goto-sup="${esc(p.sup)}"><span class="ava" aria-hidden="true">${esc(s.short)}</span>${esc(s.name)}</button>
         <h2>${esc(p.t)}</h2>
         <div class="pd__rating">${p.rating ? `<span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span>` : ''}${p.reviews ? `<span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span>` : ''}<span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
         ${priceBlock}
         ${sizes}
+        ${colors}
         ${ship}
         ${breakdown}
         ${group}
         <div class="buyrow">
           ${qty}
-          <button class="btn btn--lime" type="button" data-pd-add>${sup ? 'Добавить партию' : 'В корзину'}</button>
+          <button class="btn btn--lime" type="button" data-pd-add ${live.on && !p.detail ? 'disabled' : ''}>${live.on && !p.detail ? 'Загружаем варианты…' : sup ? 'Добавить партию' : 'В корзину'}</button>
         </div>
         ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
         ${optNote}
@@ -1490,7 +1522,7 @@
 
   /* ---------- Чат с агентом ---------- */
   function openChat(supId) {
-    if (live.on) { openAgentLive(); return; }
+    if (live.on) { openAgentLive(supId); return; }
     const s = supId && SUPPLIERS[supId];
     openSheet(`<div class="chat">
       <div class="chat__agent"><span class="ava" aria-hidden="true">МК</span><div><b>Мария, агент TT Логистики</b><span>онлайн · отвечает за 15 минут</span></div></div>
@@ -1620,8 +1652,8 @@
     return JSON.stringify(PRODUCTS.map((p) => ({
       id: p.id, title: p.t, category: (CATS.find((c) => c.id === p.cat) || {}).name, supplier: SUPPLIERS[p.sup].name,
       price_rub_delivered: retail(p).total, rating: p.rating, sale_pct: p.sale || 0,
-      wholesale: `от ${p.tiers[0][0]} шт по ${p.tiers[0][1]} ¥`, delivery_days: SHIP[shipFor(p)].days.join('–'),
-      sizes: p.sizes ? SIZE_GRID[p.sizes].map(([cn]) => cn).join(',') : null, about: p.desc,
+      wholesale: hasWholesale(p) ? `от ${p.tiers[0][0]} шт по ${p.tiers[0][1]} ¥` : 'нет', delivery_days: SHIP[shipFor(p)].days.join('–'),
+      sizes: p.sizes ? (p.grid || SIZE_GRID[p.sizes] || []).map(([cn]) => cn).join(',') : null, about: p.desc,
     })));
   }
 
@@ -1669,7 +1701,7 @@ ${aiCatalogJSON()}
     const cat = m.cat || [];
     const custom = m.custom || [];
     if (!cat.length && !custom.length) return '';
-    const catTotal = cat.reduce((sum, c) => sum + retail(byId[c.id]).total, 0);
+    const catTotal = cat.reduce((sum, c) => sum + (isMarket(byId[c.id]) ? marketFrom(byId[c.id]) : retail(byId[c.id]).total), 0);
     const customTotal = custom.reduce((sum, c) => sum + (c.est_cny ? aiCustomRub(c) : 0), 0);
     const cards = cat.map((c) => {
       const p = byId[c.id];
@@ -1678,7 +1710,7 @@ ${aiCatalogJSON()}
         <div class="aicard__body">
           ${c.role ? `<span class="aicard__role">${esc(c.role)}</span>` : ''}
           <b>${esc(p.t)}</b>
-          <span class="aicard__price">${rub(retail(p).total)}</span>
+          <span class="aicard__price">${isMarket(p) ? 'от ' : ''}${rub(isMarket(p) ? marketFrom(p) : retail(p).total)}</span>
           <div class="aicard__why">${c.why.map((r) => `<span>${esc(r)}</span>`).join('')}</div>
         </div>
       </article>`;
@@ -1700,10 +1732,11 @@ ${aiCatalogJSON()}
       <div class="aitotal">
         <div><span>${custom.length ? 'Итого, оценка' : 'Готовая корзина'}</span><b>${custom.length ? '≈ ' : ''}${rub(total)}</b></div>
         <div class="aitotal__btns">
-          ${cat.length ? `<button class="btn btn--lime btn--sm" type="button" data-ai-add="${idx}">${custom.length ? 'Из каталога в корзину' : 'Добавить всё'}</button>` : ''}
+          ${cat.length && !live.on ? `<button class="btn btn--lime btn--sm" type="button" data-ai-add="${idx}">${custom.length ? 'Из каталога в корзину' : 'Добавить всё'}</button>` : ''}
           ${custom.length ? `<button class="btn ${cat.length ? 'btn--line' : 'btn--lime'} btn--sm" type="button" data-ai-custom="${idx}">Индивидуальный заказ</button>` : ''}
         </div>
       </div>
+      ${cat.length && live.on ? '<p class="note">Откройте карточку товара выше, чтобы выбрать вариант и оформить заказ.</p>' : ''}
       ${custom.length ? '<p class="note">Цены под заказ оценочные, точную цену и наличие агент подтвердит до оплаты.</p>' : ''}
       <div class="quick"><button class="chip" type="button" data-ai-more="cheaper" data-ai-idx="${idx}">Дешевле</button><button class="chip" type="button" data-ai-more="other" data-ai-idx="${idx}">Другой вариант</button></div>
     </div>`;
@@ -1721,7 +1754,7 @@ ${aiCatalogJSON()}
       html += aiResultHTML(m, idx);
       if (m.questions && m.questions.length) html += `<div class="quick">${m.questions.map((q) => `<button class="chip chip--q" type="button" data-ai-fill="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
       if (m.order) html += `<button class="btn btn--lime btn--sm" type="button" data-ai-order="${idx}" style="align-self:flex-start">Оформить заказ · ${rub(m.order.total_rub)}</button>`;
-      if (m.toAgent) html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="sz" style="align-self:flex-start">Передать агенту</button>';
+      if (m.toAgent) html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="" style="align-self:flex-start">Написать агенту</button>';
       return html;
     }).join('');
     const head = $('#aiMode');
@@ -1807,7 +1840,12 @@ ${aiCatalogJSON()}
       }
       return;
     }
-    const sample = ai.mode === 'demo' || live.on ? null : await aiSample();
+    if (live.on) {
+      ai.mode = 'server';
+      finish({ reply: 'Этот режим ИИ сейчас недоступен. Напишите агенту через форму — команда поможет с подбором.', toAgent: true });
+      return;
+    }
+    const sample = ai.mode === 'demo' ? null : await aiSample();
     if (!sample) {
       ai.mode = 'demo';
       setTimeout(() => finish(demo()), 900);
@@ -2594,7 +2632,7 @@ ${aiCatalogJSON()}
     renderAll();
     if (pdState) {
       const p = byId[pdState.id];
-      pdState.qty = mode === 'supplier' ? Math.max(p.tiers[0][0], pdState.qty) : 1;
+      pdState.qty = mode === 'supplier' && hasWholesale(p) ? Math.max(p.tiers[0][0], pdState.qty) : 1;
       rerenderProduct();
     }
     placeModeThumbs();
@@ -2615,7 +2653,8 @@ ${aiCatalogJSON()}
   const VIEWS = ['home', 'catalog', 'trends', 'feed', 'cart', 'profile'];
   let currentView = 'home';
   function route() {
-    const hash = decodeURIComponent(location.hash.slice(1));
+    let hash;
+    try { hash = decodeURIComponent(location.hash.slice(1)); } catch (e) { hash = ''; }
     const view = VIEWS.includes(hash) ? hash : 'home';
     const changed = view !== currentView;
     currentView = view;
@@ -2632,6 +2671,7 @@ ${aiCatalogJSON()}
     if (view === 'profile') renderProfile();
     closeMenu();
     closeSheet();
+    if (hash === 'support' && live.on) { openAgentLive(); return; }
     if (!VIEWS.includes(hash) && hash) {
       const target = document.getElementById(hash);
       if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -2692,11 +2732,17 @@ ${aiCatalogJSON()}
     const t = e.target.closest('button, a, [data-close], [data-close-menu]');
     if (!t) return;
     const d = t.dataset;
+    if (!allowDemo && !live.on && d.siteRetry === undefined) { e.preventDefault(); return; }
 
     if (d.close !== undefined) { if (t.tagName !== 'A') e.preventDefault(); closeSheet(); if (t.tagName !== 'A') return; }
     if (d.closeMenu !== undefined) { closeMenu(); if (t.tagName !== 'A' && d.openChat === undefined) return; }
     if (d.photoOrder !== undefined) { openPhotoOrder(); return; }
     if (d.lcSize !== undefined) { pickLinkSize(d.lcSize); return; }
+    if (d.siteRetry !== undefined) { startLive(); return; }
+    if (d.catalogRetry !== undefined) { loadRestOfCatalog(catalogLoad.failed); return; }
+    if (d.catalogMore !== undefined) { catalogView.limit += 60; renderCatalog(); return; }
+    if (d.detailRetry !== undefined && pdState) { loadProductDetail(byId[pdState.id]); return; }
+    if (d.color !== undefined && pdState) { pdState.color = d.color; rerenderProduct(); return; }
     if (d.fav !== undefined) { toggleFav(d.fav); return; }
     if (d.gotoChip) { state.cat = d.gotoChip; go('catalog'); renderCatalog(); return; }
     if (d.mkSize !== undefined) { pdState.size = pdState.size === d.mkSize ? null : d.mkSize; rerenderProduct(); return; }
@@ -2757,36 +2803,37 @@ ${aiCatalogJSON()}
       toast(was ? 'Вы вышли из совместной закупки' : 'Вы в закупке. Напишем, когда партия соберётся');
       return;
     }
-    if (d.inc || d.dec) {
-      const idx = Number(d.inc || d.dec);
+    if (d.inc !== undefined || d.dec !== undefined) {
+      const idx = Number(d.inc ?? d.dec);
       const item = cart()[idx];
       if (!item) return;
       const p = byId[item.id];
       const step = 1;
       const min = isSupplier() ? p.tiers[0][0] : 1;
-      item.qty = Math.max(min, item.qty + (d.inc ? step : -step));
+      item.qty = Math.max(min, item.qty + (d.inc !== undefined ? step : -step));
       store.save(); updateCartCount(); renderCart();
       return;
     }
-    if (d.remove) { cart().splice(Number(d.remove), 1); store.save(); updateCartCount(); renderCart(); return; }
+    if (d.remove !== undefined) { cart().splice(Number(d.remove), 1); store.save(); updateCartCount(); renderCart(); return; }
     if (t.matches('[data-pay-link]')) { payLinkOrder(t.dataset.payLink); return; }
     if (t.matches('[data-checkout]')) { openSheet(checkoutHTML(), { narrow: true }); return; }
     if (d.size) { pdState.size = d.size; pdState.needSize = false; rerenderProduct(); return; }
     if (d.pdQty) {
       const p = byId[pdState.id];
-      const min = isSupplier() ? p.tiers[0][0] : 1;
+      const min = isSupplier() && hasWholesale(p) ? p.tiers[0][0] : 1;
       pdState.qty = Math.max(min, pdState.qty + Number(d.pdQty));
       rerenderProduct();
       return;
     }
     if (t.matches('[data-pd-add]')) {
       const p = byId[pdState.id];
-      if (!isSupplier() && p.sizes && !pdState.size) { toast('Выберите размер'); $('.sizes button', $('#sheetBody')).focus(); return; }
+      if (((live.on && (p.grid || []).length) || (!live.on && !isSupplier() && p.sizes)) && !pdState.size) { toast('Выберите размер'); $('.sizes button', $('#sheetBody'))?.focus(); return; }
+      if ((p.colors || []).length && !pdState.color) { toast('Выберите цвет'); return; }
       const prevShip = state.ship;
       if (!p.bulky) state.ship = pdState.ship;
-      const id = pdState.id, size = pdState.size, qty = pdState.qty, proof = pdState.proof;
+      const id = pdState.id, size = pdState.size, color = pdState.color, qty = pdState.qty, proof = pdState.proof;
       closeSheet();
-      addToCart(id, { size, qty, proof });
+      addToCart(id, { size, color, qty, proof });
       if (state.ship !== prevShip) store.save();
       return;
     }
@@ -2958,6 +3005,12 @@ ${aiCatalogJSON()}
     if (d.aiAdd !== undefined) {
       const m = ai.log[Number(d.aiAdd)];
       if (!m || !m.cat || !m.cat.length) return;
+      if (live.on) {
+        const first = m.cat.find(({ id }) => byId[id] && !isMarket(byId[id]) && (!isSupplier() || hasWholesale(byId[id])));
+        if (first) { openProduct(first.id, { needSize: true }); toast('Выберите варианты товара перед добавлением'); }
+        else toast('Откройте карточку товара, чтобы указать цену своего варианта');
+        return;
+      }
       const list = cart();
       m.cat.forEach(({ id }) => {
         const p = byId[id];
@@ -3046,6 +3099,8 @@ ${aiCatalogJSON()}
   function onSubmit(e) {
     const f = e.target;
     e.preventDefault();
+    if (!allowDemo && !live.on) return;
+    if (f.id === 'supportForm') { submitSupport(f); return; }
     if (f.id === 'solveForm') {
       const file = $('#solveFile').files[0];
       const text = $('#solveText').value.trim();
@@ -3142,7 +3197,7 @@ ${aiCatalogJSON()}
   }
 
   /* ---------- Сервер: каталог, лента, заказы, вход ---------- */
-  // Сайт открыт с сервера — товары, цены, заказы и вход берём из /api. Открыт как файл или в превью без
+  // В рабочем окружении товары, цены, заказы и вход берём только из /api. Открыт как файл или локально без
   // сервера — работает на демо-данных выше. Отзывы, ролики, лайки и чат пока только демо: на боевом сайте
   // их не показываем, чтобы не выдавать придуманное за настоящее.
   const live = { on: false, site: null, csrf: '', tma: '', me: null, orders: [], loaded: false };
@@ -3158,7 +3213,7 @@ ${aiCatalogJSON()}
       if (!live.csrf) live.csrf = (await api('/api/auth/csrf')).csrf;
       headers['X-CSRFToken'] = live.csrf;
     }
-    const res = await fetch(path, { method, headers, body, credentials: 'same-origin' });
+    const res = await fetch(path, { method, headers, body, credentials: 'same-origin', signal: AbortSignal.timeout(path.includes('/ai/') || path.includes('/link/') ? 180000 : 20000) });
     let data = null;
     try { data = await res.json(); } catch (e) { /* пустой ответ */ }
     if (!res.ok) {
@@ -3190,7 +3245,7 @@ ${aiCatalogJSON()}
     return {
       id: c.slug, t: c.title, cat: c.category, sup: c.supplier_code, supName: c.supplier,
       cny: Number(c.price_cny), kg: Number(c.weight_kg) || 0.5,
-      tiers: tiers.length ? tiers : [[1, Number(c.unit_price_cny)]],
+      tiers,
       rating: Number(c.rating) || 0, reviews: c.reviews_count || 0, sold: c.sold_count || 0,
       sizes: c.size_grid || null, sale: c.sale_percent || 0, isNew: !!c.is_new, bulky: !!c.bulky,
       desc: '', image: c.image || '',
@@ -3224,14 +3279,18 @@ ${aiCatalogJSON()}
     let site, sups, cats, feed, first;
     try {
       site = await api('/api/site');
-    } catch (e) { return; } // сервера нет: остаёмся в демо
-    try {
-      [sups, cats, feed, first] = await Promise.all([api('/api/suppliers'), api('/api/categories'),
-        api('/api/feed?page_size=60'), api('/api/products?sort=popular&page_size=60&page=1')]);
-    } catch (e) { return; }
+    } catch (e) {
+      if (allowDemo && !live.on) return;
+      throw e;
+    }
+    [sups, cats, feed, first] = await Promise.all([api('/api/suppliers'), api('/api/categories'),
+      api('/api/feed?page_size=60'), api('/api/products?sort=popular&page_size=60&page=1')]);
+    if (!site.shipping?.some((m) => !m.for_bulky_only && m.is_default)) throw new Error('Не настроена доставка');
     const items = first.items;
 
     live.on = true; live.site = site;
+    catalogLoad.total = first.total;
+    $('#siteError').hidden = true;
     if (site.rate) { RATE = Number(site.rate); rateText = RATE.toFixed(2).replace('.', ','); }
     // Курса ещё нет — не показываем демо-курс как настоящий.
     $$('[data-rate]').forEach((el) => { const box = el.closest('.rate'); if (box) box.hidden = !site.rate; });
@@ -3269,7 +3328,8 @@ ${aiCatalogJSON()}
     renderAll();
     updateCartCount();
     document.documentElement.classList.remove('is-booting');
-    loadRestOfCatalog(items, first.total, cats);
+    loadRestOfCatalog(Array.from({ length: Math.max(0, Math.ceil(first.total / 60) - 1) }, (_, i) => i + 2));
+    if (location.hash === '#support') openAgentLive();
     await loadMe();
   }
 
@@ -3279,7 +3339,7 @@ ${aiCatalogJSON()}
     Object.keys(byId).forEach((k) => delete byId[k]);
     products.forEach((p) => { byId[p.id] = p; });
     const demoCat = Object.fromEntries(CATS.map((c) => [c.id, c.img]));
-    replaceAll(CATS, cats.filter((c) => products.some((p) => p.cat === c.slug)).map((c) => {
+    replaceAll(CATS, cats.map((c) => {
       const top = products.find((p) => p.cat === c.slug);
       return { id: c.slug, name: c.name_ru, img: demoCat[c.slug] || 'cat-home', src: demoCat[c.slug] ? '' : (top && top.image) || '' };
     }));
@@ -3288,21 +3348,39 @@ ${aiCatalogJSON()}
   // после догрузки остальных страниц вернутся и товары оттуда.
   function filterCarts() {
     const saved = state.savedCarts || state.carts;
-    ['buyer', 'supplier'].forEach((m) => { state.carts[m] = (saved[m] || []).filter((i) => byId[i.id]); });
+    ['buyer', 'supplier'].forEach((m) => { state.carts[m] = (saved[m] || []).filter((i) => byId[i.id] && !isMarket(byId[i.id]) && (m !== 'supplier' || hasWholesale(byId[i.id]))); });
   }
-  async function loadRestOfCatalog(items, total, cats) {
-    const pages = Math.min(20, Math.ceil(total / 60));
-    if (pages < 2) return;
-    let rest;
-    try {
-      rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => api(`/api/products?sort=popular&page_size=60&page=${i + 2}`)));
-    } catch (e) { return; } // часть каталога не догрузилась: остаёмся с первой страницей
-    const ids = new Set(items.map((c) => c.slug));
-    const all = items.concat(...rest.map((r) => r.items.filter((c) => !ids.has(c.slug))));
-    applyLiveProducts(all, cats);
-    filterCarts();
-    renderAll();
-    if (pdState) rerenderProduct();
+  async function loadRestOfCatalog(pages) {
+    if (catalogLoad.running) return;
+    catalogLoad.running = true;
+    catalogLoad.failed = [];
+    catalogStatus();
+    // Три страницы одновременно: без ограничения размера каталога и без залпа десятков запросов.
+    const queue = [...pages];
+    await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+      while (queue.length) {
+        const page = queue.shift();
+        try {
+          const data = await api(`/api/products?sort=popular&page_size=60&page=${page}`);
+          const known = new Set(PRODUCTS.map((p) => p.id));
+          data.items.forEach((c) => { if (!known.has(c.slug) && SUPPLIERS[c.supplier_code]) {
+            const p = liveProduct(c); PRODUCTS.push(p); byId[p.id] = p; known.add(p.id);
+          } });
+          filterCarts();
+          updateCartCount();
+          renderHome();
+          if (currentView === 'catalog') renderCatalog();
+          if (currentView === 'cart') renderCart();
+        } catch (e) { catalogLoad.failed.push(page); }
+        catalogStatus();
+      }
+    }));
+    catalogLoad.running = false;
+    if (!catalogLoad.failed.length && state.savedCarts) {
+      state.savedCarts = null; store.save();
+    }
+    catalogStatus();
+    if (currentView === 'catalog') renderCatalog();
   }
 
   // Профиль и заказы: вошедший покупатель — из /api/me, гость — по токенам заказов, сохранённым в браузере.
@@ -3342,10 +3420,17 @@ ${aiCatalogJSON()}
         p.image = d.images[0]; p.images = d.images;
         if (pdState && pdState.id === p.id && d.images.length > 1) pdState.mediaDirty = true; // подгрузились все фото — обновить галерею
       }
-      if (d.sizes && d.sizes.length) { p.grid = d.sizes.map((x) => [x, '']); p.sizes = p.sizes || 'custom'; }
+      p.grid = (d.sizes || []).map((x) => [x, '']);
+      p.sizes = p.grid.length ? (p.sizes || 'custom') : null;
+      p.colors = d.colors || [];
       if (d.supplier_fact_days && SUPPLIERS[p.sup]) SUPPLIERS[p.sup].fact = d.supplier_fact_days;
       if (pdState && pdState.id === p.id && $('.pd')) rerenderProduct();
-    } catch (e) { /* карточка откроется без описания */ }
+    } catch (e) {
+      if (pdState && pdState.id === p.id) {
+        const btn = $('[data-pd-add]');
+        if (btn) { btn.disabled = false; btn.removeAttribute('data-pd-add'); btn.setAttribute('data-detail-retry', ''); btn.textContent = 'Повторить загрузку вариантов'; }
+      }
+    }
   }
 
   const PAID_STEPS = ['paid', 'purchased', 'at_warehouse', 'shipped', 'border', 'in_russia', 'ready', 'delivered'];
@@ -3389,7 +3474,7 @@ ${aiCatalogJSON()}
 
   async function checkoutLive(contact, btn) {
     const ship = SHIP[state.ship === 'cargo' ? 'auto' : state.ship] || SHIP.auto;
-    const lines = cart().map((i) => ({ product: i.id, qty: i.qty, size: i.size && i.size !== '?' ? i.size : '' }));
+    const lines = cart().map((i) => ({ product: i.id, qty: i.qty, size: i.size && i.size !== '?' ? i.size : '', color: i.color || '' }));
     const askSize = cart().filter((i) => i.size === '?').map((i) => byId[i.id].t);
     await withBusy(btn, async () => {
       const order = await api('/api/orders', { method: 'POST', body: {
@@ -3489,7 +3574,7 @@ ${aiCatalogJSON()}
     box.append(sc);
   }
   async function logoutLive() {
-    try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* выходим локально */ }
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { toast('Не удалось выйти. Повторите попытку.'); return; }
     live.csrf = ''; live.me = null; state.tg = null;
     state.favs = new Set(); state.viewed = []; resetProfileCache(); store.save();
     signedFlag(false);
@@ -3498,10 +3583,26 @@ ${aiCatalogJSON()}
     renderProfile();
     toast('Вы вышли');
   }
-  function openAgentLive() {
-    const bot = live.site && live.site.telegram_bot;
-    if (bot) window.open(`https://t.me/${bot}?start=help`, '_blank', 'noopener');
-    else toast('Напишите нам в Telegram: @astta_shop_bot');
+  function openAgentLive(supId) {
+    const supplier = SUPPLIERS[supId];
+    const question = supId ? '' : ([...ai.log].reverse().find((m) => m.me)?.text || '');
+    openSheet(`<div class="stack"><h2 class="sheet__title">Написать агенту</h2>
+      <p class="note">Сообщение попадёт команде ASTTA. Укажите контакт, по которому вам ответить.</p>
+      <form class="stack" id="supportForm">
+        <label class="field"><span>Телефон или Telegram</span><input name="contact" maxlength="64" required value="${esc(tgContact())}" placeholder="+7 … или @username"></label>
+        <label class="field"><span>Ваш вопрос</span><textarea name="message" required maxlength="2000" rows="5">${esc(supplier ? `Вопрос по поставщику ${supplier.name}: ` : question)}</textarea></label>
+        ${consentHTML('supportConsent')}
+        <button class="btn btn--lime" type="submit">Отправить агенту</button>
+      </form></div>`, { narrow: true });
+  }
+  async function submitSupport(form) {
+    if (!form.reportValidity() || !consentOk('supportConsent')) return;
+    await withBusy($('button[type=submit]', form), async () => {
+      const data = await api('/api/link/support', { method: 'POST', body: {
+        contact: form.elements.contact.value.trim(), message: form.elements.message.value.trim(), consent: true,
+      } });
+      openSheet(`<div class="stack"><h2 class="sheet__title">Обращение №${data.id} принято</h2><p>Команда увидит его в очереди обращений и ответит по указанному контакту.</p></div>`, { narrow: true });
+    });
   }
 
   /* ---------- Профиль покупателя (боевой сайт) ---------- */
@@ -3576,6 +3677,20 @@ ${aiCatalogJSON()}
   }
 
   /* ---------- Старт ---------- */
+  const allowDemo = location.protocol === 'file:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  let startingLive = false;
+  async function startLive() {
+    if (startingLive) return;
+    startingLive = true;
+    if (!allowDemo) document.documentElement.classList.add('is-booting');
+    $('#siteError').hidden = true;
+    document.documentElement.classList.remove('site-unavailable');
+    try { await loadLive(); if (live.on) await finishWidgetLogin(); }
+    catch (e) {
+      if (!allowDemo || live.on) { $('#siteError').hidden = false; document.documentElement.classList.add('site-unavailable'); }
+    } finally { startingLive = false; document.documentElement.classList.remove('is-booting'); }
+  }
+
   function init() {
     initSplash();
     store.load();
@@ -3604,11 +3719,7 @@ ${aiCatalogJSON()}
     setMode(state.mode, true);
     route();
     initHero();
-    if (/(^|\.)astta\.ru$/.test(location.hostname)) {
-      document.documentElement.classList.add('is-booting');
-      setTimeout(() => document.documentElement.classList.remove('is-booting'), 6000);
-    }
-    loadLive().then(() => { if (live.on) finishWidgetLogin(); }).finally(() => document.documentElement.classList.remove('is-booting'));
+    startLive();
     // Ширина кнопок меняется, когда загрузится шрифт и когда переключатель переезжает из шапки в строку ниже.
     window.addEventListener('resize', placeModeThumbs);
     if (document.fonts) document.fonts.ready.then(placeModeThumbs);
