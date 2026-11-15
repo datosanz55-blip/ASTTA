@@ -2558,20 +2558,39 @@ ${aiCatalogJSON()}
   // Для аналитики на боевом сайте: подключать Яндекс Метрику, только если вернулось true.
   window.asttaAnalyticsAllowed = () => cookieChoice() === 'all';
 
-  /* ---------- Тема: тёмная (фирменная) и светлая ---------- */
-  // Начальную тему ставит assets/js/theme.js ещё до отрисовки, здесь — переключатель.
+  /* ---------- Оформление: фирменное, светлое, Бимбо ---------- */
+  const THEMES = {
+    dark: { name: 'Фирменная', about: 'Тёмный фон и лаймовые акценты', color: '#070b09' },
+    light: { name: 'Светлая', about: 'Светлый фон и фирменный лайм', color: '#f3f5ee' },
+    bimbo: { name: 'Бимбо', about: 'Фуксия, чёрный, белый и леопард', color: '#fff8fc' },
+  };
   function applyTheme(theme) {
+    if (!Object.hasOwn(THEMES, theme)) theme = 'dark';
     document.documentElement.setAttribute('data-ui', theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'light' ? '#f3f5ee' : '#070b09');
-    const label = theme === 'light' ? 'Тёмная тема' : 'Светлая тема';
+    if (meta) meta.setAttribute('content', THEMES[theme].color);
+    const label = `Оформление: ${THEMES[theme].name}. Выбрать тему`;
     $$('[data-theme-toggle]').forEach((b) => { b.setAttribute('aria-label', label); b.title = label; });
-    $$('[data-theme-label]').forEach((s) => { s.textContent = label; });
+    $$('[data-theme-label]').forEach((el) => { el.textContent = `Тема: ${THEMES[theme].name}`; });
   }
-  function toggleTheme() {
-    const next = document.documentElement.getAttribute('data-ui') === 'light' ? 'dark' : 'light';
-    try { localStorage.setItem('astta-theme', next); } catch (e) { /* не запомнили — тема до перезагрузки */ }
-    applyTheme(next);
+  function chooseTheme(theme) {
+    if (!Object.hasOwn(THEMES, theme)) return;
+    try { localStorage.setItem('astta-theme', theme); } catch (e) { /* выбор действует до перезагрузки */ }
+    applyTheme(theme);
+    closeSheet();
+  }
+  function openThemePicker() {
+    const fromMenu = !$('#menu').hidden;
+    closeMenu();
+    if (fromMenu) $('#menuBtn').focus();
+    const current = document.documentElement.getAttribute('data-ui');
+    openSheet(`<div class="stack"><h2 class="sheet__title">Ваше настроение</h2>
+      <p class="note">Выберите оформление ASTTA. Выбор сохранится на этом устройстве.</p>
+      <div class="theme-options" role="group" aria-label="Оформление">${Object.entries(THEMES).map(([id, theme]) => `
+        <button class="theme-option" type="button" data-theme="${id}" aria-pressed="${current === id}">
+          <span class="theme-preview theme-preview--${id}" aria-hidden="true"></span>
+          <span class="theme-option__copy"><b>${theme.name}</b><small>${theme.about}</small></span>${icon('check')}
+        </button>`).join('')}</div></div>`, { narrow: true });
   }
 
   /* ---------- Шторка, меню, уведомления ---------- */
@@ -2876,7 +2895,8 @@ ${aiCatalogJSON()}
     }
     if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
     if (t.matches('[data-tg-login]')) { openTgLogin(); return; }
-    if (t.matches('[data-theme-toggle]')) { toggleTheme(); return; }
+    if (d.theme) { chooseTheme(d.theme); return; }
+    if (t.matches('[data-theme-toggle]')) { openThemePicker(); return; }
     if (t.matches('[data-cookies]')) { setCookies(t.dataset.cookies); return; }
     if (t.matches('[data-cookies-open]')) { $('#cookies').hidden = false; $('#cookies .btn').focus(); return; }
     if (t.matches('[data-tg-logout]')) { if (live.on) { logoutLive(); return; } state.tg = null; store.save(); renderProfile(); toast('Вы вышли'); return; }
@@ -3660,7 +3680,7 @@ ${aiCatalogJSON()}
     const el = $('#splash');
     if (!el) return;
     const root = document.documentElement;
-    if (root.classList.contains('no-splash')) { el.remove(); return; }
+    if (root.classList.contains('no-splash') || root.dataset.ui === 'bimbo') { el.remove(); return; }
     try { sessionStorage.setItem('astta-splash', '1'); } catch (e) { /* без хранилища покажем снова */ }
     root.classList.add('is-splash');
     let gone = false;
@@ -3694,7 +3714,7 @@ ${aiCatalogJSON()}
   function init() {
     initSplash();
     store.load();
-    applyTheme(document.documentElement.getAttribute('data-ui') === 'light' ? 'light' : 'dark');
+    applyTheme(document.documentElement.getAttribute('data-ui'));
     initCookies();
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${esc(c.id)}" data-close-menu>${esc(c.name)}</a>`).join('');

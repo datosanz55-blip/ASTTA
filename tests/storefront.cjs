@@ -85,6 +85,32 @@ async function setup(browser, {offline = false, saved = false, failPage = null} 
    await p.locator('#aiChatForm button[type=submit]').click();
    await p.getByText('Этот режим ИИ сейчас недоступен.',{exact:false}).waitFor();
    assert.equal(await p.locator('.aicard').count(),0,'disabled AI must not invent a demo answer');
+   await p.keyboard.press('Escape');
+   await p.locator('[data-theme-toggle]').first().click();
+   assert.equal(await p.locator('[data-theme]').count(),3);
+   await p.locator('[data-theme="bimbo"]').click();
+   assert.equal(await p.locator('html').getAttribute('data-ui'),'bimbo');
+   assert.equal(await p.evaluate(()=>localStorage.getItem('astta-theme')),'bimbo');
+   assert.equal(await p.locator('meta[name="theme-color"]').getAttribute('content'),'#fff8fc');
+   await p.reload();await p.waitForSelector('html.is-live');
+   assert.equal(await p.locator('html').getAttribute('data-ui'),'bimbo','theme survives application boot');
+   await p.goto('http://astta.test/#home');
+   for(const width of [320,390,768,900,1024]) {
+    await p.setViewportSize({width,height:844});
+    assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`theme must not overflow at ${width}px`);
+   }
+   await p.setViewportSize({width:390,height:844});
+   await p.locator('#menuBtn').click();
+   await p.locator('.drawer__theme').click();
+   await p.locator('[data-theme="light"]').click();
+   assert.equal(await p.locator('html').getAttribute('data-ui'),'light');
+   await p.locator('#menuBtn').click();await p.locator('.drawer__theme').click();
+   await p.locator('[data-theme="bimbo"]').click();
+   for(const doc of ['privacy.html','consent.html']) {
+    await p.goto(`http://astta.test/${doc}`);
+    assert.equal(await p.locator('html').getAttribute('data-ui'),'bimbo');
+    assert.equal(await p.locator('main').isVisible(),true);
+   }
    assert.deepEqual(t.errors,[]);await t.context.close();
   }
   {

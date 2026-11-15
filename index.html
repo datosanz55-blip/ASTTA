@@ -29,6 +29,7 @@
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://{{.Host}}/#org", "name": "ASTTA", "url": "https://{{.Host}}/", "logo": "https://{{.Host}}/public/icon-512.png", "sameAs": ["https://t.me/astta_shop_bot"], "description": "Маркетплейс товаров из Китая от поставщиков TT Логистики: цена в рублях сразу с доставкой, заказ по ссылке или фото."}, {"@type": "WebSite", "@id": "https://{{.Host}}/#site", "url": "https://{{.Host}}/", "name": "ASTTA", "inLanguage": "ru-RU", "publisher": {"@id": "https://{{.Host}}/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как считается цена?", "acceptedAnswer": {"@type": "Answer", "text": "В каталоге цена в рублях уже с доставкой до России и сервисным сбором ASTTA. Для товара по ссылке или скриншоту сайт сразу считает предварительную цену: цена в юанях по курсу сервиса плюс логистика. Перед выкупом агент сверяет цену на площадке."}}, {"@type": "Question", "name": "Когда платить?", "acceptedAnswer": {"@type": "Answer", "text": "Сразу при оформлении заказа. Если у поставщика не окажется товара, вернём деньги за него. Если цена на площадке выше расчёта, напишем до выкупа: доплатите разницу или получите деньги обратно."}}, {"@type": "Question", "name": "Можно заказать товар, которого нет в каталоге?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать."}}, {"@type": "Question", "name": "Как отслеживать заказ?", "acceptedAnswer": {"@type": "Answer", "text": "В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае."}}, {"@type": "Question", "name": "Как войти на сайт?", "acceptedAnswer": {"@type": "Answer", "text": "Через Telegram, без пароля: подтвердите вход в приложении Telegram."}}, {"@type": "Question", "name": "Можно купить оптом?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Включите режим «Опт» вверху: цены за штуку в юанях, оптовые ступени от количества и совместный опт, когда партию собирают несколько покупателей."}}]}]}</script>
 <script src="assets/js/theme.js" data-storefront></script>
 <link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/bimbo.css">
 </head>
 <body>
 
@@ -111,7 +112,7 @@
 
     <div class="topbar__actions">
       <button class="topbtn topbtn--ai" type="button" data-ai-open aria-label="ASTTA AI"><span>AI</span><svg class="ic"><use href="#i-spark"/></svg></button>
-      <button class="topbtn topbtn--theme" type="button" data-theme-toggle aria-label="Светлая тема" title="Светлая тема"><svg class="ic ic--sun"><use href="#i-sun"/></svg><svg class="ic ic--moon"><use href="#i-moon"/></svg></button>
+      <button class="topbtn topbtn--theme" type="button" data-theme-toggle aria-haspopup="dialog" aria-label="Выбрать тему" title="Выбрать тему"><svg class="ic ic--sun"><use href="#i-sun"/></svg><svg class="ic ic--moon"><use href="#i-moon"/></svg><svg class="ic ic--bimbo"><use href="#i-spark"/></svg></button>
       <button class="topbtn" id="searchBtn" type="button" aria-label="Поиск"><span>Поиск</span><svg class="ic"><use href="#i-search"/></svg></button>
       <a class="topbtn" href="#cart" aria-label="Корзина"><span>Корзина</span><svg class="ic"><use href="#i-bag"/></svg><b class="count" data-cart-count hidden>0</b></a>
       <button class="menubtn" id="menuBtn" type="button" aria-label="Открыть меню" aria-controls="menu" aria-expanded="false"><svg class="ic"><use href="#i-menu"/></svg></button>
@@ -429,7 +430,7 @@
       <a href="#profile" data-close-menu>Профиль</a>
       <a href="https://t.me/astta_shop_bot" target="_blank" rel="noopener">Бот в Telegram: статусы заказов</a>
       <button type="button" data-open-chat data-close-menu>Написать агенту</button>
-      <button class="drawer__theme" type="button" data-theme-toggle><svg class="ic ic--sun"><use href="#i-sun"/></svg><svg class="ic ic--moon"><use href="#i-moon"/></svg><span data-theme-label>Светлая тема</span></button>
+      <button class="drawer__theme" type="button" data-theme-toggle aria-haspopup="dialog"><svg class="ic ic--sun"><use href="#i-sun"/></svg><svg class="ic ic--moon"><use href="#i-moon"/></svg><svg class="ic ic--bimbo"><use href="#i-spark"/></svg><span data-theme-label>Светлая тема</span></button>
     </div>
   </aside>
 </div>

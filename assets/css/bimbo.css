@@ -1,0 +1,143 @@
+/* Bimbo — отдельная палитра ASTTA: фуксия, белый, чёрный и леопард. */
+:root[data-ui="bimbo"] {
+  color-scheme: light;
+  --bg: #fff8fc;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #ffeaf4;
+  --line: #ebcbdc;
+  --ink: #191217;
+  --muted: #745765;
+  --lime: #ff008a;
+  --lime-hover: #d90070;
+  --on-lime: #191217;
+  --emerald: #b2005c;
+  --emerald-deep: #ffe2f0;
+  --hot: #b31946;
+  --accent-ink: #b50060;
+  --header-bg: rgba(255, 248, 252, .95);
+  --scrim: rgba(38, 8, 25, .52);
+  --shade: rgba(25, 8, 18, .86);
+}
+
+/* Выбор оформления доступен в любой теме. */
+.theme-options { display: grid; gap: 12px; }
+.theme-option {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr) 24px; align-items: center; gap: 16px;
+  border: 1px solid var(--line); border-radius: 18px; padding: 12px;
+  color: var(--ink); background: var(--surface); text-align: left;
+}
+.theme-option:hover { background: var(--surface-2); }
+.theme-option[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent-ink); }
+.theme-option__copy { display: grid; gap: 4px; min-width: 0; }
+.theme-option__copy b { font-size: 17px; }
+.theme-option__copy small { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.theme-option > .ic { color: var(--accent-ink); opacity: 0; }
+.theme-option[aria-pressed="true"] > .ic { opacity: 1; }
+.theme-preview { height: 72px; border-radius: 10px; padding: 12px 9px; display: flex; align-items: end; gap: 5px; overflow: hidden; }
+.theme-preview::before, .theme-preview::after { content: ""; width: 22px; height: 34px; border-radius: 5px; }
+.theme-preview--dark { background: #070b09; }
+.theme-preview--dark::before { background: #dcef3a; }
+.theme-preview--dark::after { background: #24312a; }
+.theme-preview--light { background: #f3f5ee; box-shadow: inset 0 0 0 1px #d9dfd0; }
+.theme-preview--light::before { background: #dcef3a; }
+.theme-preview--light::after { background: #ffffff; }
+.theme-preview--bimbo { background: url("../img/themes/leopard.webp") center / 170px; }
+.theme-preview--bimbo::before { background: #ff008a; }
+.theme-preview--bimbo::after { background: #ffffff; }
+:is(.topbtn--theme, .drawer__theme) .ic--bimbo { display: none; }
+:root[data-ui="bimbo"] :is(.topbtn--theme, .drawer__theme) :is(.ic--sun, .ic--moon) { display: none; }
+:root[data-ui="bimbo"] :is(.topbtn--theme, .drawer__theme) .ic--bimbo { display: inline-block; }
+
+/* Версия знака для белого фона: чёрная «А», розовая сумка. */
+:root[data-ui="bimbo"] .brand__mark.brand--light { filter: hue-rotate(262deg) saturate(4); }
+:root[data-ui="bimbo"] .topbar { border-bottom: 1px solid var(--line); }
+:root[data-ui="bimbo"] .topbtn--theme { color: var(--accent-ink); background: var(--surface-2); }
+:root[data-ui="bimbo"] .subbar { padding-top: 10px; }
+:root[data-ui="bimbo"] .mode { background: #fff; }
+:root[data-ui="bimbo"] .btn--lime { box-shadow: 0 5px 18px rgba(214, 0, 111, .18); }
+:root[data-ui="bimbo"] .btn--black { background: #191217; color: #fff; }
+
+/* Белая обложка с леопардовой каймой; крупный текст не лежит на узоре. */
+:root[data-ui="bimbo"] .hero {
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 50px rgba(100, 13, 57, .06);
+}
+:root[data-ui="bimbo"] .hero::before {
+  content: ""; position: absolute; z-index: 0; inset: 0; pointer-events: none;
+  background: url("../img/themes/leopard.webp") center / 320px;
+}
+:root[data-ui="bimbo"] .hero__copy {
+  background: #fff; border-top: 4px solid var(--lime);
+}
+:root[data-ui="bimbo"] :is(.htext h1, .htext h2) { color: #191217; }
+:root[data-ui="bimbo"] .htext p { color: #59434f; opacity: 1; }
+:root[data-ui="bimbo"] .htext :is(h1, h2)::after { content: "✦"; color: var(--lime); font-size: .38em; vertical-align: top; margin-left: .18em; }
+:root[data-ui="bimbo"] .hero__visual::after { background: linear-gradient(180deg, rgba(24, 8, 17, .12), transparent 35%, rgba(24, 8, 17, .28)); }
+:root[data-ui="bimbo"] .hero__vword { -webkit-text-stroke-color: rgba(255, 0, 138, .25); }
+:root[data-ui="bimbo"] .hero__tag { background: #fff; color: #a90058; box-shadow: 0 3px 16px rgba(0, 0, 0, .12); }
+:root[data-ui="bimbo"] .hero__cta .btn--text { color: #191217; }
+
+/* Вместо зелёного свечения — чёрная лента с розовыми деталями. */
+:root[data-ui="bimbo"] .perkband { background: transparent; }
+:root[data-ui="bimbo"] .perkband::after { display: none; }
+:root[data-ui="bimbo"] .perkband__strip { background: #191217; }
+:root[data-ui="bimbo"] .perkband__strip::before,
+:root[data-ui="bimbo"] .perkband__strip::after { background: #ff008a; box-shadow: none; }
+:root[data-ui="bimbo"] .perks .ic { color: #ff80bf; filter: none; }
+:root[data-ui="bimbo"] .perks li:not(:last-child)::after { background: #ff80bf; }
+
+:root[data-ui="bimbo"] :is(.card, .group, .panel, .faq__item, .post) { box-shadow: inset 0 0 0 1px var(--line); }
+:root[data-ui="bimbo"] .card__price { color: #191217; }
+:root[data-ui="bimbo"] .card__fav.is-on { color: #b50060; }
+:root[data-ui="bimbo"] .tile::before { box-shadow: inset 0 0 0 1px rgba(255, 0, 138, .4); }
+:root[data-ui="bimbo"] .tile::after { background: linear-gradient(180deg, transparent 35%, rgba(30, 7, 20, .88)); }
+:root[data-ui="bimbo"] :is(.pill--go, .optnote, .smartsize, .rvstate, .aicard__why span, .tl__proof, .room__status--ok, .fill) { background: #ffe2f0; }
+:root[data-ui="bimbo"] .community { background: linear-gradient(110deg, #fff 65%, rgba(255, 255, 255, .1)), url("../img/themes/leopard.webp") right / 260px; border: 1px solid var(--line); }
+:root[data-ui="bimbo"] .community > p { background: #fff; padding: 8px; border-radius: 8px; }
+:root[data-ui="bimbo"] .banner { background: #ffe2f0; box-shadow: inset 0 0 0 1px var(--line); }
+:root[data-ui="bimbo"] .ai { background: #21131d; --ink: #fff; --muted: #e1c2d3; --bg: #342330; --surface: #342330; --line: #77516a; --accent-ink: #ff8ac8; color: #fff; }
+:root[data-ui="bimbo"] .ai__badge { background: #513045; color: #ff8ac8; }
+:root[data-ui="bimbo"] .ai__chips .chip { color: #fff; }
+:root[data-ui="bimbo"] .tabbar { border-top: 1px solid var(--line); }
+:root[data-ui="bimbo"] .foot { border-top: 1px solid var(--line); }
+:root[data-ui="bimbo"] .splash { display: none; }
+
+@media (min-width: 900px) {
+  :root[data-ui="bimbo"] .hero { padding: 32px; gap: 24px; }
+  :root[data-ui="bimbo"] .hero__copy { align-self: stretch; justify-content: center; padding: 32px 24px; border: 0; border-radius: 22px; gap: 30px; }
+  :root[data-ui="bimbo"] .htext :is(h1, h2) { font-size: clamp(84px, 8vw, 124px); }
+  :root[data-ui="bimbo"] .hero__visual { border: 8px solid #fff; height: 550px; max-width: 100%; box-shadow: 0 10px 30px rgba(20, 8, 15, .15); }
+  :root[data-ui="bimbo"] .hero__dots { bottom: 51px; left: 60px; }
+  :root[data-ui="bimbo"] .hero__dots button { background: #c9acba; }
+  :root[data-ui="bimbo"] .hero__dots button[aria-selected="true"] { background: var(--lime); }
+}
+@media (max-width: 899px) {
+  :root[data-ui="bimbo"] .hero { padding: 12px; }
+  :root[data-ui="bimbo"] .hero__visual { border-radius: 16px; overflow: hidden; aspect-ratio: 4 / 5; max-height: 540px; }
+  :root[data-ui="bimbo"] .hero__copy { position: relative; margin-top: -16px; border-radius: 18px; padding: 24px 20px; }
+  :root[data-ui="bimbo"] .htext :is(h1, h2) { font-size: clamp(56px, 14vw, 96px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-option { transition: none; }
+}
+
+:root[data-ui="bimbo"] .badge--group { color: var(--accent-ink); }
+:root[data-ui="bimbo"] .hero__texts { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+:root[data-ui="bimbo"] .htext { min-width: 0; }
+@media (max-width: 360px) {
+  :root[data-ui="bimbo"] .topbar__in { gap: 8px; }
+  :root[data-ui="bimbo"] .topbar .brand { gap: 6px; }
+  :root[data-ui="bimbo"] .topbar .brand__mark { width: 28px; }
+  :root[data-ui="bimbo"] .topbar .brand__word { width: 76px; }
+  :root[data-ui="bimbo"] .topbar__actions { gap: 0; }
+  :root[data-ui="bimbo"] .topbtn { padding-inline: 8px; }
+  :root[data-ui="bimbo"] .menubtn { width: 42px; margin-left: 0; }
+  :root[data-ui="bimbo"] .hero__copy { padding-inline: 16px; }
+  :root[data-ui="bimbo"] .htext :is(h1, h2) { font-size: 44px; }
+}
+
+:root[data-ui="bimbo"] .ai__art { filter: hue-rotate(210deg); }
+:root[data-ui="bimbo"] .reelthumb { background: radial-gradient(80% 60% at 50% 30%, #8b275e, transparent), #26101f; }
+:root[data-ui="bimbo"] .tag { background: #ffe2f0; }
