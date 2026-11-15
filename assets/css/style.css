@@ -1565,3 +1565,8 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .is-booting body::after { content: ""; position: fixed; left: 50%; top: 45%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--lime); animation: bootSpin .8s linear infinite; }
 @keyframes bootSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .is-booting body::after { animation: none; } }
+
+/* Ошибка API не открывает демонстрационную витрину. */
+.site-unavailable main, .site-unavailable .splash { display: none; }
+#siteError { min-height: 60vh; }
+#catalogMore, #catalogRetry { margin: 24px auto; }

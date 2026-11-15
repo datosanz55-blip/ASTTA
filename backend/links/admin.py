@@ -19,7 +19,7 @@ class LinkRequestAdmin(ModelAdmin):
     list_display = ("id", "status", "marketplace", "open_link", "price_cny", "qty", "estimate_rub", "contact",
                     "agent", "created_at")
     list_filter = ("status", "marketplace")
-    search_fields = ("contact", "url", "text", "item_id")
+    search_fields = ("contact", "url", "text", "comment", "item_id")
     readonly_fields = ("url", "text", "marketplace", "item_id", "photo_preview", "price_cny", "qty", "size", "color",
                        "category", "estimate_rub", "contact", "comment", "pd_consent_at", "created_at")
     fields = ("status", "agent", "agent_note", *readonly_fields)

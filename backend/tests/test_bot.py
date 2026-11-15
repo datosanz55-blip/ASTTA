@@ -104,3 +104,17 @@ def test_setup_command_configures_bot(sent, monkeypatch):
     assert methods["setWebhook"]["secret_token"] == SECRET
     assert methods["setChatMenuButton"]["menu_button"]["web_app"]["url"] == "https://astta.ru"
     assert [c["command"] for c in methods["setMyCommands"]["commands"]] == ["start", "orders", "help"]
+
+
+def test_help_deep_link_opens_support_form(sent, db):
+    for text in ("/help", "/start help", "Вопрос агенту"):
+        hook(update(text))
+        button = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]
+        assert button["text"] == "Написать агенту"
+        assert button["web_app"]["url"] == "https://astta.ru/#support"
+        assert "Отправить агенту" in sent[-1][1]["text"]
+
+
+def test_empty_message_does_not_crash(sent, db):
+    assert hook(update("   ")).status_code == 200
+    assert sent == []

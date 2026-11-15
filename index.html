@@ -27,7 +27,7 @@
 <link rel="preload" href="assets/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/oswald-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://{{.Host}}/#org", "name": "ASTTA", "url": "https://{{.Host}}/", "logo": "https://{{.Host}}/public/icon-512.png", "sameAs": ["https://t.me/astta_shop_bot"], "description": "Маркетплейс товаров из Китая от поставщиков TT Логистики: цена в рублях сразу с доставкой, заказ по ссылке или фото."}, {"@type": "WebSite", "@id": "https://{{.Host}}/#site", "url": "https://{{.Host}}/", "name": "ASTTA", "inLanguage": "ru-RU", "publisher": {"@id": "https://{{.Host}}/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как считается цена?", "acceptedAnswer": {"@type": "Answer", "text": "В каталоге цена в рублях уже с доставкой до России и сервисным сбором ASTTA. Для товара по ссылке или скриншоту сайт сразу считает предварительную цену: цена в юанях по курсу сервиса плюс логистика. Перед выкупом агент сверяет цену на площадке."}}, {"@type": "Question", "name": "Когда платить?", "acceptedAnswer": {"@type": "Answer", "text": "Сразу при оформлении заказа. Если у поставщика не окажется товара, вернём деньги за него. Если цена на площадке выше расчёта, напишем до выкупа: доплатите разницу или получите деньги обратно."}}, {"@type": "Question", "name": "Можно заказать товар, которого нет в каталоге?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать."}}, {"@type": "Question", "name": "Как отслеживать заказ?", "acceptedAnswer": {"@type": "Answer", "text": "В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае."}}, {"@type": "Question", "name": "Как войти на сайт?", "acceptedAnswer": {"@type": "Answer", "text": "Через Telegram, без пароля: подтвердите вход в приложении Telegram."}}, {"@type": "Question", "name": "Можно купить оптом?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Включите режим «Опт» вверху: цены за штуку в юанях, оптовые ступени от количества и совместный опт, когда партию собирают несколько покупателей."}}]}]}</script>
-<script src="assets/js/theme.js"></script>
+<script src="assets/js/theme.js" data-storefront></script>
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -130,6 +130,11 @@
   </div>
 </div>
 
+<section id="siteError" class="emptystate" role="alert" hidden>
+  <h1>Не удалось загрузить магазин</h1>
+  <p>Проверьте соединение и повторите попытку.</p>
+  <button class="btn btn--lime" type="button" data-site-retry>Повторить загрузку</button>
+</section>
 <main id="app">
 
   <!-- ГЛАВНАЯ -->
@@ -334,7 +339,10 @@
       </label>
     </div>
     <div class="chips" id="catChips" role="toolbar" aria-label="Категории"></div>
+    <p class="note" id="catalogStatus" role="status"></p>
+    <button class="btn btn--line" id="catalogRetry" type="button" data-catalog-retry hidden>Повторить загрузку</button>
     <div class="grid" id="catalogGrid"></div>
+    <button class="btn btn--line" id="catalogMore" type="button" data-catalog-more hidden>Показать ещё</button>
     <p class="empty" id="catalogEmpty" hidden>Ничего не нашли. Попробуйте <a href="#link">заказ по ссылке</a>.</p>
   </section>
 

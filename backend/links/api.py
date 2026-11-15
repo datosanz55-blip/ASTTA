@@ -3,6 +3,7 @@ from decimal import Decimal
 from ninja import File, Form, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
+from pydantic import Field
 
 from accounts.api import buyer_contact, current_buyer, require_consent
 from assistant import llm, yandex
@@ -20,6 +21,27 @@ from orders.services import OrderError, create_link_order
 from pricing.services import PricingError
 
 router = Router(tags=["Заказ по ссылке"])
+
+
+class SupportIn(Schema):
+    contact: str = Field(min_length=1, max_length=64)
+    message: str = Field(min_length=1, max_length=2000)
+    consent: bool = False
+
+
+@router.post("/support", response={201: dict}, throttle=[per_ip("support", "20/h")],
+             summary="Обращение к агенту ASTTA")
+def support(request, payload: SupportIn):
+    # Проверяем CSRF для сессии покупателя, как при оформлении заказа.
+    current_buyer(request)
+    consent_at = require_consent(payload.consent)
+    if not payload.contact.strip() or not payload.message.strip():
+        raise HttpError(422, "Укажите контакт и вопрос")
+    item = LinkRequest.objects.create(
+        text=payload.message.strip(), contact=payload.contact.strip(),
+        comment="Обращение к агенту с сайта", pd_consent_at=consent_at,
+    )
+    return Status(201, {"id": item.pk})
 
 
 class LookupIn(Schema):

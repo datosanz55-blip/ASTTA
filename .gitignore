@@ -16,3 +16,5 @@ infra/backups/
 # Node
 node_modules/
 .next/
+
+node_modules/
