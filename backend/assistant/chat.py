@@ -36,12 +36,14 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   и предложи написать агенту, не выдумывай.
 - Пустой результат поиска или match="popular" значит, что точных совпадений нет (это не сбой). Скажи честно,
   что именно такого в каталоге нет, назови, что есть похожего или в бюджете, если подходит.
-- Прислали ссылку или текст «поделиться» (часто с иероглифами) — сразу вызови inspect_link: назови площадку,
-  переведи название, проверь, нет ли товара у нас. Если вернулся on_marketplace — назови цену под ключ и размеры,
-  иначе попроси цену в юанях или скриншот.
-- Строки «[Данные о товаре: …]» в истории — это уже найденное по ссылке. Не вызывай inspect_link заново,
-  отвечай по ним. Цена зависит от размера, а цен по размерам у площадки нет: назови диапазон под ключ (от и до)
-  и попроси написать цену своего размера в юанях из приложения или прислать скриншот — тогда посчитай точно.
+- Прислали ссылку: вызови check_market_price с этой ссылкой и размером, если он назван.
+  Если размер ещё не назван, оставь size пустым: сайт покажет фото и кнопки размеров.
+  Проверка цены идёт в фоне: скажи «Проверяю цену размера», результат сайт покажет автоматически.
+  Не отправляй человека регистрироваться в Poizon или узнавать цену самому.
+- В истории есть данные ссылки, а покупатель назвал другой размер — вызови check_market_price заново.
+  Цена «от», официальная розничная цена и цена POIZON в рублях не являются ценой выкупа выбранного размера в CNY.
+  Не обещай точную цену, если API её не отдаёт. Сайт предложит повторить проверку или спросить агента.
+- Если просят фото по ссылке, вызови check_market_price без размера: фото появятся под ответом.
 - Прислали скриншот — прочитай с него цену в юанях (обычно крупная цифра с ¥, не зачёркнутая и не доставка),
   название и выбранный размер, переведи с китайского и посчитай через estimate_link_price. Не видно цену — попроси
   написать её текстом.
@@ -49,12 +51,11 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
   за модель и для кого (например: «KD 19 — именная баскетбольная линейка Кевина Дюранта, лёгкая, для зала и улицы»),
   чем хороша. Для брендовых вещей вызови search_reviews и добавь 1–2 конкретных плюса или минуса из обзоров
   со ссылкой на сайт («по обзору на …»). Не придумывай оценки, рейтинги и цифры — только из найденного.
-- Заказ по ссылке или скриншоту: когда товар понятен, покупатель выбрал размер (или размер не нужен) И сам
-  назвал цену в юанях или прислал скриншот с ценой — добавь в конце служебную строку ЗАКАЗ (формат ниже), под
-  ответом появится кнопка «Оформить заказ» с расчётом. Цену «от» с площадки в строку не ставь: нет цены от
-  покупателя — сначала попроси её или скриншот. Не пиши «нажмите Заказать по ссылке»: скажи, что можно оформить
-  кнопкой ниже.
-  Для товаров каталога кнопка своя — «В корзину» на карточке.
+- Для цены, проверенной через check_market_price, сайт сам покажет кнопку заказа. Не формируй для неё
+  строку ЗАКАЗ и не проси покупателя вписывать цену.
+- Если покупатель сам прислал цену в юанях или скриншот и хочет заказать, можно добавить строку ЗАКАЗ
+  (формат ниже). Никогда не подставляй туда цену «от» или официальную розничную цену.
+  Для обычных товаров каталога кнопка своя — «В корзину» на карточке.
 - Товара нет в каталоге — предложи прислать ссылку или скриншот с Poizon, Taobao, 1688. Если покупатель
   назвал цену в юанях — посчитай через estimate_link_price.
 - Статус заказа — только через order_status.
@@ -71,6 +72,14 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 {facts}"""
 
 TOOLS = [
+    {"type": "function", "function": {
+        "name": "check_market_price",
+        "description": "Получить фото и размеры Poizon/Taobao/Tmall, а с size — цену выбранного размера. "
+                       "Результат появится под ответом. При смене размера проверять заново.",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "Реальная ссылка из разговора"},
+            "size": {"type": "string", "description": "Размер покупателя без пересчёта RU/EU, например 42"},
+            "qty": {"type": "integer"}}, "required": ["text"]}}},
     {"type": "function", "function": {
         "name": "search_catalog",
         "description": "Найти товары в каталоге ASTTA по словам. Возвращает до 8 товаров с ценой под ключ в рублях.",
@@ -171,6 +180,7 @@ def get_product(slug: str, ctx=None) -> dict:
     price = int(retail) if retail is not None else None
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     return {"slug": product.slug, "title": product.title_ru, "description": product.description_ru[:1200],
+            "images": [image.image.url for image in product.images.all()][:6],
             "price_rub": price, "sizes": product.size_list, "colors": product.color_list,
             "weight_kg": float(product.weight_kg), "bulky": product.bulky,
             "wholesale": [{"from_qty": t.min_qty, "price_cny": float(t.price_cny)} for t in tiers],
@@ -213,20 +223,19 @@ def inspect_link(text: str, ctx=None) -> dict:
     if product is not None:
         retail = retail_rub(product, ctx)
         price = int(retail) if retail is not None else None
+        result["images"] = [image.image.url for image in product.images.all()][:6]
         result["in_catalog"] = {"slug": product.slug, "title": product.title_ru, "price_rub": price}
     else:
         result["in_catalog"] = None
+    if product is None or product.is_market:
         market = marketplace_card(info)
         if market.get("item"):
             result["on_marketplace"] = market["item"]
             result["estimate"] = market.get("estimate")
-            result["next_step"] = ("Это данные с площадки сейчас. Назови цену под ключ из estimate (если есть "
-                                   "диапазон по размерам — это от и до). Попроси цену своего размера в юанях или "
-                                   "скриншот; когда покупатель её дал и выбрал размер — добавь строку ЗАКАЗ.")
+            result["next_step"] = ("Покажи фото и диапазон. Для точной цены попроси размер "
+                                   "и вызови check_market_price.")
         else:
-            result["next_step"] = (market.get("note") or "Цены с площадки не видно") + (
-                ": попросите цену в юанях со страницы товара или скриншот, посчитайте через estimate_link_price. "
-                "Когда цена и размер известны — добавь строку ЗАКАЗ.")
+            result["next_step"] = market.get("note") or "Площадка не отдаёт данные. Предложи повторить проверку."
     return result
 
 
@@ -240,11 +249,13 @@ def marketplace_card(info) -> dict:
                 else "Номер товара не нашёлся в ссылке"}
     try:
         item = apify.fetch_item(info.code, info.item_id)
-    except apify.ApifyError as exc:
-        return {"note": str(exc)}
+    except apify.ApifyError:
+        return {"note": "Площадка временно не отдаёт данные. Предложи повторить проверку или уточнить у агента."}
     if not item:
         return {"note": "Товар не нашёлся на площадке или снят с продажи"}
-    out = {"item": item}
+    from links.market_quotes import public_item
+
+    out = {"item": public_item(item)}
     if item.get("price_cny"):
         try:
             est = estimate(Decimal(str(item["price_cny"])), 1, info.marketplace)
@@ -281,6 +292,8 @@ class ChatAnswer:
     memo: str = ""
     # Кнопка «Оформить заказ» под ответом: {"url", "title", "size", "qty", "price_cny", "total_rub"}.
     order: dict | None = None
+    images: list[str] = field(default_factory=list)
+    market_jobs: list[str] = field(default_factory=list)
 
 
 def _run_tool(name: str, args: dict, buyer, ctx) -> object:
@@ -293,6 +306,15 @@ def _run_tool(name: str, args: dict, buyer, ctx) -> object:
         return search_knowledge(str(args.get("query", "")))
     if name == "estimate_link_price":
         return estimate_link_price(args.get("price_cny"), args.get("qty", 1))
+    if name == "check_market_price":
+        from links.market_quotes import start_lookup
+
+        try:
+            job = start_lookup(str(args.get("text", "")), str(args.get("size", "")), int(args.get("qty", 1)))
+        except (ValueError, TypeError):
+            return {"note": "Не удалось проверить ссылку, размер или количество. Уточни их у покупателя."}
+        return {"market_job": str(job.pk), "status": job.status,
+                "next_step": "Проверка идёт в фоне, результат появится под ответом. Не называй цену до результата."}
     if name == "inspect_link":
         return inspect_link(str(args.get("text", "")), ctx=ctx)
     if name == "search_reviews":
@@ -407,6 +429,7 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
     messages = [{"role": "system", "content": SYSTEM.format(facts=facts_text())}, *turns]
     seen_products: set[str] = set()
     memos: list[str] = []
+    images, market_jobs = [], []
     trace, tokens = [], 0
     try:
         for _ in range(MAX_ROUNDS + 1):
@@ -430,6 +453,12 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
                     seen_products.add(result["in_catalog"]["slug"])
                 if call["name"] == "inspect_link" and result.get("url"):
                     memos.append(_link_memo(result))
+                if call["name"] in ("inspect_link", "get_product"):
+                    item = result.get("on_marketplace") or {}
+                    images.extend(item.get("images", []))
+                    images.extend(result.get("images", []))
+                if isinstance(result, dict) and result.get("market_job"):
+                    market_jobs.append(result["market_job"])
                 trace.append({"tool": call["name"], "args": call["arguments"]})
                 messages.append({"role": "tool", "tool_call_id": call["id"],
                                  "content": json.dumps(result, ensure_ascii=False, default=str)[:6000]})
@@ -451,7 +480,8 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
     log.response = text or HANDOFF_TEXT
     log.handoff, log.tokens, log.sources = handoff, tokens, {"tools": trace, "products": products, "order": order}
     log.save()
-    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk, memo="\n".join(memos)[:1500], order=order)
+    return ChatAnswer(text or HANDOFF_TEXT, products, handoff, log.pk, memo="\n".join(memos)[:1500], order=order,
+                      images=list(dict.fromkeys(images))[:6], market_jobs=list(dict.fromkeys(market_jobs))[:3])
 
 
 def _link_memo(result: dict) -> str:

@@ -72,4 +72,5 @@ def test_inspect_link_for_ai(monkeypatch, db):
     result = inspect_link(POIZON_SHARE)
     assert result["marketplace"] == "Poizon (Dewu)" and result["item_id"] == "1234567"
     assert result["title_from_share"] == "Nike Dunk Low 复古板鞋" and result["in_catalog"] is None
-    assert "юанях" in result["next_step"]
+    assert "повторить проверку" in result["next_step"]
+    assert "APIFY_TOKEN" not in result["next_step"]
