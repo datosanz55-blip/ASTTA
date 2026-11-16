@@ -407,6 +407,24 @@
     </article>`;
   }
 
+  // Keep original SKU objects for carts and orders; collapse only displayed lists.
+  const wheelVariants = new Map();
+  const productModelKey = (p) => p.wheel ? 'wheel:' + p.wheel.key : 'sku:' + p.id;
+  function groupWheelProducts(items) {
+    const groups = new Map();
+    items.filter((p) => !isSupplier() || hasWholesale(p)).forEach((p) => {
+      const key = productModelKey(p);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+    return [...groups.values()].map((variants) => {
+      if (!variants[0].wheel) return variants[0];
+      const cheapest = variants.reduce((a, b) => catalogPrice(a) <= catalogPrice(b) ? a : b);
+      const diameters = [...new Set(variants.map((p) => p.wheel.diameter))].sort((a,b) => Number(a)-Number(b));
+      return { ...cheapest, t: cheapest.wheel.model, wheelDiameters: diameters };
+    });
+  }
+
   function cardHTML(p) {
     if (isSupplier() && !hasWholesale(p)) return '';
     if (isMarket(p)) return marketCardHTML(p);
@@ -419,6 +437,11 @@
       price = rub(r.total);
       if (p.sale) old = `<s>${rub(retailFull(p))}</s>`;
       sub = '';
+    }
+    if (p.wheel) {
+      price = 'от ' + price;
+      sub = [(p.wheelDiameters || [p.wheel.diameter]).map((d) => 'R' + d).join(' · '), sub].filter(Boolean).join(' · ');
+      old = '';
     }
     let badge = '';
     if (p.sale && !isSupplier()) badge = `<span class="badge badge--hot">−${p.sale}%</span>`;
@@ -569,7 +592,7 @@
     $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${esc(c.id)}"><img src="${esc(c.src || img(c.img))}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${esc(c.name)}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
-    $('#popular').innerHTML = [...PRODUCTS].filter((p) => !isMarket(p)).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
+    $('#popular').innerHTML = groupWheelProducts(PRODUCTS.filter((p) => !isMarket(p))).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     // Блока может не быть, если сервер отдал старый index.html к новому app.js: тогда просто пропускаем его.
     const poizonGrid = $('#poizonGrid');
     if (poizonGrid) poizonGrid.innerHTML = PRODUCTS.filter(isPoizon).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
@@ -697,8 +720,8 @@
     if (catalogFilters.fresh) selected.push({ facet: 'fresh', value: '', label: 'Новинки' });
     FACETS.forEach((facet) => {
       const options = new Map();
-      base.forEach((p) => facetValues(p, facet).forEach((v) => { if (!options.has(v.key)) options.set(v.key, { ...v, count: 0 }); }));
-      base.filter((p) => matchesCatalogFilters(p, facet)).forEach((p) => facetValues(p, facet).forEach((v) => { if (options.has(v.key)) options.get(v.key).count++; }));
+      base.forEach((p) => facetValues(p, facet).forEach((v) => { if (!options.has(v.key)) options.set(v.key, { ...v, count: 0, models: new Set() }); }));
+      base.filter((p) => matchesCatalogFilters(p, facet)).forEach((p) => facetValues(p, facet).forEach((v) => { if (options.has(v.key)) { const option = options.get(v.key); option.models.add(productModelKey(p)); option.count = option.models.size; } }));
       catalogFilters[facet].forEach((key) => { if (!options.has(key)) {
         const known = PRODUCTS.flatMap((p) => facetValues(p, facet)).find((v) => v.key === key);
         options.set(key, { ...(known || { key, label: key }), count: 0 });
@@ -754,7 +777,7 @@
       rating: (a, b) => b.rating - a.rating,
     };
     const base = filterProducts(state.cat, state.q);
-    const list = base.filter((p) => matchesCatalogFilters(p)).sort(sorters[state.sort]);
+    const list = groupWheelProducts(base.filter((p) => matchesCatalogFilters(p))).sort(sorters[state.sort]);
     renderCatalogFilters(base, list);
     const key = [state.mode, state.cat, state.q, state.sort, catalogFilterState()].join('|');
     if (catalogView.key !== key) { catalogView.key = key; catalogView.limit = 60; }
@@ -790,7 +813,7 @@
     if (!p) return;
     if (isMarket(p)) { openProduct(id); return; }
     if (isSupplier() && !hasWholesale(p)) { toast('Этот товар доступен только в розницу'); return; }
-    if (live.on && (!p.detail || ((p.grid || []).length && (!opts.size || opts.size === '?')) || ((p.colors || []).length && !opts.color))) {
+    if (live.on && ((p.wheel && !opts.size) || !p.detail || ((p.grid || []).length && (!opts.size || opts.size === '?')) || ((p.colors || []).length && !opts.color))) {
       openProduct(id, { needSize: true }); return;
     }
     if (!isSupplier() && p.sizes && !opts.size) {
@@ -1149,7 +1172,7 @@
     if (list === null) return '<p class="empty">Загружаем…</p>';
     const items = list.filter(Boolean);
     if (!items.length) return empty;
-    return `<div class="grid">${items.map(cardHTML).join('')}</div>`;
+    return `<div class="grid">${groupWheelProducts(items).map(cardHTML).join('')}</div>`;
   }
   function favsTabHTML() {
     const list = live.on && live.me ? prof.favs : [...state.favs].map((id) => byId[id]);
@@ -1510,7 +1533,7 @@
   function openProduct(id, opts = {}) {
     const p = byId[id];
     if (!p) return;
-    pdState = { id, size: null, color: null, ship: shipFor(p), qty: isSupplier() && hasWholesale(p) ? p.tiers[0][0] : 1, needSize: !!opts.needSize };
+    pdState = { id, size: null, color: null, ship: shipFor(p), qty: isSupplier() && hasWholesale(p) ? p.tiers[0][0] : 1, needSize: !!opts.needSize, wheelDiameter: null, wheelChosen: false };
     openSheet(productHTML(), {});
     trackView(id);
     if (opts.needSize) toast('Выберите вариант товара');
@@ -1588,6 +1611,17 @@
     openLinkCalc(m.url, { title: p.t, size, item });
   }
 
+  function wheelOptionsHTML(p) {
+    const variants = (wheelVariants.get(p.wheel.key) || []).filter((v) => !isSupplier() || hasWholesale(v));
+    if (!variants.length) return '<p class="note">Загружаем размеры и параметры…</p>';
+    const diameters = [...new Set(variants.map((v) => v.wheel.diameter))].sort((a,b) => Number(a)-Number(b));
+    const choices = variants.filter((v) => v.wheel.diameter === pdState.wheelDiameter).sort((a,b) => Number(a.wheel.width)-Number(b.wheel.width) || a.t.localeCompare(b.t));
+    return `<fieldset class="wheel-options"><legend>Диаметр диска</legend><div class="sizes">${diameters.map((d) => `<button class="size" type="button" data-wheel-diameter="${esc(d)}" aria-pressed="${pdState.wheelDiameter === d}">R${esc(d)}</button>`).join('')}</div></fieldset>
+      ${choices.length ? `<fieldset class="wheel-options"><legend>Ширина · разболтовка · вылет</legend><div class="wheel-configs">${choices.map((v) => `<button class="size" type="button" data-wheel-variant="${esc(v.id)}" aria-pressed="${pdState.wheelChosen && pdState.id === v.id}"><b>${esc(v.wheel.size)} · PCD ${esc(v.wheel.pcd)} · ET${esc(v.wheel.offset)}${v.wheel.range ? ' · диапазон поставщика' : ''}</b><span>${isSupplier() ? cny(catalogPrice(v)) + ' / шт' : rub(catalogPrice(v))}</span></button>`).join('')}</div></fieldset>` : ''}
+      <p class="note">Цена за один диск. Сверьте диаметр, ширину, PCD и ET с параметрами автомобиля.</p>
+      ${pdState.wheelChosen && p.wheel.range ? '<p class="note">Для этого варианта поставщик указал PCD и ET диапазоном. Точные параметры нужно согласовать с агентом до выкупа.</p>' : ''}`;
+  }
+
   function productHTML() {
     const p = byId[pdState.id];
     if (isMarket(p)) return marketProductHTML(p);
@@ -1616,13 +1650,17 @@
         </div></details>`;
     }
 
+    if (p.wheel && !pdState.wheelChosen) {
+      priceBlock = '<p class="note">Выберите диаметр и параметры — покажем точную цену.</p>';
+      breakdown = '';
+    }
     const ship = `<fieldset class="ship" data-pd-ship><legend>Доставка</legend>${shipOptionsHTML('pdShip', pdState.ship, p.bulky)}</fieldset>`;
 
     const rec = smartSize(p);
     const smart = !p.sizes ? '' : (rec
       ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size: вам CN ${esc(rec.size)}</b><span>${esc(rec.why)}${rec.over ? '. Это самый большой размер модели, уточните у агента' : ''}</span></div>${pdState.size === rec.size ? '' : `<button class="btn btn--line btn--sm" type="button" data-size="${esc(rec.size)}">Выбрать</button>`}</div>`
       : (MEAS[p.id] ? `<div class="smartsize">${icon('ruler')}<div><b>Smart Size</b><span>Укажите мерки один раз, и мы подскажем размер по реальным замерам этой модели</span></div><button class="btn btn--line btn--sm" type="button" data-measures>Указать</button></div>` : ''));
-    const sizes = (p.sizes && (!sup || live.on)) ? `<div class="stack" style="gap:10px">
+    const sizes = p.wheel ? wheelOptionsHTML(p) : (p.sizes && (!sup || live.on)) ? `<div class="stack" style="gap:10px">
         <span class="sublabel">Размер · китайский и наш</span>
         <div class="sizes" role="group" aria-label="Размер">${(p.grid || SIZE_GRID[p.sizes] || []).map(([cn, ru]) => `<button class="size${rec && rec.size === cn ? ' size--rec' : ''}" type="button" data-size="${esc(cn)}" aria-pressed="${pdState.size === cn}"><b>CN ${esc(cn)}</b><span>${rec && rec.size === cn ? 'ваш размер' : esc(ru)}</span></button>`).join('')}</div>
         ${smart}
@@ -1660,7 +1698,7 @@
         : galleryHTML(p)}${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
         <button class="supchip" type="button" data-goto-sup="${esc(p.sup)}"><span class="ava" aria-hidden="true">${esc(s.short)}</span>${esc(s.name)}</button>
-        <h2>${esc(p.t)}</h2>
+        <h2>${esc(p.wheel ? p.wheel.model : p.t)}</h2>
         <div class="pd__rating">${p.rating ? `<span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span>` : ''}${p.reviews ? `<span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span>` : ''}<span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
         ${priceBlock}
         ${sizes}
@@ -3081,6 +3119,17 @@ ${aiCatalogJSON()}
     if (d.remove !== undefined) { cart().splice(Number(d.remove), 1); store.save(); updateCartCount(); renderCart(); return; }
     if (t.matches('[data-pay-link]')) { payLinkOrder(t.dataset.payLink); return; }
     if (t.matches('[data-checkout]')) { openSheet(checkoutHTML(), { narrow: true }); return; }
+    if (d.wheelDiameter && pdState) {
+      pdState.wheelDiameter = d.wheelDiameter; pdState.wheelChosen = false; pdState.size = null;
+      rerenderProduct(); return;
+    }
+    if (d.wheelVariant && pdState) {
+      const current = byId[pdState.id], p = byId[d.wheelVariant];
+      if (!p?.wheel || p.wheel.key !== current.wheel?.key || p.wheel.diameter !== pdState.wheelDiameter) return;
+      pdState.id = p.id; pdState.wheelChosen = true; pdState.size = p.filterSizes[0] || p.wheel.size; pdState.color = null;
+      pdState.ship = shipFor(p); pdState.qty = Math.max(pdState.qty, isSupplier() && hasWholesale(p) ? p.tiers[0][0] : 1);
+      rerenderProduct(); loadProductDetail(p); return;
+    }
     if (d.size) { pdState.size = d.size; pdState.needSize = false; rerenderProduct(); return; }
     if (d.pdQty) {
       const p = byId[pdState.id];
@@ -3091,6 +3140,7 @@ ${aiCatalogJSON()}
     }
     if (t.matches('[data-pd-add]')) {
       const p = byId[pdState.id];
+      if (p.wheel && !pdState.wheelChosen) { toast('Выберите диаметр и параметры диска'); $('[data-wheel-diameter]', $('#sheetBody'))?.focus(); return; }
       if (((live.on && (p.grid || []).length) || (!live.on && !isSupplier() && p.sizes)) && !pdState.size) { toast('Выберите размер'); $('.sizes button', $('#sheetBody'))?.focus(); return; }
       if ((p.colors || []).length && !pdState.color) { toast('Выберите цвет'); return; }
       const prevShip = state.ship;
@@ -3527,6 +3577,7 @@ ${aiCatalogJSON()}
   function liveProduct(c) {
     const tiers = (c.tiers || []).map((t) => [t.min_qty, Number(t.price_cny)]).sort((a, b) => a[0] - b[0]);
     return {
+      wheel: c.wheel || null,
       brand: c.brand || c.market?.brand || '', filterSizes: c.sizes?.length ? c.sizes : (c.market?.sizes || []).map((v) => v.size), filterColors: c.colors || [],
       id: c.slug, t: c.title, cat: c.category, sup: c.supplier_code, supName: c.supplier,
       cny: Number(c.price_cny), kg: Number(c.weight_kg) || 0.5,
@@ -3649,7 +3700,7 @@ ${aiCatalogJSON()}
           const data = await api(`/api/products?sort=popular&page_size=60&page=${page}`);
           const known = new Set(PRODUCTS.map((p) => p.id));
           data.items.forEach((c) => { if (!known.has(c.slug) && SUPPLIERS[c.supplier_code]) {
-            const p = liveProduct(c); PRODUCTS.push(p); byId[p.id] = p; known.add(p.id);
+            const p = byId[c.slug] || liveProduct(c); PRODUCTS.push(p); byId[p.id] = p; known.add(p.id);
           } });
           filterCarts();
           updateCartCount();
@@ -3699,6 +3750,10 @@ ${aiCatalogJSON()}
     if (!live.on || !p.live || p.detail) return;
     try {
       const d = await api(`/api/products/${encodeURIComponent(p.id)}`);
+      if (d.wheel_variants?.length && p.wheel) {
+        const variants = adoptCards(d.wheel_variants);
+        wheelVariants.set(p.wheel.key, variants);
+      }
       p.detail = true;
       p.desc = d.description || '';
       if (d.images && d.images.length) {
