@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const total = 1944;
-const product = (n) => ({slug: `item-${n}`, title: n === 1944 ? 'Последний товар' : `Товар ${n}`, category: 'shoes', supplier: 'Фабрика', supplier_code: 'factory', price_cny: '100', unit_price_cny:'100', weight_kg:'1', size_grid:'shoes', sold_count:total - n, tiers:[], retail_rub:'1620', fee_retail:'.05', fee_wholesale:'.03', image:'/assets/img/runner.webp'});
+const product = (n) => ({slug: `item-${n}`, title: n === 1944 ? 'Последний товар' : `Товар ${n}`, category: 'shoes', supplier: 'Фабрика', supplier_code: 'factory', brand:n%4===1||n%4===2?'Nike':'Adidas',sizes:[n%2?'42':'43'],colors:[n%4===1?'Black':n%4===3?'чёрный':'белый'],sale_percent:n%4===2?10:0,is_new:!!(n%2),price_cny:String((n%4||4)*100), unit_price_cny:String((n%4||4)*100), weight_kg:'1', size_grid:'shoes', sold_count:total - n, tiers:[], retail_rub:'1620', fee_retail:'.05', fee_wholesale:'.03', image:'/assets/img/runner.webp',...(n===1943?{market:{source:'poizon',brand:'Adidas',url:'https://example.com/item',price_cny_max:700,sizes:[{size:'42'}]},retail_rub:'1500'}:{})});
 const site = {rate:'11.4',retail_fee:'.05',wholesale_fee:'.03',link_rate:'13',link_delivery_rub:'1000', shipping:[{code:'auto',name:'Авто',rub_per_kg:'420',days_min:18,days_max:25,is_default:true,for_bulky_only:false}],telegram_bot:'astta_shop_bot',chat:false,market:false};
 async function setup(browser, {offline = false, saved = false, failPage = null, mailEnabled = false, telegramAccount = false} = {}) {
  const context=await browser.newContext({viewport:{width:1280,height:900}});
@@ -57,7 +57,7 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
  await page.goto('http://astta.test/#catalog');
  return {page,context,errors,posts,requests,maxActive:()=>maxActive};
 }
-(async()=>{
+if (require.main === module) (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined,headless:true,args:['--no-sandbox']});
  try {
   {
@@ -68,6 +68,40 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
    assert(t.requests.includes(33),'catalog beyond 1200 must load');
    assert(t.maxActive()<=3,'background catalog concurrency is bounded');
    assert.equal(await p.locator('#catalogGrid .card').count(),60);
+   await p.locator('[data-facet="brand"][value="nike"]').check();
+   assert.match(await p.locator('#catalogCount').innerText(),/972/);
+   await p.locator('[data-facet="color"][value="черный"]').check();
+   assert.match(await p.locator('#catalogCount').innerText(),/486/);
+   await p.locator('[data-facet="brand"][value="adidas"]').check();
+   assert.match(await p.locator('#catalogCount').innerText(),/972/,'multiple brands are OR');
+   await p.locator('#priceMax').fill('2000');
+   assert.match(await p.locator('#catalogCount').innerText(),/487/,'price uses delivered RUB and marketplace card price');
+   await p.locator('#priceMin').fill('3000');
+   assert.equal(await p.locator('#catalogGrid .card').count(),0);
+   await p.locator('#priceFilterError:visible').waitFor();
+   await p.locator('[data-remove-filter="price"]').click();
+   assert.match(await p.locator('#catalogCount').innerText(),/972/);
+   await p.locator('[data-remove-filter="brand"][data-value="nike"]').click();
+   assert.match(await p.locator('#catalogCount').innerText(),/486/);
+   await p.locator('.catalog-results [data-filter-reset]').click();
+   assert.equal(await p.locator('#priceMax').inputValue(),'');
+   await p.locator('#sort').selectOption('cheap');
+   assert.equal(await p.locator('#catalogGrid [data-open]').first().getAttribute('data-open'),'item-1943');
+   await p.locator('#sort').selectOption('pop');
+   assert.equal(await p.locator('input[data-facet]:checked').count(),0);
+   await p.locator('[data-filter-flag="sale"]').check();
+   assert.match(await p.locator('#catalogCount').innerText(),/486/);
+   await p.locator('.catalog-results [data-filter-reset]').click();
+   await p.locator('[data-facet-search="brand"]').fill('no-such-brand');
+   await p.locator('[data-facet-values="brand"] [data-facet-no-match]:visible').waitFor();
+   await p.locator('[data-facet-search="brand"]').fill('');
+   await p.locator('[data-facet="source"][value="poizon"]').check();
+   await p.locator('#priceMax').fill('1500');
+   assert.equal(await p.locator('#catalogGrid .card').count(),1,'marketplace starting price is inclusive');
+   await p.locator('#priceMax').fill('1499');
+   assert.equal(await p.locator('#catalogGrid .card').count(),0);
+   await p.locator('.catalog-results [data-filter-reset]').click();
+
    await p.locator('#q').fill('Последний');
    await p.waitForSelector('#catalogGrid [data-open="item-1944"]');
    await p.goto('http://astta.test/#cart'); // reload also checks saved cart survives loading
@@ -118,6 +152,14 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
     assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`theme must not overflow at ${width}px`);
    }
    await p.setViewportSize({width:390,height:844});
+   await p.locator('.subbar [data-mode="buyer"]').click();
+   await p.goto('http://astta.test/#catalog');
+   await p.locator('#catalogFilters').evaluate(el=>{el.open=true});
+   await p.locator('[data-facet="size"][value="42"]').check();
+   await p.locator('[data-filter-apply]').click();
+   assert.equal(await p.locator('#catalogFilters').evaluate(el=>el.open),false);
+   assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   await p.locator('.catalog-results [data-filter-reset]').click();
    await p.locator('#menuBtn').click();
    await p.locator('.drawer__theme').click();
    await p.locator('[data-theme="light"]').click();
@@ -174,3 +216,5 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
   console.log('Storefront checks passed: 1944 products, retry, cart persistence, variants, support, API outage.');
  } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
+
+module.exports = { setup };

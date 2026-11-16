@@ -28,6 +28,9 @@ class TierOut(Schema):
 class ProductCard(Schema):
     slug: str
     title: str
+    brand: str = ""
+    sizes: list[str] = []
+    colors: list[str] = []
     category: str
     supplier: str
     price_cny: Decimal
@@ -62,8 +65,6 @@ class SupplierOut(Schema):
 
 class ProductDetail(ProductCard):
     description: str
-    sizes: list[str]
-    colors: list[str]
     images: list[str]
     supplier_fact_days: list[int] | None
 
@@ -107,6 +108,9 @@ def _card(request, product, ctx):
     return {
         "slug": product.slug,
         "title": product.title_ru,
+        "brand": product.brand_name,
+        "sizes": product.size_list,
+        "colors": product.color_list,
         "category": product.category.slug,
         "supplier": product.supplier.name,
         "price_cny": product.price_cny,

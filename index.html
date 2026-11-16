@@ -30,6 +30,7 @@
 <script src="assets/js/theme.js" data-storefront></script>
 <link rel="stylesheet" href="assets/css/style.css">
 <link rel="stylesheet" href="assets/css/bimbo.css">
+<link rel="stylesheet" href="assets/css/catalog-filters.css">
 </head>
 <body>
 
@@ -333,18 +334,46 @@
         <span class="sr">Сортировка</span>
         <select id="sort">
           <option value="pop">Популярные</option>
-          <option value="cheap">Дешевле</option>
+          <option value="cheap">Сначала дешевле</option>
+          <option value="expensive">Сначала дороже</option>
           <option value="fast">Быстрее</option>
           <option value="rating">Рейтинг</option>
         </select>
       </label>
     </div>
     <div class="chips" id="catChips" role="toolbar" aria-label="Категории"></div>
+    <div class="catalog-layout">
+    <details class="catalog-filters" id="catalogFilters">
+      <summary><span>Фильтры <b id="filterCount" hidden></b></span><span class="catalog-filters__chevron" aria-hidden="true">⌄</span></summary>
+      <div class="catalog-filters__body">
+        <fieldset class="catalog-filters__price"><legend id="priceFilterTitle">Цена, ₽</legend>
+          <div class="catalog-filters__range">
+            <label class="field"><span>От</span><input id="priceMin" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></label>
+            <label class="field"><span>До</span><input id="priceMax" type="number" min="0" step="any" inputmode="decimal" placeholder="Любая"></label>
+          </div>
+          <p class="note" id="priceFilterHint">Цена карточки с доставкой. У товаров с площадок — цена «от».</p>
+          <p class="field__err" id="priceFilterError" role="alert" hidden></p>
+          <label class="filter-check"><input type="checkbox" data-filter-flag="sale"><span>Только со скидкой</span></label>
+          <label class="filter-check"><input type="checkbox" data-filter-flag="fresh"><span>Только новинки</span></label>
+        </fieldset>
+        <fieldset><legend>Бренд</legend><input class="filter-search" type="search" data-facet-search="brand" placeholder="Найти бренд" aria-label="Поиск бренда"><div class="filter-values" data-facet-values="brand"></div></fieldset>
+        <fieldset><legend>Цвет</legend><div class="filter-values" data-facet-values="color"></div></fieldset>
+        <fieldset><legend>Размер у поставщика</legend><div class="filter-values" data-facet-values="size"></div><p class="note">Обозначения как в карточке: сетки разных брендов могут отличаться.</p></fieldset>
+        <fieldset><legend>Площадка</legend><div class="filter-values" data-facet-values="source"></div></fieldset>
+        <fieldset><legend>Поставщик</legend><div class="filter-values" data-facet-values="supplier"></div></fieldset>
+      </div>
+      <div class="catalog-filters__actions"><button class="btn btn--lime" type="button" data-filter-apply>Показать товары</button><button class="linkbtn" type="button" data-filter-reset>Сбросить всё</button></div>
+    </details>
+    <div class="catalog-products">
+    <div class="catalog-results"><p id="catalogCount" role="status"></p><button class="linkbtn" type="button" data-filter-reset hidden>Сбросить всё</button></div>
+    <div class="catalog-selected" id="selectedFilters" aria-label="Выбранные фильтры" hidden></div>
     <p class="note" id="catalogStatus" role="status"></p>
     <button class="btn btn--line" id="catalogRetry" type="button" data-catalog-retry hidden>Повторить загрузку</button>
     <div class="grid" id="catalogGrid"></div>
     <button class="btn btn--line" id="catalogMore" type="button" data-catalog-more hidden>Показать ещё</button>
-    <p class="empty" id="catalogEmpty" hidden>Ничего не нашли. Попробуйте <a href="#link">заказ по ссылке</a>.</p>
+    <p class="empty" id="catalogEmpty" hidden>Нет товаров с такими условиями. <button class="linkbtn" type="button" data-filter-reset>Сбросить фильтры</button> или <a href="#link">заказать по ссылке</a>.</p>
+    </div>
+    </div>
   </section>
 
   <!-- ЛЕНТА -->

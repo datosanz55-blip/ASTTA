@@ -84,6 +84,7 @@ class Product(models.Model):
                                  related_name="products")
     slug = models.SlugField(unique=True)
     sku = models.CharField(_("артикул поставщика"), max_length=64, blank=True)
+    brand = models.CharField(_("бренд"), max_length=80, blank=True)
     title_ru = models.CharField(_("название (рус.)"), max_length=160)
     title_zh = models.CharField(_("название (кит.)"), max_length=160, blank=True)
     description_ru = models.TextField(_("описание (рус.)"), blank=True)
@@ -129,6 +130,11 @@ class Product(models.Model):
 
     def __str__(self):
         return self.title_ru
+
+    @property
+    def brand_name(self) -> str:
+        value = self.brand or (self.market or {}).get("brand", "")
+        return value.strip()[:80] if isinstance(value, str) else ""
 
     @property
     def is_market(self) -> bool:

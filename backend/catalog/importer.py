@@ -37,10 +37,11 @@ COLUMNS = [
     ("description_ru", "Описание", False),
     ("source_url", "Ссылка у поставщика", False),
     ("title_zh", "Название на китайском (можно пусто)", False),
+    ("brand", "Бренд (можно пусто)", False),
 ]
 EXAMPLE_ROW = ["RUN-001", "Кроссовки беговые, сетка", "Обувь", 268, 1.1, "6:198; 30:176", "36-45", "чёрный, белый",
                "нет", "Лёгкие, верх из сетки, подошва EVA", "https://detail.1688.com/offer/000000000.html",
-               "轻便跑步鞋"]
+               "轻便跑步鞋", "Бренд производителя"]
 YES = {"да", "yes", "y", "1", "true", "是"}
 
 PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -75,7 +76,7 @@ def build_template() -> bytes:
         cell.fill = header_fill
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     ws.row_dimensions[1].height = 36
-    for col, width in zip("ABCDEFGHIJKL", [14, 36, 16, 14, 14, 24, 22, 22, 14, 40, 36, 24], strict=True):
+    for col, width in zip("ABCDEFGHIJKLM", [14, 36, 16, 14, 14, 24, 22, 22, 14, 40, 36, 24, 24], strict=True):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
 
@@ -167,12 +168,13 @@ def _read_rows(file, result, translate=False):
     # Колонки сверяем по заголовкам: файл по старому шаблону молча разложил бы значения не по своим полям.
     header = [str(v or "").strip() for v in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())]
     titles = [title for _, title, _ in COLUMNS]
-    if header[:len(titles)] != titles:
+    has_brand = header[:len(titles)] == titles
+    if not has_brand and (header[:len(titles) - 1] != titles[:-1] or any(header[len(titles) - 1:])):
         result.errors.append("Колонки не совпадают с шаблоном: скачайте свежий шаблон и перенесите данные в него")
         return []
 
-    names = [name for name, _, _ in COLUMNS]
-    example = dict(zip(names, EXAMPLE_ROW, strict=True))
+    names = [name for name, _, _ in (COLUMNS if has_brand else COLUMNS[:-1])]
+    example = dict(zip(names, EXAMPLE_ROW[:len(names)], strict=True))
     rows = []
     for index, values in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not any(v not in (None, "") for v in values):
@@ -189,6 +191,7 @@ def _read_rows(file, result, translate=False):
             continue
         rows.append({
             "row": index,
+            "brand": _text(data.get("brand"), "бренд", 80, index, result.errors) if has_brand else None,
             "sku": str(data["sku"]).strip(),
             "title_ru": str(data.get("title_ru") or "").strip(),
             "category": _category(data["category"], index, result.errors, categories),
@@ -348,6 +351,8 @@ def import_catalog(file, supplier: Supplier, photos=None, publish: bool = False,
             if is_new:
                 product = Product(supplier=supplier, sku=r["sku"], slug=unique_slug(supplier, r["sku"]))
             product.category = r["category"]
+            if r["brand"] is not None:
+                product.brand = r["brand"]
             product.title_ru = r["title_ru"]
             product.title_zh = r["title_zh"]
             product.description_ru = r["description_ru"]
