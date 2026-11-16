@@ -7,7 +7,8 @@ const root = path.resolve(__dirname, '..');
 const total = 1944;
 const product = (n) => ({slug: `item-${n}`, title: n === 1944 ? 'Последний товар' : `Товар ${n}`, category: 'shoes', supplier: 'Фабрика', supplier_code: 'factory', brand:n%4===1||n%4===2?'Nike':'Adidas',sizes:[n%2?'42':'43'],colors:[n%4===1?'Black':n%4===3?'чёрный':'белый'],sale_percent:n%4===2?10:0,is_new:!!(n%2),price_cny:String((n%4||4)*100), unit_price_cny:String((n%4||4)*100), weight_kg:'1', size_grid:'shoes', sold_count:total - n, tiers:[], retail_rub:'1620', fee_retail:'.05', fee_wholesale:'.03', image:'/assets/img/runner.webp',...(n===1943?{market:{source:'poizon',brand:'Adidas',url:'https://example.com/item',price_cny_max:700,sizes:[{size:'42'}]},retail_rub:'1500'}:{})});
 const site = {rate:'11.4',retail_fee:'.05',wholesale_fee:'.03',link_rate:'13',link_delivery_rub:'1000', shipping:[{code:'auto',name:'Авто',rub_per_kg:'420',days_min:18,days_max:25,is_default:true,for_bulky_only:false}],telegram_bot:'astta_shop_bot',chat:false,market:false};
-async function setup(browser, {offline = false, saved = false, failPage = null, mailEnabled = false, telegramAccount = false, rateMissing = false, market = false} = {}) {
+async function setup(browser, {offline = false, saved = false, failPage = null, mailEnabled = false, telegramAccount = false, rateMissing = false, items = null, market = false} = {}) {
+ const itemCount = items ? items.length : total;
  const context=await browser.newContext({viewport:{width:1280,height:900}});
  const marketJobs=new Map();let marketJobNumber=0;
  const marketItem={title:'Nike Dunk',price_cny:599,price_cny_max:899,sizes:['40','42','43'],images:['/api/link/image?token=fixture']};
@@ -45,8 +46,11 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
     const n=Number(url.searchParams.get('page')||1); requests.push(n); active++;maxActive=Math.max(active,maxActive);
     await new Promise(r=>setTimeout(r,10));active--;
     if(n===failPage && failures > 0 && failures--) return route.fulfill({status:503,json:{detail:'retry'}});
-    data={items:Array.from({length:Math.min(60,total-(n-1)*60)},(_,i)=>product((n-1)*60+i+1)),total,page:n,page_size:60};
-   } else if(p.startsWith('/api/products/')) data={...product(Number(p.split('-').at(-1))), description:'Описание',sizes:['41','42'],colors:['белый','чёрный'],images:[]};
+    data={items:items ? items.slice((n-1)*60,n*60) : Array.from({length:Math.min(60,total-(n-1)*60)},(_,i)=>product((n-1)*60+i+1)),total:itemCount,page:n,page_size:60};
+   } else if(p.startsWith('/api/products/')) {
+    const card = items?.find(c=>c.slug===p.split('/').at(-1));
+    data=card ? {...card,description:'Описание диска',images:[card.image],wheel_variants:items.filter(c=>c.wheel?.key===card.wheel?.key)} : {...product(Number(p.split('-').at(-1))), description:'Описание',sizes:['41','42'],colors:['белый','чёрный'],images:[]};
+   }
    else if(p==='/api/auth/csrf') data={csrf:'test'};
    else if(p==='/api/auth/email/request') {posts.push(JSON.parse(req.postData()));data={challenge_id:'f8fd727d-25f0-41ac-bda7-d08c369209a0',resend_after:60,expires_in:600};}
    else if(p==='/api/auth/email/verify') {

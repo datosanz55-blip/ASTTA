@@ -7,6 +7,7 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 
 from catalog.models import Category, Product, Supplier, SupplierPost
+from catalog.wheels import wheel_spec
 from pricing.services import PricingContext, PricingError
 
 router = Router(tags=["Каталог"])
@@ -53,6 +54,7 @@ class ProductCard(Schema):
     fee_wholesale: Decimal | None
     # Товар с Poizon или Taobao: цена «от–до», размеры, ссылка на площадку. None — обычный товар.
     market: dict | None = None
+    wheel: dict | None = None
 
 
 class SupplierOut(Schema):
@@ -64,6 +66,7 @@ class SupplierOut(Schema):
 
 
 class ProductDetail(ProductCard):
+    wheel_variants: list[ProductCard] = []
     description: str
     images: list[str]
     supplier_fact_days: list[int] | None
@@ -106,6 +109,7 @@ def _card(request, product, ctx):
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     images = _image_urls(request, product)
     return {
+        "wheel": wheel_spec(product),
         "slug": product.slug,
         "title": product.title_ru,
         "brand": product.brand_name,
@@ -187,7 +191,14 @@ def products(request, category: str | None = None, q: str | None = None, sale: b
 @router.get("/products/{slug}", response=ProductDetail, summary="Карточка товара")
 def product_detail(request, slug: str):
     product = get_object_or_404(_published(), slug=slug)
-    data = _card(request, product, _pricing_context())
+    ctx = _pricing_context()
+    data = _card(request, product, ctx)
+    spec = data["wheel"]
+    if spec:
+        candidates = _published().filter(supplier_id=product.supplier_id, category_id=product.category_id,
+                                         title_ru__istartswith=spec["model"] + " ")
+        data["wheel_variants"] = [_card(request, p, ctx) for p in candidates
+                                  if (other := wheel_spec(p)) and other["key"] == spec["key"]]
     supplier = product.supplier
     data.update({
         "description": product.description_ru,
