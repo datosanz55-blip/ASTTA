@@ -23,7 +23,7 @@ def test_support_is_saved_without_pricing_or_marketplace_requests(monkeypatch):
 @pytest.mark.django_db
 @pytest.mark.parametrize("fields", [
     {"consent": False}, {"contact": " "}, {"message": " "},
-    {"contact": "a" * 65}, {"message": "a" * 2001},
+    {"contact": "a" * 255}, {"message": "a" * 2001},
 ])
 def test_support_requires_consent_contact_and_message(fields):
     payload = {"contact": "@anna", "message": "Помогите", "consent": True, **fields}

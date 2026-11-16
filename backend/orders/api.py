@@ -5,6 +5,7 @@ from uuid import UUID
 from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Status
 from ninja.errors import HttpError
+from pydantic import Field
 
 from accounts.api import buyer_contact, current_buyer, require_consent
 from config.throttles import per_ip
@@ -23,7 +24,7 @@ class LineIn(Schema):
 
 class OrderIn(Schema):
     items: list[LineIn]
-    contact: str = ""  # покупатель, вошедший через Telegram, может не заполнять
+    contact: str = Field(default="", max_length=254)  # покупатель, вошедший через Telegram, может не заполнять
     name: str = ""
     comment: str = ""
     mode: str = "retail"

@@ -1570,3 +1570,11 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .site-unavailable main, .site-unavailable .splash { display: none; }
 #siteError { min-height: 60vh; }
 #catalogMore, #catalogRetry { margin: 24px auto; }
+
+/* Почта — второй способ входа, используется в любой теме. */
+.auth-options { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+#emailCode { text-align: center; letter-spacing: .35em; font-size: 26px; font-variant-numeric: tabular-nums; }
+#emailError { overflow-wrap: anywhere; }
+#emailAddressForm, #emailVerifyForm { min-width: 0; }
+#emailAddressForm input { min-width: 0; }
+.pbody .panel b { overflow-wrap: anywhere; }

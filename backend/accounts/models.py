@@ -1,5 +1,7 @@
 import secrets
+import uuid
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
@@ -86,3 +88,43 @@ class ProductView(models.Model):
 
     def __str__(self):
         return f"{self.user} смотрел {self.product_id}"
+
+
+class EmailIdentity(models.Model):
+    """Только подтверждённая почта даёт вход. Поле User.email само по себе такого права не даёт."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="email_identity")
+    email = models.EmailField(_("подтверждённая почта"), unique=True)
+    verified_at = models.DateTimeField(_("подтверждена"), default=timezone.now)
+
+    class Meta:
+        verbose_name = _("подтверждённая почта")
+        verbose_name_plural = _("подтверждённые адреса")
+        constraints = [models.UniqueConstraint(models.functions.Lower("email"), name="verified_email_case_insensitive")]
+
+    def __str__(self):
+        return self.email
+
+
+class EmailChallenge(models.Model):
+    class Purpose(models.TextChoices):
+        LOGIN = "login", _("Вход")
+        LINK = "link", _("Привязка почты")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField()
+    purpose = models.CharField(max_length=8, choices=Purpose.choices)
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    browser_key = models.CharField(max_length=64, blank=True)
+    code_hash = models.CharField(max_length=64)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consent_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["created_at"], name="email_challenge_created")]
+
+    def __str__(self):
+        return f"{self.purpose}: {self.pk}"

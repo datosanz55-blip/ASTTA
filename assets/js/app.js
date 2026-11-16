@@ -777,7 +777,7 @@
       <h2 class="sheet__title">Оформить</h2>
       <p class="note">После оплаты сразу заказываем у поставщика. Если товара не окажется, вернём деньги за него.</p>
       <form class="stack" id="checkoutForm" novalidate>
-        <label class="field"><span>Телефон или Telegram</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}" required></label>
+        <label class="field"><span>Телефон, Telegram или почта</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 …, @username или почта" value="${esc(tgContact())}" required></label>
         ${consentHTML('ckConsent')}
         <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
         <button class="btn btn--lime btn--wide" type="submit">${live.on ? 'Оформить заказ' : 'Перейти к оплате'}</button>
@@ -794,7 +794,7 @@
     const bad = !input.value.trim();
     field.classList.toggle('is-error', bad);
     let err = $('.field__err', field);
-    if (bad && !err) { err = document.createElement('small'); err.className = 'field__err'; err.textContent = 'Укажите телефон или Telegram'; field.append(err); }
+    if (bad && !err) { err = document.createElement('small'); err.className = 'field__err'; err.textContent = 'Укажите телефон, Telegram или почту'; field.append(err); }
     if (!bad && err) err.remove();
     if (bad) { input.focus(); return; }
     if (!consentOk('ckConsent')) return;
@@ -930,7 +930,7 @@
     return `<div class="phead">
       <div class="phead__avawrap">${ava}${cam}</div>
       <div class="phead__txt"><b>${esc(name)}</b><span>${username ? `@${esc(username)}` : ''}${username && since ? ' · ' : ''}${since}</span>
-        ${me && me.avatar_url ? '<button class="linkbtn" type="button" data-ava-reset>Вернуть фото из Telegram</button>' : ''}</div>
+        ${me && me.avatar_url ? `<button class="linkbtn" type="button" data-ava-reset>${me.telegram_id ? 'Вернуть фото из Telegram' : 'Убрать фото'}</button>` : ''}</div>
       ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
     </div>
     <div class="pstats">
@@ -1133,7 +1133,7 @@
 
   // Вход через Telegram. На сайте это официальная кнопка Telegram (/api/auth/telegram), в мини-приложении
   // вход не нужен: Telegram сам передаёт, кто открыл. В прототипе вход демонстрационный.
-  const tgContact = () => (live.me && live.me.phone ? live.me.phone : (state.tg && state.tg.username ? `@${state.tg.username}` : ''));
+  const tgContact = () => (live.me && live.me.phone ? live.me.phone : (state.tg && state.tg.username ? `@${state.tg.username}` : (live.me && live.me.email ? live.me.email : '')));
   function tgCardHTML() {
     if (state.tg) {
       return `<div class="tgcard tgcard--in">
@@ -1142,10 +1142,96 @@
         ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
       </div>`;
     }
+    const email = live.on && live.site && live.site.email_login && !live.tma;
+    const telegram = !live.on || (live.site && live.site.telegram_bot);
     return `<div class="tgcard">
-      <div class="tgcard__txt"><b>Войдите через Telegram</b><span>Заказы сохранятся в аккаунте, статусы придут сообщением. Пароль не нужен.</span></div>
-      <button class="tgbtn" type="button" data-tg-login>${TG_ICON}Войти через Telegram</button>
+      <div class="tgcard__txt"><b>Войдите в ASTTA</b><span>${email ? 'Через Telegram или по коду из письма. Пароль не нужен.' : telegram ? 'Через Telegram, без пароля. Заказы сохранятся в аккаунте.' : 'Вход пока недоступен. Сохранённые в этом браузере заказы останутся здесь.'}</span></div>
+      <div class="auth-options">
+        ${telegram ? `<button class="tgbtn" type="button" data-tg-login>${TG_ICON}Войти через Telegram</button>` : ''}
+        ${email ? '<button class="btn btn--line" type="button" data-email-login>Войти по почте</button>' : ''}
+      </div>
     </div>`;
+  }
+
+  const emailFlow = { purpose: 'login', email: '', challenge: '', resendAt: 0 };
+  let emailTimer = null;
+  function openEmailAuth(purpose = 'login') {
+    if (!live.site || !live.site.email_login) { toast('Вход по почте пока не подключён'); return; }
+    emailFlow.purpose = purpose; emailFlow.email = ''; emailFlow.challenge = '';
+    renderEmailAddress();
+  }
+  function emailError(message) {
+    const el = $('#emailError');
+    if (el) { el.textContent = message; el.hidden = !message; }
+  }
+  function renderEmailAddress() {
+    clearTimeout(emailTimer);
+    const link = emailFlow.purpose === 'link';
+    openSheet(`<div class="stack"><h2 class="sheet__title">${link ? 'Привязать почту' : 'Вход по почте'}</h2>
+      <p class="note">${link ? 'Подтвердите адрес кодом из письма. Затем сможете входить и через Telegram, и по почте в этот же аккаунт.' : 'Отправим шестизначный код. Если вы уже покупали через Telegram, сначала войдите через Telegram и привяжите почту в профиле, чтобы сохранить все заказы в одном аккаунте.'}</p>
+      <form class="stack" id="emailAddressForm">
+        <label class="field"><span>Электронная почта</span><input name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" required value="${esc(emailFlow.email)}" placeholder="you@example.ru"></label>
+        ${consentHTML('emailConsent')}
+        <p class="field__err" id="emailError" role="alert" hidden></p>
+        <button class="btn btn--lime" type="submit">Получить код</button>
+      </form></div>`, { narrow: true });
+  }
+  function renderEmailCode() {
+    openSheet(`<div class="stack"><h2 class="sheet__title">Введите код из письма</h2>
+      <p class="note">Отправили код на <b>${esc(emailFlow.email)}</b>. Он действует 10 минут. Проверьте также папку «Спам».</p>
+      <form class="stack" id="emailVerifyForm">
+        <label class="field"><span>Код из 6 цифр</span><input id="emailCode" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required placeholder="000000"></label>
+        <p class="field__err" id="emailError" role="alert" hidden></p>
+        <button class="btn btn--lime" type="submit">${emailFlow.purpose === 'link' ? 'Подтвердить почту' : 'Войти'}</button>
+      </form>
+      <button class="btn btn--line" type="button" data-email-resend disabled>Отправить код ещё раз</button>
+      <button class="linkbtn" type="button" data-email-change>Изменить адрес</button></div>`, { narrow: true });
+    $('#emailCode').focus();
+    updateEmailResend();
+  }
+  function updateEmailResend() {
+    clearTimeout(emailTimer);
+    const button = $('[data-email-resend]');
+    if (!button || $('#sheet').hidden) return;
+    const seconds = Math.max(0, Math.ceil((emailFlow.resendAt - Date.now()) / 1000));
+    button.disabled = seconds > 0;
+    button.textContent = seconds ? `Отправить ещё раз через ${seconds} с` : 'Отправить код ещё раз';
+    if (seconds) emailTimer = setTimeout(updateEmailResend, 1000);
+  }
+  async function requestEmailCode(button) {
+    if (button.disabled) return;
+    button.disabled = true; emailError('');
+    try {
+      const data = await api('/api/auth/email/request', { method: 'POST', body: {
+        email: emailFlow.email, purpose: emailFlow.purpose, consent: true,
+      } });
+      emailFlow.challenge = data.challenge_id;
+      emailFlow.resendAt = Date.now() + data.resend_after * 1000;
+      renderEmailCode();
+    } catch (e) { emailError(e.message); } finally { button.disabled = false; }
+  }
+  async function verifyEmailCode(form) {
+    if (!form.reportValidity()) return;
+    const button = $('button[type=submit]', form);
+    if (button.disabled) return;
+    button.disabled = true; emailError('');
+    try {
+      live.me = await api('/api/auth/email/verify', { method: 'POST', body: {
+        challenge_id: emailFlow.challenge, code: form.elements.code.value.trim(), purpose: emailFlow.purpose,
+      } });
+      live.csrf = ''; signedFlag(true);
+      await loadMe(true);
+      state.ptab = emailFlow.purpose === 'link' ? 'data' : 'orders';
+      closeSheet(); go('profile'); renderProfile();
+      toast(emailFlow.purpose === 'link' ? 'Почта подтверждена и привязана' : 'Вы вошли в аккаунт');
+    } catch (e) { emailError(e.message); } finally { button.disabled = false; }
+  }
+  function emailAccountHTML() {
+    if (!live.me) return '';
+    const me = live.me;
+    if (me.email_verified) return `<section class="panel"><h3>Вход в аккаунт</h3><p class="note">Почта подтверждена: <b>${esc(me.email)}</b>. ${me.telegram_id ? 'Можно входить через Telegram или по коду из письма.' : 'Для входа используйте код из письма.'}</p></section>`;
+    if (!live.site || !live.site.email_login) return '';
+    return `<section class="panel"><h3>Вход по почте</h3><p class="note">Привяжите почту, чтобы входить в этот же аккаунт без Telegram. Заказы и избранное сохранятся.</p><button class="btn btn--line" type="button" data-email-link>Привязать почту</button></section>`;
   }
   const TG_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21.9 4.3 18.6 19.9c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L5.9 13.4 1 11.9c-1.1-.3-1.1-1.1.2-1.6L20.6 2.8c.9-.3 1.7.2 1.3 1.5Z"/></svg>';
   function openTgLogin() {
@@ -2258,7 +2344,7 @@ ${aiCatalogJSON()}
         ${pre.photo ? '' : '<label class="field"><span>Или скриншот с ценой вашего размера: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>'}
         <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
         <div id="lcSum"></div>
-        <label class="field"><span>Телефон или Telegram</span><input id="lcContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
+        <label class="field"><span>Телефон, Telegram или почта</span><input id="lcContact" autocomplete="tel" placeholder="+7 …, @username или почта" value="${esc(tgContact())}"></label>
         ${consentHTML('lcConsent')}
         <div class="stack" id="lcActions"></div>
       </form></div>`);
@@ -2378,7 +2464,7 @@ ${aiCatalogJSON()}
     const field = input.closest('.field');
     const bad = !input.value.trim();
     field.classList.toggle('is-error', bad);
-    if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
+    if (bad) { toast('Укажите телефон, Telegram или почту'); input.focus(); return; }
     if (!consentOk('lcConsent')) return;
     const price = Number($('#lcPrice').value);
     const extra = [$('#lcSize').value.trim(), price > 0 ? `цена ${cny(price)} × ${$('#lcQty').value || 1}` : ''].filter(Boolean).join(', ');
@@ -2406,7 +2492,7 @@ ${aiCatalogJSON()}
         <label class="field"><span>Цена на скриншоте, ¥</span><input id="poPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Заполним сами, если увидим"></label>
         <div id="poSum"></div>
         <label class="field"><span>Размер, цвет, количество (если важно)</span><input id="poNote" placeholder="42, чёрный, 1 шт." autocomplete="off"></label>
-        <label class="field"><span>Телефон или Telegram</span><input id="poContact" autocomplete="tel" placeholder="+7 … или @username" value="${esc(tgContact())}"></label>
+        <label class="field"><span>Телефон, Telegram или почта</span><input id="poContact" autocomplete="tel" placeholder="+7 …, @username или почта" value="${esc(tgContact())}"></label>
         ${consentHTML('poConsent')}
         <div class="stack" id="poActions">${linkActionsHTML(0)}</div>
       </form></div>`, { narrow: true });
@@ -2417,7 +2503,7 @@ ${aiCatalogJSON()}
     const input = $('#poContact');
     const bad = !input.value.trim();
     input.closest('.field').classList.toggle('is-error', bad);
-    if (bad) { toast('Укажите телефон или Telegram'); input.focus(); return; }
+    if (bad) { toast('Укажите телефон, Telegram или почту'); input.focus(); return; }
     if (!consentOk('poConsent')) return;
     const note = $('#poNote').value.trim();
     const price = Number($('#poPrice').value);
@@ -2448,7 +2534,7 @@ ${aiCatalogJSON()}
   function contactOk(input) {
     const bad = !input.value.trim();
     input.closest('.field').classList.toggle('is-error', bad);
-    if (bad) { toast('Укажите телефон или Telegram'); input.focus(); }
+    if (bad) { toast('Укажите телефон, Telegram или почту'); input.focus(); }
     return !bad;
   }
   function placeLinkOrder({ title, url, price, qty, note, contact, file, btn }) {
@@ -2895,6 +2981,10 @@ ${aiCatalogJSON()}
     }
     if (d.ptab) { state.ptab = d.ptab; renderProfile(); return; }
     if (t.matches('[data-tg-login]')) { openTgLogin(); return; }
+    if (d.emailLogin !== undefined) { openEmailAuth(); return; }
+    if (d.emailLink !== undefined) { openEmailAuth('link'); return; }
+    if (d.emailChange !== undefined) { renderEmailAddress(); return; }
+    if (d.emailResend !== undefined) { requestEmailCode(t); return; }
     if (d.theme) { chooseTheme(d.theme); return; }
     if (t.matches('[data-theme-toggle]')) { openThemePicker(); return; }
     if (t.matches('[data-cookies]')) { setCookies(t.dataset.cookies); return; }
@@ -3087,6 +3177,7 @@ ${aiCatalogJSON()}
 
   function onInput(e) {
     const t = e.target;
+    if (t.id === 'emailCode') { t.value = t.value.replace(/[^0-9]/g, '').slice(0, 6); return; }
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
@@ -3120,6 +3211,12 @@ ${aiCatalogJSON()}
     const f = e.target;
     e.preventDefault();
     if (!allowDemo && !live.on) return;
+    if (f.id === 'emailAddressForm') {
+      if (!f.reportValidity() || !consentOk('emailConsent')) return;
+      emailFlow.email = f.elements.email.value.trim();
+      requestEmailCode($('button[type=submit]', f)); return;
+    }
+    if (f.id === 'emailVerifyForm') { verifyEmailCode(f); return; }
     if (f.id === 'supportForm') { submitSupport(f); return; }
     if (f.id === 'solveForm') {
       const file = $('#solveFile').files[0];
@@ -3609,7 +3706,7 @@ ${aiCatalogJSON()}
     openSheet(`<div class="stack"><h2 class="sheet__title">Написать агенту</h2>
       <p class="note">Сообщение попадёт команде ASTTA. Укажите контакт, по которому вам ответить.</p>
       <form class="stack" id="supportForm">
-        <label class="field"><span>Телефон или Telegram</span><input name="contact" maxlength="64" required value="${esc(tgContact())}" placeholder="+7 … или @username"></label>
+        <label class="field"><span>Телефон, Telegram или почта</span><input name="contact" maxlength="254" required value="${esc(tgContact())}" placeholder="+7 …, @username или почта"></label>
         <label class="field"><span>Ваш вопрос</span><textarea name="message" required maxlength="2000" rows="5">${esc(supplier ? `Вопрос по поставщику ${supplier.name}: ` : question)}</textarea></label>
         ${consentHTML('supportConsent')}
         <button class="btn btn--lime" type="submit">Отправить агенту</button>
@@ -3664,7 +3761,7 @@ ${aiCatalogJSON()}
         <label class="field field--full"><span>Пункт выдачи или адрес</span><input id="meeAddr" autocomplete="street-address" maxlength="300" placeholder="СДЭК, ул. Ленина, 1" value="${esc(me.delivery_address)}"></label>
       </div>
       <button class="btn btn--lime" type="submit">Сохранить</button>
-    </form>${payMethodHTML()}`;
+    </form>${emailAccountHTML()}${payMethodHTML()}`;
   }
 
   async function saveProfile(fields, btn, done) {
