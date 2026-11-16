@@ -1,0 +1,44 @@
+/* Keep slide text in its own column, sized to the available copy width. */
+:root[data-ui] .hero .hero__copy { position: relative; min-width: 0; margin-top: 0; container-type: inline-size; }
+:root[data-ui] .hero .hero__texts { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+:root[data-ui] .hero .htext { min-width: 0; }
+:root[data-ui] .hero .htext :is(h1, h2) { font-size: clamp(36px, 7vw, 78px); font-size: clamp(32px, 14cqi, 100px); overflow-wrap: anywhere; }
+:root[data-ui] .hero .hero__visual { min-width: 0; width: 100%; overflow: hidden; }
+.hero, [data-view="home"] > section { scroll-margin-top: 100px; }
+@media (max-width: 899px) {
+  :root[data-ui] .hero .hero__copy { padding: 24px 20px 30px; }
+  :root[data-ui] .hero .hero__visual { aspect-ratio: 4 / 3; max-height: 480px; }
+  .hero__visual::after { background: linear-gradient(180deg, rgba(0,0,0,.18), transparent 35%); }
+}
+@media (min-width: 900px) {
+  :root[data-ui] .hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; padding: 32px 40px 64px; min-height: 0; }
+  :root[data-ui] .hero .hero__visual { height: auto; aspect-ratio: 4 / 5; max-height: 560px; }
+  .subbar { display: block; }
+  .subbar .mode { display: none; }
+  .subbar__in { justify-content: flex-end; padding-block: 0 10px; }
+  :root[data-ui] .hero .hero__dots { left: 40px; bottom: 24px; }
+}
+.home-section-nav { display: none; }
+@media (min-width: 1200px) {
+  .home-section-nav { position: fixed; z-index: 25; right: max(10px, calc((100vw - 1320px) / 2 - 48px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 24px; background: var(--bg); box-shadow: 0 4px 20px #0002; }
+  .home-section-nav a { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--muted); }
+  .home-section-nav a[aria-current], .home-section-nav a:hover, .home-section-nav a:focus-visible { background: var(--lime); color: #101510; }
+  .home-section-nav .ic { width: 17px; height: 17px; }
+  .home-section-nav span { position: absolute; right: calc(100% + 12px); white-space: nowrap; padding: 7px 12px; border-radius: 8px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); opacity: 0; pointer-events: none; }
+  .home-section-nav a:hover span, .home-section-nav a:focus-visible span { opacity: 1; }
+  .is-booting .home-section-nav, .site-unavailable .home-section-nav, .is-locked .home-section-nav { display: none; }
+}
+@media (min-width: 1200px) and (max-width: 1479px) {
+  .is-home #app { padding-right: calc(var(--gr) + 48px); }
+}
+/* Decorations and cross-fades must not create an internally scrollable banner. */
+:root[data-ui] .hero { overflow: clip; }
+@media (max-width: 420px) {
+  :root[data-ui] .topbar__in { gap: 8px; }
+  :root[data-ui] .topbar .brand { gap: 6px; }
+  :root[data-ui] .topbar .brand__mark { width: 28px; }
+  :root[data-ui] .topbar .brand__word { width: 76px; }
+  :root[data-ui] .topbar__actions { gap: 0; }
+  :root[data-ui] .topbtn { padding-inline: 8px; }
+  :root[data-ui] .menubtn { width: 42px; margin-left: 0; }
+}

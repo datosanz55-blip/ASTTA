@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="assets/css/style.css">
 <link rel="stylesheet" href="assets/css/bimbo.css">
 <link rel="stylesheet" href="assets/css/catalog-filters.css">
+<link rel="stylesheet" href="assets/css/home-layout.css">
 </head>
 <body>
 
@@ -128,7 +129,7 @@
       <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
       <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
     </div>
-    <p class="rate"><span class="mono">1 ¥ = <b data-rate>11,40</b> ₽</span></p>
+    <p class="rate" hidden><span class="mono">1 ¥ = <b data-rate>11,40</b> ₽</span></p>
   </div>
 </div>
 
@@ -250,7 +251,7 @@
     <section class="block" id="liveEmpty" hidden>
       <div class="emptystate"><h2>Каталог наполняется</h2><p>Поставщики загружают товары. Пока можно заказать любой товар по ссылке или скриншоту с Poizon, Taobao и 1688: посчитаем цену с доставкой сразу.</p></div>
     </section>
-    <section class="block">
+    <section class="block" id="homeCollections">
       <div class="block__head"><div class="block__title"><h2>Подборки</h2><p class="block__lead">Выбирай по интересам: стиль, выгодные предложения и всё, что нужно, в одном месте.</p></div><a href="#catalog" class="more">Весь каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
       <div class="tiles" id="tiles"></div>
     </section>
@@ -275,28 +276,28 @@
       <figure class="banner__media"><img src="assets/img/banner-hoodie.webp" srcset="assets/img/banner-hoodie-720.webp 720w, assets/img/banner-hoodie.webp 900w" sizes="(max-width: 760px) 100vw, 40vw" alt="Человек в сером худи" width="900" height="1000" loading="lazy"></figure>
     </section>
 
-    <section class="block">
+    <section class="block" id="homeCategories">
       <div class="block__head"><h2>Категории</h2></div>
       <div class="cats" id="homeCats"></div>
     </section>
 
-    <section class="block">
+    <section class="block" id="homeGroups">
       <div class="block__head"><h2>Совместный опт</h2><span class="hint">Берём партию вместе по оптовой цене</span></div>
       <div class="groups" id="groups"></div>
     </section>
 
-    <section class="block mkblock" hidden>
+    <section class="block mkblock" hidden id="homePoizon">
       <div class="block__head"><h2>Оригиналы с Poizon</h2><button class="more" type="button" data-goto-chip="poizon">Все оригиналы <svg class="ic"><use href="#i-arrow-ur"/></svg></button></div>
       <p class="mkblock__sub"><svg class="ic"><use href="#i-check"/></svg>Каждая пара проходит проверку подлинности Poizon. Цена под ключ с доставкой — часто дешевле, чем в самом приложении.</p>
       <div class="grid" id="poizonGrid"></div>
     </section>
 
-    <section class="block">
+    <section class="block" id="homePopular">
       <div class="block__head"><h2>Хиты</h2><a href="#catalog" class="more">Смотреть всё <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
       <div class="grid" id="popular"></div>
     </section>
 
-    <section class="block">
+    <section class="block" id="homeFeed">
       <div class="block__head"><h2>Лента</h2><a href="#feed" class="more">Открыть <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
       <div class="feed feed--preview" id="feedPreview"></div>
     </section>
@@ -410,6 +411,19 @@
   </section>
 
 </main>
+<nav class="home-section-nav" id="homeSectionNav" aria-label="Разделы главной" hidden>
+  <a href="#hero" aria-label="Главное"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span>Главное</span></a>
+  <a href="#ai" aria-label="AI-помощник"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg><span>AI-помощник</span></a>
+  <a href="#homeCollections" aria-label="Подборки"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><span>Подборки</span></a>
+  <a href="#link" aria-label="Заказ по ссылке"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg><span>Заказ по ссылке</span></a>
+  <a href="#homeCategories" aria-label="Категории"><svg class="ic" aria-hidden="true"><use href="#i-tag"/></svg><span>Категории</span></a>
+  <a href="#homeGroups" aria-label="Совместный опт"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span>Совместный опт</span></a>
+  <a href="#homePoizon" aria-label="Оригиналы Poizon"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Оригиналы Poizon</span></a>
+  <a href="#homePopular" aria-label="Хиты"><svg class="ic" aria-hidden="true"><use href="#i-heart"/></svg><span>Хиты</span></a>
+  <a href="#homeFeed" aria-label="Лента"><svg class="ic" aria-hidden="true"><use href="#i-feed"/></svg><span>Лента</span></a>
+  <a href="#faq" aria-label="Вопросы"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span>Вопросы</span></a>
+</nav>
+
 
 <footer class="foot">
   <div class="foot__in">
