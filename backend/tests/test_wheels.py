@@ -67,3 +67,26 @@ def test_detail_returns_complete_model_across_pages(client, supplier, shoes, pri
 def test_regular_product_unchanged(client, runner):
     data = client.get(f'/api/products/{runner.slug}').json()
     assert data['wheel'] is None and data['wheel_variants'] == []
+
+
+@pytest.mark.django_db
+def test_subsequent_uploads_extend_existing_model_automatically(client, supplier, shoes, pricing_setup):
+    from catalog.importer import import_catalog
+    from catalog.models import Product
+    from tests.test_importer import filled_template
+
+    def upload(sku, model, spec):
+        row = [sku, f'Колёсный диск RUEIZU {model} {spec}', shoes.slug, 1950, 12, '',
+               spec.split()[1], '', '', '', '', '']
+        result = import_catalog(filled_template([row]), supplier, publish=True)
+        assert result.ok, result.errors
+        return Product.objects.get(supplier=supplier, sku=sku)
+
+    first = upload('W-19', 'R117', 'R19 19x8.5 PCD 5×112 ET30')
+    before = client.get(f'/api/products/{first.slug}').json()
+    assert len(before['wheel_variants']) == 1
+    second = upload('W-20', 'R117', 'R20 20x9 PCD 5×108 ET40')
+    upload('W-OTHER', 'R118', 'R20 20x9 PCD 5×108 ET40')
+    after = client.get(f'/api/products/{first.slug}').json()
+    assert {v['slug'] for v in after['wheel_variants']} == {first.slug, second.slug}
+    assert {v['wheel']['key'] for v in after['wheel_variants']} == {before['wheel']['key']}

@@ -165,6 +165,7 @@ if env("REDIS_URL"):
 CELERY_BROKER_URL = env("REDIS_URL", "redis://localhost:6379/0")
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
+    "cleanup-market-lookups": {"task": "links.tasks.cleanup_market_lookups", "schedule": 60 * 60 * 24},
     "cleanup-email-codes": {"task": "accounts.tasks.cleanup_email_codes", "schedule": 60 * 60 * 24},
     # ЦБ публикует курс на следующий день во второй половине дня по Москве.
     "update-cny-rate": {"task": "pricing.tasks.update_cny_rate", "schedule": 60 * 60 * 3},

@@ -1582,3 +1582,10 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 #catalogMore, #catalogRetry { margin: 4px auto; }
 /* Пустой статус не должен добавлять отдельный промежуток в flex-раскладке каталога. */
 #catalogStatus:empty { display: none; }
+
+/* Marketplace photos stay on our origin and use the same layout in links and AI. */
+.market-photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 480px; }
+.market-photos a { min-width: 0; }
+.market-photos img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 12px; }
+.lcmarket .market-photos { flex: 0 0 88px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.lcmarket .market-photos img { object-fit: contain; }

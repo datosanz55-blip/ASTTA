@@ -97,6 +97,7 @@ class RequestIn(Schema):
 
 
 class LinkOrderIn(Schema):
+    quote_id: str = Field(default="", max_length=36)
     text: str = ""
     price_cny: Decimal | None = None
     qty: int = 1
@@ -249,6 +250,15 @@ def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile |
             raise HttpError(400, str(exc)) from exc
     consent_at = require_consent(payload.consent)
     buyer = current_buyer(request)
+    if payload.quote_id:
+        if payload.color.strip():
+            raise HttpError(422, "Уточните цвет и проверьте цену конкретного варианта ещё раз")
+        from links.market_quotes import verified_quote
+
+        try:
+            payload.price_cny = verified_quote(payload.quote_id, info, payload.size, payload.qty, payload.price_cny)
+        except ValueError as exc:
+            raise HttpError(422, str(exc)) from exc
     try:
         order = create_link_order(
             payload.price_cny, payload.qty, buyer_contact(buyer, payload.contact), url=info.url, photo=content,
@@ -324,3 +334,72 @@ def photo_view(request, photo: UploadedFile = File(...), marketplace: Form[str] 
         "similar": [_card(request, p, ctx) for p in reading.similar] if reading else [],
         "estimate": _estimate_out(result) if result else None,
     }
+
+
+class MarketLookupIn(Schema):
+    text: str = Field(min_length=1, max_length=2000)
+    size: str = Field(default="", max_length=32)
+    qty: int = Field(default=1, ge=1, le=10000)
+
+
+@router.post("/market-jobs", throttle=[per_ip("market_job", "15/m"), per_ip("market_job_day", "150/d")])
+def market_job_create(request, payload: MarketLookupIn):
+    from links.market_quotes import job_out, start_lookup
+
+    current_buyer(request)
+    try:
+        return job_out(start_lookup(payload.text, payload.size, payload.qty))
+    except ValueError as exc:
+        raise HttpError(422, str(exc)) from exc
+
+
+@router.get("/market-jobs/{job_id}", throttle=[per_ip("market_poll", "120/m")])
+def market_job_status(request, job_id: str):
+    from uuid import UUID
+
+    from django.shortcuts import get_object_or_404
+
+    from links.market_quotes import job_out
+    from links.models import MarketLookup
+
+    try:
+        ident = UUID(job_id)
+    except ValueError:
+        raise HttpError(404, "Проверка не найдена") from None
+    return job_out(get_object_or_404(MarketLookup, pk=ident))
+
+
+@router.get("/image", throttle=[per_ip("market_image", "120/m")])
+def market_image(request, token: str):
+    import httpx
+    from django.core import signing
+    from django.http import HttpResponse
+
+    from catalog.market import MAX_IMAGE, _image_host_ok
+    from links.market_quotes import IMAGE_SALT
+
+    try:
+        url = signing.loads(token, salt=IMAGE_SALT, max_age=86400)
+    except signing.BadSignature:
+        raise HttpError(404, "Фото недоступно") from None
+    from urllib.parse import urlparse
+
+    if not isinstance(url, str) or not _image_host_ok(url) or urlparse(url).port not in (None, 443):
+        raise HttpError(404, "Фото недоступно")
+    try:
+        with httpx.stream("GET", url, follow_redirects=False, timeout=12) as response:
+            if response.status_code != 200 or not response.headers.get("content-type", "").startswith("image/"):
+                raise HttpError(404, "Фото недоступно")
+            chunks, length = [], 0
+            for chunk in response.iter_bytes():
+                length += len(chunk)
+                if length > MAX_IMAGE:
+                    raise HttpError(413, "Фото слишком большое")
+                chunks.append(chunk)
+        photo = prepare_image(b"".join(chunks), "market")
+    except (httpx.HTTPError, ImageError):
+        raise HttpError(404, "Фото временно недоступно") from None
+    out = HttpResponse(photo.read(), content_type="image/webp")
+    out["Cache-Control"] = "public, max-age=3600"
+    out["X-Content-Type-Options"] = "nosniff"
+    return out

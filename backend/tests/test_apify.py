@@ -35,7 +35,8 @@ def test_poizon_item_fetched_normalized_and_cached(token, db, monkeypatch):
     item = apify.fetch_item("poizon", "1234567")
     assert item["price_cny"] == 599.0 and item["price_cny_max"] == 899.0 and item["sizes"] == ["40", "41", "42"]
     assert calls[0][0].endswith("/v2/actors/sian.agency~dewu-poizon-price-tracker/run-sync-get-dataset-items")
-    assert calls[0][1] == {"spuIds": ["1234567"]} and calls[0][2]["Authorization"] == "Bearer apify-test"
+    assert calls[0][1] == {"spuIds": ["1234567"], "styleCodes": []}
+    assert calls[0][2]["Authorization"] == "Bearer apify-test"
     assert apify.fetch_item("poizon", "1234567") == item and len(calls) == 1  # второй раз из кэша, бесплатно
 
 
@@ -101,8 +102,8 @@ def test_chat_returns_memo_with_price_range(token, pricing_setup, monkeypatch, s
 
 
 def test_size_prices_only_when_believable():
-    row = dict(POIZON_ROW, skus=[{"id": 1, "price": 59900, "properties": [{"value": "40"}]},
-                                 {"id": 2, "price": 89900, "properties": [{"value": "42"}]}])
+    row = dict(POIZON_ROW, skus=[{"id": 1, "salePriceFen": 59900, "properties": [{"value": "40"}]},
+                                 {"id": 2, "salePriceFen": 89900, "properties": [{"value": "42"}]}])
     assert apify.normalize("poizon", row)["size_prices"] == {"40": 599.0, "42": 899.0}
     retail = dict(POIZON_ROW, skus=[{"price": 79900, "size": "40"}, {"price": 79900, "size": "42"}])
     assert apify.normalize("poizon", retail)["size_prices"] == {}  # одна цена у всех — это розница, не цена размера

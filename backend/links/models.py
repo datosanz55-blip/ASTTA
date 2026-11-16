@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
@@ -87,3 +88,21 @@ class MarketplaceItem(models.Model):
 
     def __str__(self):
         return f"{self.code} {self.item_id}"
+
+
+class MarketLookup(models.Model):
+    """Public product lookup capability; never stores buyer contacts or API credentials."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    url = models.CharField(max_length=2000)
+    code = models.CharField(max_length=20, blank=True)
+    item_id = models.CharField(max_length=40, blank=True)
+    size = models.CharField(max_length=32, blank=True)
+    qty = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, default="pending")
+    data = models.JSONField(default=dict)
+    note = models.CharField(max_length=400, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.id}: {self.status}"

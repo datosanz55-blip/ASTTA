@@ -1540,6 +1540,47 @@
     loadProductDetail(p);
   }
 
+  async function pollMarketJob(job, update, alive = () => true) {
+    const until = Date.now() + 245000;
+    while (alive()) {
+      update(job);
+      if (!['pending', 'working'].includes(job.status)) return job;
+      if (Date.now() > until) throw new Error('Проверка затянулась. Попробуйте ещё раз.');
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      if (!alive()) return null;
+      job = await api(`/api/link/market-jobs/${encodeURIComponent(job.id)}`);
+    }
+    return null;
+  }
+  async function lookupMarket(text, size, qty, update, alive) {
+    update({ status: 'pending' });
+    const job = await api('/api/link/market-jobs', { method: 'POST', body: { text, size, qty } });
+    return pollMarketJob(job, update, alive);
+  }
+  function marketPhotosHTML(images) {
+    const urls = (images || []).filter((u) => typeof u === 'string' && (u.startsWith('/api/link/image?token=') || u.startsWith('/media/')));
+    return urls.length ? `<div class="market-photos">${urls.slice(0, 6).map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" aria-label="Открыть фото товара"><img src="${esc(u)}" alt="Фото товара с площадки" loading="lazy" width="180" height="180"></a>`).join('')}</div>` : '';
+  }
+  function marketStatusHTML(result, size) {
+    if (!result || ['pending', 'working'].includes(result.status)) return `<p class="note" role="status">${icon('spark')} Проверяем ${size ? 'цену размера ' + esc(size) : 'товар и фото'}… Обычно это занимает до двух минут.</p>`;
+    if (result.quote) return `<div class="sum"><div class="sum__row"><span>Размер ${esc(result.quote.size)} · ${cny(Number(result.quote.price_cny))}</span><b>${rub(Number(result.quote.total_rub))}</b></div><p class="note">Цена проверена на площадке. Действует 5 минут.</p></div>`;
+    return `<p class="note" role="status">${esc(result.note || 'Выберите размер, чтобы проверить цену.')}</p>`;
+  }
+  async function checkMarketSize() {
+    const selected = pdState, p = selected && byId[selected.id];
+    if (!p?.market || !selected.size) return;
+    const size = selected.size, version = (selected.marketVersion || 0) + 1;
+    selected.marketVersion = version;
+    selected.marketResult = { status: 'pending' }; rerenderProduct();
+    const alive = () => pdState === selected && selected.size === size && selected.marketVersion === version;
+    try {
+      await lookupMarket(p.market.url, size, 1, (result) => {
+        if (!alive()) return;
+        selected.marketResult = result; rerenderProduct();
+      }, alive);
+    } catch (e) { if (alive()) { selected.marketResult = { status: 'failed', note: e.message }; rerenderProduct(); } }
+  }
+
   function marketProductHTML(p) {
     const m = p.market;
     const src = m.source;
@@ -1564,16 +1605,12 @@
           <div class="mksizes" role="group" aria-label="Размер">${sizes.map((x) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.size)}</b>${x.ru ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
           ${m.fit_advice ? `<p class="mkfit">${icon('ruler')}<span>${esc(m.fit_advice)}</span></p>` : ''}
         </div>` : ''}
-        <div class="mksteps">
-          <h3>Узнайте точную цену своего размера</h3>
-          <ol>
-            <li><b>Откройте товар на ${esc(name)}</b><span>Выберите размер${pdState.size ? ` ${esc(pdState.size)}` : ''} и посмотрите цену в юанях (¥).</span></li>
-            <li><b>Впишите цену или пришлите скриншот</b><span>Сразу посчитаем итог в рублях с доставкой.</span></li>
-            <li><b>Оплатите — агент выкупит</b><span>Перед выкупом сверит цену и наличие. Нет товара — вернём деньги.</span></li>
-          </ol>
+        <div class="mksteps" id="mkQuote" aria-live="polite">
+          <h3>Цена выбранного размера</h3>
+          ${pdState.size ? marketStatusHTML(pdState.marketResult, pdState.size) : '<p class="note">Выберите размер — проверим актуальную цену и посчитаем доставку.</p>'}
           <div class="mkbtns">
-            <a class="btn btn--line" href="${esc(m.url)}" target="_blank" rel="noopener nofollow">${icon('arrow-ur')}Открыть на ${esc(name)}</a>
-            <button class="btn btn--lime" type="button" data-mk-order>Указать цену и заказать</button>
+            ${pdState.marketResult?.quote ? '<button class="btn btn--lime" type="button" data-mk-order>Оформить заказ</button>' : pdState.size ? `<button class="btn btn--line" type="button" data-mk-check ${['pending', 'working'].includes(pdState.marketResult?.status) ? 'disabled' : ''}>Проверить ещё раз</button>` : !sizes.length ? '<button class="btn btn--lime" type="button" data-mk-link>Выбрать размер и проверить</button>' : ''}
+            <button class="btn btn--ghost" type="button" data-open-chat>Уточнить у агента</button>
           </div>
         </div>
         <button class="btn btn--ghost" type="button" data-mk-ai>${icon('spark')}Спросить ASTTA AI про эту модель</button>
@@ -1602,13 +1639,11 @@
   }
 
   function orderMarketProduct() {
-    const p = byId[pdState.id];
-    if (!isMarket(p)) return;
-    const m = p.market;
-    const item = { title: p.t, price_cny: p.cny, price_cny_max: m.price_cny_max, sizes: (m.sizes || []).map((x) => x.size), size_prices: {} };
-    const size = pdState.size || '';
-    closeSheet(); // обнуляет pdState — размер взяли выше
-    openLinkCalc(m.url, { title: p.t, size, item });
+    const p = byId[pdState.id], result = pdState.marketResult;
+    if (!result?.quote) return;
+    const size = pdState.size, quote = result.quote, item = result.item;
+    closeSheet();
+    openLinkCalc(p.market.url, { title: p.t, size, price: Number(quote.price_cny), quote, item });
   }
 
   function wheelOptionsHTML(p) {
@@ -1996,6 +2031,8 @@ ${aiCatalogJSON()}
       if (m.typing) return `<div class="msg msg--typing"><span id="aiStage">${AI_STAGES[ai.stage % AI_STAGES.length]}</span>${ai.ctl ? ' <button class="linkbtn" type="button" data-ai-stop>Стоп</button>' : ''}</div>`;
       let html = `<div class="msg msg--ai">${esc(m.reply || m.text)}</div>`;
       html += aiResultHTML(m, idx);
+      html += marketPhotosHTML(m.images);
+      if (m.marketResults) html += Object.values(m.marketResults).map((r) => marketStatusHTML(r, r.quote?.size || '') + (r.item?.sizes?.length ? `<div class="quick">${r.item.sizes.map((s) => typeof s === 'string' ? s : s.size).filter(Boolean).slice(0, 40).map((size) => `<button class="chip" type="button" data-ai-market-size="${idx}" data-size-value="${esc(size)}" data-market-url="${esc(r.url)}">${esc(size)}</button>`).join('')}</div>` : '')).join('');
       if (m.questions && m.questions.length) html += `<div class="quick">${m.questions.map((q) => `<button class="chip chip--q" type="button" data-ai-fill="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
       if (m.order) html += `<button class="btn btn--lime btn--sm" type="button" data-ai-order="${idx}" style="align-self:flex-start">Оформить заказ · ${rub(m.order.total_rub)}</button>`;
       if (m.toAgent) html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="" style="align-self:flex-start">Написать агенту</button>';
@@ -2043,6 +2080,19 @@ ${aiCatalogJSON()}
     aiAsk(text, { photo, thumb: photo, label: input && text !== 'Посчитай цену под ключ по скриншоту' ? text : 'Скриншот товара' });
   }
 
+  async function watchAiMarketJob(id, entry) {
+    entry.marketResults = entry.marketResults || {};
+    const update = (result) => {
+      entry.marketResults[id] = result;
+      if (result.item?.images) entry.images = [...new Set([...(entry.images || []), ...result.item.images])];
+      if (result.quote) entry.order = { url: result.url, title: result.item?.title || '', size: result.quote.size, qty: result.quote.qty,
+        price_cny: Number(result.quote.price_cny), total_rub: Number(result.quote.total_rub), quote: result.quote, item: result.item };
+      aiRender();
+    };
+    try { await pollMarketJob(await api(`/api/link/market-jobs/${encodeURIComponent(id)}`), update, () => ai.log.includes(entry)); }
+    catch (e) { update({ status: 'failed', note: e.message }); }
+  }
+
   async function aiAsk(text, opts = {}) {
     const q = text.trim();
     if (!q || ai.busy) return;
@@ -2077,8 +2127,10 @@ ${aiCatalogJSON()}
         // Скриншот помечаем в истории: по нему потом можно оформить заказ, сам файл держим в памяти.
         if (opts.photo) ai.lastPhoto = opts.photo;
         ai.turns.push({ role: 'user', content: (opts.photo ? '[скриншот] ' : '') + q }, { role: 'assistant', content: (data.memo ? data.memo + '\n' : '') + data.answer });
-        finish({ reply: data.answer, cat: data.products.filter((slug) => byId[slug]).map((slug) => ({ id: slug, why: [] })),
-          toAgent: data.handoff, logId: data.log_id, order: data.order || null });
+        const entry = { reply: data.answer, cat: data.products.filter((slug) => byId[slug]).map((slug) => ({ id: slug, why: [] })),
+          toAgent: data.handoff, logId: data.log_id, order: data.order || null, images: data.images || [] };
+        finish(entry);
+        (data.market_jobs || []).forEach((id) => watchAiMarketJob(id, entry));
       } catch (e) {
         finish({ reply: e.message || 'Связь с ИИ прервалась. Попробуйте ещё раз.' });
       }
@@ -2483,24 +2535,25 @@ ${aiCatalogJSON()}
   function openLinkCalc(text, pre = {}) {
     const url = text ? extractUrl(text) : '';
     const found = url && PLATFORMS.find(([re]) => re.test(url));
-    linkCalc = { text, url, platform: found ? found[1] : '', title: pre.title || '', photo: pre.photo || '', prefilled: Boolean(pre.price), priced: Boolean(pre.price) };
+    const automatic = Boolean(pre.quote || (url && !pre.price && live.on && live.site?.market && !['1688', 'Pinduoduo'].includes(found?.[1])));
+    linkCalc = { automatic, quote: pre.quote || null, text, url, platform: found ? found[1] : '', title: pre.title || '', photo: pre.photo || '', prefilled: Boolean(pre.price), priced: Boolean(pre.price) };
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">${url ? 'Цена по ссылке' : 'Заказ по скриншоту'}</h2>
       ${url ? `<p class="linkcalc__src"><span class="linkcalc__tag">${found ? esc(found[1]) : 'Ссылка'}</span><span class="mono">${esc(url)}</span></p>` : ''}
       ${pre.photo ? `<img class="linkcalc__photo" src="${esc(pre.photo)}" alt="Скриншот товара">` : ''}
       ${pre.title && !url ? `<p><b>${esc(pre.title)}</b></p>` : ''}
       <div id="lcMarket"></div>
-      <p class="note" id="lcNote">${pre.price ? 'Цену и размер подставил ASTTA AI — проверьте и оформляйте. Перед выкупом агент сверит цену и наличие.' : 'Впишите цену с площадки — сразу посчитаем цену с доставкой, и товар можно заказать. Перед выкупом агент проверит цену и наличие.'}</p>
-      ${pre.price ? '' : `<p class="lchint">${icon('spark')} <span><b>Подсказка:</b> цена часто зависит от размера и цвета. Откройте товар в приложении, выберите свой вариант и впишите его цену в юанях — или пришлите скриншот этой страницы, цену прочитаем сами.</span></p>`}
+      <p class="note" id="lcNote">${pre.quote ? 'Цена размера подтверждена на площадке. Проверьте количество и оформляйте заказ.' : pre.price ? 'Цена и размер подставлены — проверьте и оформляйте. Перед выкупом агент сверит цену и наличие.' : 'Получим фото и доступные размеры с площадки. Выберите размер — проверим цену автоматически.'}</p>
       <form class="stack" id="linkCalcForm" novalidate>
         <div class="grid2">
-          <label class="field"><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Цена вашего размера, например 635" value="${pre.price ? esc(String(pre.price)) : ''}"></label>
+          <label class="field" ${automatic ? 'hidden' : ''}><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" ${automatic ? 'readonly' : ''} type="number" min="1" step="0.01" inputmode="decimal" placeholder="Цена вашего размера, например 635" value="${pre.price ? esc(String(pre.price)) : ''}"></label>
           <label class="field"><span>Количество</span><input id="lcQty" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${Math.max(1, parseInt(pre.qty, 10) || 1)}"></label>
-          <label class="field field--full"><span>Размер, цвет (если есть)</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off" value="${esc(pre.size || '')}"></label>
+          <label class="field ${automatic ? '' : 'field--full'}"><span>${automatic ? 'Размер на площадке (EU/CN)' : 'Размер, цвет (если есть)'}</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off" value="${esc(pre.size || '')}"></label>
         </div>
         <div class="quick lcsizes" id="lcSizes" hidden></div>
-        ${pre.photo ? '' : '<label class="field"><span>Или скриншот с ценой вашего размера: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>'}
+        ${pre.photo || automatic ? '' : '<label class="field"><span>Или скриншот с ценой вашего размера: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>'}
         <img class="linkcalc__photo" id="lcPreview" alt="" hidden>
+        <div id="lcQuoteStatus" aria-live="polite"></div>
         <div id="lcSum"></div>
         <label class="field"><span>Телефон, Telegram или почта</span><input id="lcContact" autocomplete="tel" placeholder="+7 …, @username или почта" value="${esc(tgContact())}"></label>
         ${consentHTML('lcConsent')}
@@ -2508,54 +2561,50 @@ ${aiCatalogJSON()}
       </form></div>`);
     linkCalcOut();
     if (pre.item) renderMarket(pre.item);
-    else if (url) loadMarket(text, found ? found[1] : '');
+    if (automatic && (!pre.quote || Date.parse(pre.quote.expires_at) <= Date.now())) checkLinkPrice();
+    else if (!pre.item && url && !pre.price) loadMarket(text, found ? found[1] : '');
   }
   // Боевой сайт с подключённым Apify: сами смотрим товар на Poizon/Taobao и подставляем цену.
   // Короткие ссылки «поделиться» (dw4.co, m.tb.cn) раскрывает сервер, поэтому спрашиваем его про любую ссылку, кроме 1688 и Pinduoduo.
   async function loadMarket(text, platform) {
-    const box = $('#lcMarket');
-    if (!box || !live.on || !live.site || !live.site.market || ['1688', 'Pinduoduo'].includes(platform)) return;
-    box.innerHTML = `<p class="note">${icon('spark')} Смотрим товар на ${esc(platform || 'площадке')}… это до минуты.</p>`;
-    let data;
-    try { data = await api('/api/link/market', { method: 'POST', body: { text } }); } catch (e) { data = { note: e.message }; }
-    if (!document.contains(box)) return;
-    const item = data.item;
-    if (!item) { box.innerHTML = data.note && platform ? `<p class="note">${esc(data.note)}. Впишите цену вручную.</p>` : ''; return; }
-    renderMarket(item);
+    if (linkCalc?.automatic) return checkLinkPrice();
   }
   function renderMarket(item) {
     const box = $('#lcMarket');
     if (!box) return;
-    const range = item.price_cny_max && item.price_cny_max > item.price_cny ? ` – ${cny(item.price_cny_max)} в зависимости от размера` : '';
-    box.innerHTML = `<div class="lcmarket">
-        <div><b>${esc(item.title || 'Товар с площадки')}</b>
-          <span>${item.price_cny ? `${cny(item.price_cny)}${range}` : 'цену уточнит агент'}</span>
-</div>
-      </div>`;
-    // Цену сами не подставляем: она зависит от размера, а площадка отдаёт только «от» и «до».
-    // Покупатель вписывает цену своего размера или присылает скриншот.
+    box.innerHTML = `<div class="lcmarket">${marketPhotosHTML((item.images || []).slice(0, 1))}<div><b>${esc(item.title || 'Товар с площадки')}</b><span>${item.price_cny ? 'от ' + cny(item.price_cny) : ''}</span></div></div>${item.images?.length > 1 ? `<details><summary>Ещё фото (${item.images.length - 1})</summary>${marketPhotosHTML(item.images.slice(1))}</details>` : ''}`;
     if (linkCalc) { linkCalc.title = item.title || linkCalc.title; linkCalc.item = item; }
-    const note = $('#lcNote');
-    if (note && !(linkCalc && linkCalc.prefilled && linkCalc.priced)) {
-      note.textContent = 'Товар нашли. Выберите размер и впишите его цену в юанях из приложения — сразу посчитаем цену с доставкой. Перед выкупом агент сверит цену и наличие.';
-    }
-    // Размеры кнопками: иероглифы (цвет и т. п.) пропускаем, при цене размера подставляем её.
-    const sizes = (item.sizes || []).filter((x) => /\d/.test(x)).slice(0, 40);
-    const chips = $('#lcSizes');
-    if (chips && sizes.length) {
-      const prices = item.size_prices || {};
-      const chosen = ($('#lcSize') || {}).value || '';
-      chips.hidden = false;
-      chips.innerHTML = sizes.map((x) => `<button class="chip${x === chosen ? ' is-on' : ''}" type="button" data-lc-size="${esc(x)}">${esc(x)}${prices[x] ? ` · ${cny(prices[x])}` : ''}</button>`).join('');
+    const chips = $('#lcSizes'), sizes = item.sizes || [];
+    if (chips) {
+      chips.hidden = !sizes.length;
+      chips.innerHTML = sizes.map((x) => typeof x === 'string' ? x : x.size).filter(Boolean).slice(0, 60).map((x) => `<button class="chip" type="button" data-lc-size="${esc(x)}" aria-pressed="${$('#lcSize')?.value === x}">${esc(x)}</button>`).join('');
     }
   }
+  async function checkLinkPrice() {
+    const state = linkCalc;
+    clearTimeout(state?.checkTimer);
+    if (!state || !$('#lcSize') || !state.automatic) return;
+    const size = $('#lcSize').value.trim(), qty = Math.min(10000, Math.max(1, parseInt($('#lcQty').value, 10) || 1));
+    const version = (state.version || 0) + 1; state.version = version;
+    state.quote = null; state.checking = true; $('#lcPrice').value = ''; linkCalcOut();
+    const alive = () => linkCalc === state && state.version === version && !$('#sheet').hidden && !!$('#lcQuoteStatus');
+    const update = (result) => {
+      if (!alive()) return;
+      state.result = result; state.checking = ['pending', 'working'].includes(result.status);
+      $('#lcQuoteStatus').innerHTML = (result.quote ? '<p class="note">Цена размера подтверждена на площадке. Действует 5 минут.</p>' : marketStatusHTML(result, size)) + (!state.checking && !result.quote && size ? '<button class="btn btn--line btn--sm" type="button" data-lc-recheck>Проверить ещё раз</button>' : '');
+      if (result.item) renderMarket(result.item);
+      if (result.url) state.url = result.url;
+      if (result.quote) { state.quote = result.quote; $('#lcPrice').value = result.quote.price_cny; }
+      linkCalcOut();
+    };
+    try { await lookupMarket(state.text || state.url, size, qty, update, alive); }
+    catch (e) { update({ status: 'failed', note: e.message }); }
+  }
   function pickLinkSize(size) {
-    const input = $('#lcSize');
-    if (!input) return;
+    const input = $('#lcSize'); if (!input) return;
     input.value = size;
-    $$('#lcSizes [data-lc-size]').forEach((b) => b.classList.toggle('is-on', b.dataset.lcSize === size));
-    const p = linkCalc && linkCalc.item && (linkCalc.item.size_prices || {})[size];
-    if (p) { $('#lcPrice').value = p; linkCalcOut(); }
+    $$('#lcSizes [data-lc-size]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lcSize === size)));
+    if (linkCalc?.automatic) checkLinkPrice();
   }
   // Скриншот из чата хранится как data URL: для отправки заказа превращаем в файл.
   function dataUrlFile(url) {
@@ -2575,6 +2624,17 @@ ${aiCatalogJSON()}
     if (!box) return;
     const price = Number($('#lcPrice').value);
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
+    if (linkCalc?.automatic) {
+      const quote = linkCalc.quote;
+      if (!quote || Date.parse(quote.expires_at) <= Date.now()) {
+        box.innerHTML = '<p class="note">' + (linkCalc.checking ? 'Ожидаем подтверждения цены…' : 'Выберите размер и проверьте цену.') + '</p>';
+        $('#lcActions').innerHTML = '<button class="btn btn--ghost btn--wide" type="submit" data-act="ask">Уточнить у агента</button>';
+        return;
+      }
+      box.innerHTML = `<div class="sum"><div class="sum__row"><span>Размер ${esc(quote.size)} · ${qty} шт.</span><b>${rub(Number(quote.total_rub))}</b></div></div>`;
+      $('#lcActions').innerHTML = `<button class="btn btn--lime btn--wide" type="submit" data-act="order">Заказать за ${rub(Number(quote.total_rub))}</button>`;
+      return;
+    }
     $('#lcActions').innerHTML = linkActionsHTML(price, qty);
     if (!(price > 0)) {
       box.innerHTML = '<div class="sum"><div class="sum__note">Впишите цену вашего размера в юанях или пришлите скриншот — здесь появится расчёт.</div></div>';
@@ -2695,8 +2755,8 @@ ${aiCatalogJSON()}
     if (bad) { toast('Укажите телефон, Telegram или почту'); input.focus(); }
     return !bad;
   }
-  function placeLinkOrder({ title, url, price, qty, note, contact, file, btn }) {
-    if (live.on) { linkOrderLive({ title, url, price, qty, note, contact, file }, btn); return; }
+  function placeLinkOrder({ title, url, price, qty, note, contact, file, btn, quoteId }) {
+    if (live.on) { linkOrderLive({ title, url, price, qty, note, contact, file, quoteId }, btn); return; }
     const total = linkTotal(price, qty);
     const num = orderNum();
     state.orders.unshift({
@@ -2739,13 +2799,14 @@ ${aiCatalogJSON()}
     </div>`, { narrow: true });
   }
   function orderFromLinkCalc() {
+    if (linkCalc?.automatic && (!linkCalc.quote || Date.parse(linkCalc.quote.expires_at) <= Date.now())) { checkLinkPrice(); return; }
     const price = Number($('#lcPrice').value);
     if (!(price > 0)) { toast('Впишите цену в юанях'); $('#lcPrice').focus(); return; }
     if (!contactOk($('#lcContact')) || !consentOk('lcConsent')) return;
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
     placeLinkOrder({ title: (linkCalc.title || (linkCalc.platform ? `Товар с ${linkCalc.platform}` : linkCalc.url ? 'Товар по ссылке' : 'Товар по скриншоту')).slice(0, 200), url: linkCalc.url,
       price, qty, note: $('#lcSize').value.trim(), contact: $('#lcContact').value.trim(), file: linkCalcFile(),
-      btn: $('#lcActions [data-act=order]') });
+      quoteId: linkCalc.quote?.id, btn: $('#lcActions [data-act=order]') });
   }
   function orderFromPhoto() {
     if (!$('#poPhoto').files[0]) { toast('Добавьте фото товара'); return; }
@@ -3047,7 +3108,19 @@ ${aiCatalogJSON()}
     if (d.color !== undefined && pdState) { pdState.color = d.color; rerenderProduct(); return; }
     if (d.fav !== undefined) { toggleFav(d.fav); return; }
     if (d.gotoChip) { state.cat = d.gotoChip; go('catalog'); renderCatalog(); return; }
-    if (d.mkSize !== undefined) { pdState.size = pdState.size === d.mkSize ? null : d.mkSize; rerenderProduct(); return; }
+    if (d.aiMarketSize !== undefined) {
+      const size = t.dataset.sizeValue, url = t.dataset.marketUrl;
+      const entry = { reply: 'Проверяю цену размера ' + size, images: [] };
+      ai.log.push(entry); aiRender();
+      api('/api/link/market-jobs', { method: 'POST', body: { text: url, size, qty: 1 } })
+        .then((job) => watchAiMarketJob(job.id, entry))
+        .catch((e) => { entry.reply = e.message; aiRender(); });
+      return;
+    }
+    if (d.mkSize !== undefined) { pdState.size = d.mkSize; checkMarketSize(); return; }
+    if (t.matches('[data-mk-check]')) { checkMarketSize(); return; }
+    if (t.matches('[data-mk-link]')) { const p = byId[pdState.id]; openLinkCalc(p.market.url, { title: p.t }); return; }
+    if (t.matches('[data-lc-recheck]')) { checkLinkPrice(); return; }
     if (d.mkOrder !== undefined) { orderMarketProduct(); return; }
     if (d.galGo !== undefined) { galleryGo(Number(d.galGo)); return; }
     if (d.mkAi !== undefined) { const p = byId[pdState.id]; closeSheet(); aiAsk(`Расскажи коротко про ${p.t}: для кого, плюсы и минусы по обзорам, как садится по размеру`); return; }
@@ -3318,7 +3391,7 @@ ${aiCatalogJSON()}
     if (d.aiOrder !== undefined) {
       const o = (ai.log[Number(d.aiOrder)] || {}).order;
       if (!o) return;
-      openLinkCalc(o.url || '', { price: o.price_cny, size: o.size, qty: o.qty, title: o.title, photo: o.url ? '' : ai.lastPhoto });
+      openLinkCalc(o.url || '', { price: o.price_cny, size: o.size, qty: o.qty, title: o.title, quote: o.quote, item: o.item, photo: o.url ? '' : ai.lastPhoto });
       return;
     }
     if (d.aiAdd !== undefined) {
@@ -3398,7 +3471,12 @@ ${aiCatalogJSON()}
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
-    if (t.id === 'lcPrice' || t.id === 'lcQty') linkCalcOut();
+    if (linkCalc?.automatic && ['lcSize', 'lcQty'].includes(t.id)) {
+      linkCalc.version = (linkCalc.version || 0) + 1; linkCalc.quote = null; $('#lcPrice').value = ''; linkCalcOut();
+      clearTimeout(linkCalc.checkTimer);
+      const checkingState = linkCalc;
+      linkCalc.checkTimer = setTimeout(() => { if (linkCalc === checkingState) checkLinkPrice(); }, 700);
+    } else if (t.id === 'lcPrice' || t.id === 'lcQty') linkCalcOut();
     if (t.id === 'poPrice') photoSumOut();
     if (t.id === 'poPhoto') {
       const file = t.files[0];
@@ -3834,9 +3912,9 @@ ${aiCatalogJSON()}
     if (file) fd.append('photo', file);
     return fd;
   }
-  async function linkOrderLive({ title, url, price, qty, note, contact, file }, btn) {
+  async function linkOrderLive({ title, url, price, qty, note, contact, file, quoteId }, btn) {
     await withBusy(btn, async () => {
-      const order = await api('/api/link/order', { method: 'POST', body: linkForm({ text: url, price_cny: price, qty, size: note.slice(0, 32), title, contact, consent: 'true' }, file) });
+      const order = await api('/api/link/order', { method: 'POST', body: linkForm({ quote_id: quoteId, text: url, price_cny: price, qty, size: note.slice(0, 32), title, contact, consent: 'true' }, file) });
       rememberOrder(order.token);
       live.orders.unshift(order); live.loaded = true;
       orderPlacedSheet(order, 'Перед выкупом агент сверит цену и наличие. Окажется дороже — напишем до выкупа, и вы решите: доплатить или вернуть деньги. Нет товара — вернём деньги полностью.');
