@@ -5,6 +5,8 @@
 Каждый найденный товар стоит денег, поэтому ответ храним в базе (MarketplaceItem) на CACHE_HOURS часов.
 """
 
+import math
+import re
 from datetime import timedelta
 
 import httpx
@@ -16,7 +18,7 @@ from links.models import MarketplaceItem
 API = "https://api.apify.com/v2/actors/{actor}/run-sync-get-dataset-items"
 ACTORS = {
     # Poizon: только кроссовки, одежда и люкс; ищет по spuId. ~6 $ за 1000 найденных.
-    "poizon": ("sian.agency~dewu-poizon-price-tracker", lambda item_id: {"spuIds": [item_id]}),
+    "poizon": ("sian.agency~dewu-poizon-price-tracker", lambda item_id: {"spuIds": [item_id], "styleCodes": []}),
     # Taobao и Tmall: по номеру товара. ~3 $ за 1000.
     "taobao": ("scrapesage~taobao-scraper", lambda item_id: {"mode": "item", "itemUrls": [item_id], "maxItems": 1}),
     "tmall": ("scrapesage~taobao-scraper", lambda item_id: {"mode": "item", "itemUrls": [item_id], "maxItems": 1}),
@@ -39,7 +41,8 @@ def supported(code: str) -> bool:
 
 def _num(value):
     try:
-        return round(float(value), 2) if value not in (None, "") else None
+        number = float(value)
+        return round(number, 2) if math.isfinite(number) and number > 0 else None
     except (TypeError, ValueError):
         return None
 
@@ -69,34 +72,45 @@ def _sku_size(sku: dict) -> str:
 
 
 def _sku_price(sku: dict) -> float | None:
-    for key in ("priceCny", "salePriceCny", "price_cny"):
+    for key in ("salePriceCny", "lowestAskCny", "minSalePriceCny"):
         if (value := _num(sku.get(key))) is not None:
             return value
-    for key in ("price", "salePrice", "priceFen", "minPrice", "authPrice"):  # в «фенах»: 1 ¥ = 100 фэней
+    for key in ("salePriceFen", "minSalePriceFen"):
         if (value := _num(sku.get(key))) is not None:
             return round(value / 100, 2)
     return None
 
 
-def size_prices(skus, low: float | None, high: float | None) -> dict[str, float]:
-    """Цена каждого размера из skus, если скрапер её дал.
+def size_key(value):
+    value = str(value).strip().casefold().replace(",", ".")
+    value = re.sub(r"^(?:eu|cn)\s*", "", value)
+    for fraction, decimal in [("⅓", ".333"), ("⅔", ".667"), ("½", ".5")]:
+        value = value.replace(fraction, decimal)
+    return re.sub(r"\.0+$", "", value)
 
-    Формат skus скрапер не описывает точно («id, цена в фэнях, статус, размер»), поэтому берём цены только
-    правдоподобные: внутри диапазона от и до, и разные у разных размеров. Одинаковая цена у всех при разном
-    диапазоне — это официальная розница, а не цена продажи: тогда считаем, что цен по размерам нет.
-    """
-    if not isinstance(skus, list) or not low or not high:
+
+def price_for_size(item, size):
+    matches = [price for label, price in item.get("size_prices", {}).items() if size_key(label) == size_key(size)]
+    return min(matches) if matches and len(set(matches)) == 1 else None
+
+
+def size_prices(skus, low, high, cheapest_sku_id=None):
+    if not isinstance(skus, list):
         return {}
-    found = {}
+    found, ambiguous = {}, set()
     for sku in skus:
-        if not isinstance(sku, dict):
+        if not isinstance(sku, dict) or sku.get("available") is False:
             continue
         size, price = _sku_size(sku), _sku_price(sku)
-        if size and price and low * 0.99 <= price <= high * 1.01:
-            found.setdefault(size, price)
-    if len(set(found.values())) < 2 and high > low:
-        return {}
-    return found
+        sku_id = str(sku.get("skuId") or sku.get("id") or "")
+        if not price and low and cheapest_sku_id and sku_id == str(cheapest_sku_id):
+            price = low  # Exact ID binding: only the variant carrying the live lowest ask.
+        if not size or not price or (low and price < low * .99) or (high and price > high * 1.01):
+            continue
+        if size in found:
+            ambiguous.add(size)
+        found[size] = price
+    return {size: price for size, price in found.items() if size not in ambiguous}
 
 
 def normalize(code: str, row: dict) -> dict | None:
@@ -110,8 +124,10 @@ def normalize(code: str, row: dict) -> dict | None:
                 "article": row.get("articleNumber") or "", "price_cny": price,
                 "price_cny_max": top,
                 "sizes": [str(s) for s in (row.get("sizes") or [])][:40],
-                "size_prices": size_prices(row.get("skus"), _num(row.get("minSalePriceCny")) or price, top),
-                "images": [str(i) for i in (row.get("images") or [])][:6]}
+                "size_prices": size_prices(row.get("skus"), _num(row.get("minSalePriceCny")) or price,
+                                           top, row.get("lowestPriceSkuId")),
+                "images": [str(i) for i in
+                           (row.get("images") or ([row["logoUrl"]] if row.get("logoUrl") else []))][:6]}
     price = _num(row.get("priceCny"))
     if not (row.get("title") or price):
         return None
@@ -150,19 +166,26 @@ def cached_item(code: str, item_id: str) -> dict | None:
     return cached.data if cached else None
 
 
-def fetch_item(code: str, item_id: str) -> dict | None:
+def fetch_item(code: str, item_id: str, *, fresh=False) -> dict | None:
     """Карточка товара или None (не найден). ApifyError — скрапер недоступен или нет токена."""
     if not supported(code) or not item_id:
         return None
     cached = MarketplaceItem.objects.filter(code=code, item_id=item_id).first()
-    if cached and cached.fetched_at > timezone.now() - timedelta(hours=CACHE_HOURS):
+    ttl = timedelta(minutes=2) if fresh else timedelta(hours=CACHE_HOURS)
+    if (cached and cached.fetched_at > timezone.now() - ttl
+            and (not fresh or cached.data.get("live_lookup"))):
         return cached.data if cached.found else None
     from config.budget import take
 
     if not take("apify", settings.APIFY_DAILY_LIMIT):
         raise ApifyError("Лимит просмотров площадок на сегодня исчерпан: пришлите цену в юанях или скриншот")
     rows = run_actor(code, item_id)
-    item = next((n for n in (normalize(code, r) for r in rows if isinstance(r, dict)) if n), None)
-    MarketplaceItem.objects.update_or_create(code=code, item_id=item_id,
-                                             defaults={"data": item or {}, "found": item is not None})
+    matches = [r for r in rows if isinstance(r, dict)
+               and (not (r.get("spuId") or r.get("productId"))
+                    or str(r.get("spuId") or r.get("productId")) == item_id)]
+    item = next((n for r in matches if (n := normalize(code, r))), None)
+    if item:
+        item["live_lookup"] = True
+    MarketplaceItem.objects.update_or_create(
+        code=code, item_id=item_id, defaults={"data": item or {"live_lookup": True}, "found": item is not None})
     return item

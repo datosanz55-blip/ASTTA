@@ -2,7 +2,7 @@
   "name": "astta-storefront-checks",
   "private": true,
   "scripts": {
-    "test": "node --check assets/js/app.js && node --check assets/js/theme.js && node tests/storefront.cjs"
+    "test": "node --check assets/js/app.js && node --check assets/js/theme.js && node tests/storefront.cjs && node tests/market.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"
