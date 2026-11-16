@@ -611,8 +611,124 @@
       if (CATS.some((c) => c.id === filter) && p.cat !== filter) return false;
       if (!ql) return true;
       const catName = (CATS.find((c) => c.id === p.cat) || {}).name || '';
-      return (p.t + ' ' + catName + ' ' + SUPPLIERS[p.sup].name).toLowerCase().includes(ql);
+      return (p.t + ' ' + (p.brand || p.market?.brand || '') + ' ' + catName + ' ' + SUPPLIERS[p.sup].name).toLowerCase().includes(ql);
     });
+  }
+
+  // Внутри одной характеристики — ИЛИ, между характеристиками — И.
+  const catalogFilters = { min: '', max: '', sale: false, fresh: false,
+    brand: new Set(), color: new Set(), size: new Set(), source: new Set(), supplier: new Set() };
+  const FACETS = ['brand', 'color', 'size', 'source', 'supplier'];
+  const filterKey = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru').replace(/ё/g, 'е');
+  const COLOR_GROUPS = [
+    ['Чёрный', '#202020', 'черный', 'черная', 'черные', 'black'],
+    ['Белый', '#ffffff', 'белый', 'белая', 'белые', 'white'],
+    ['Серый', '#85858a', 'серый', 'серая', 'серые', 'grey', 'gray'],
+    ['Бежевый', '#d9c5a1', 'бежевый', 'бежевая', 'бежевые', 'beige'],
+    ['Коричневый', '#85593c', 'коричневый', 'коричневая', 'коричневые', 'brown'],
+    ['Красный', '#c72e3b', 'красный', 'красная', 'красные', 'red'],
+    ['Розовый', '#e78cb7', 'розовый', 'розовая', 'розовые', 'pink'],
+    ['Синий', '#315aaa', 'синий', 'синяя', 'синие', 'blue'],
+    ['Голубой', '#86bfe1', 'голубой', 'голубая', 'голубые', 'light blue'],
+    ['Зелёный', '#39845b', 'зеленый', 'зеленая', 'зеленые', 'green'],
+    ['Жёлтый', '#e9c746', 'желтый', 'желтая', 'желтые', 'yellow'],
+    ['Оранжевый', '#df8735', 'оранжевый', 'оранжевая', 'оранжевые', 'orange'],
+    ['Фиолетовый', '#8e60a8', 'фиолетовый', 'фиолетовая', 'фиолетовые', 'purple'],
+    ['Разноцветный', '', 'разноцветный', 'разноцветная', 'разноцветные', 'multicolor'],
+  ];
+  function colorValue(value) {
+    const key = filterKey(value);
+    const group = COLOR_GROUPS.find((g) => g.slice(2).includes(key));
+    return group ? { key: filterKey(group[0]), label: group[0], swatch: group[1] } : { key, label: String(value).trim(), swatch: '' };
+  }
+  const catalogPrice = (p) => isSupplier() ? p.tiers[0][1] : isMarket(p) ? marketFrom(p) : retail(p).total;
+  const priceBounds = () => ({ min: catalogFilters.min === '' ? null : Number(catalogFilters.min), max: catalogFilters.max === '' ? null : Number(catalogFilters.max) });
+  function priceError() {
+    const { min, max } = priceBounds();
+    if ((min !== null && (!Number.isFinite(min) || min < 0)) || (max !== null && (!Number.isFinite(max) || max < 0))) return 'Цена должна быть неотрицательным числом';
+    return min !== null && max !== null && min > max ? 'Цена «от» не может быть больше цены «до»' : '';
+  }
+  function facetValues(p, facet) {
+    let values;
+    if (facet === 'brand') values = [p.brand || p.market?.brand || ''];
+    else if (facet === 'color') return [...new Map((p.filterColors?.length ? p.filterColors : p.colors || []).map((v) => { const c = colorValue(v); return [c.key, c]; })).values()].filter((v) => v.key);
+    else if (facet === 'size') values = p.filterSizes?.length ? p.filterSizes : p.grid?.length ? p.grid.map((v) => v[0]) : (p.market?.sizes || []).map((v) => v.size);
+    else if (facet === 'source') values = [p.market?.source || 'direct'];
+    else if (facet === 'supplier') values = [p.sup];
+    return [...new Set((values || []).map((v) => String(v).trim()).filter(Boolean))].map((v) => ({
+      key: filterKey(v), label: facet === 'source' ? (v === 'direct' ? 'Прямые поставщики' : MARKET_NAME[v] || v) : facet === 'supplier' ? SUPPLIERS[v]?.name || v : v,
+    }));
+  }
+  function matchesCatalogFilters(p, omit) {
+    if (priceError()) return false;
+    const { min, max } = priceBounds(), price = catalogPrice(p);
+    if ((min !== null && price < min) || (max !== null && price > max)) return false;
+    if (catalogFilters.sale && !p.sale) return false;
+    if (catalogFilters.fresh && !p.isNew) return false;
+    return FACETS.every((facet) => facet === omit || !catalogFilters[facet].size || facetValues(p, facet).some((v) => catalogFilters[facet].has(v.key)));
+  }
+  function catalogFilterState() {
+    return JSON.stringify([catalogFilters.min, catalogFilters.max, catalogFilters.sale, catalogFilters.fresh, ...FACETS.map((f) => [...catalogFilters[f]].sort())]);
+  }
+  function applyFacetSearch(facet) {
+    const input = $(`[data-facet-search="${facet}"]`);
+    if (!input) return;
+    const q = filterKey(input.value), box = $(`[data-facet-values="${facet}"]`);
+    let visible = 0;
+    $$('.filter-check', box).forEach((label) => { label.hidden = !filterKey(label.textContent).includes(q); if (!label.hidden) visible++; });
+    const empty = $('[data-facet-no-match]', box);
+    if (empty) empty.hidden = visible > 0;
+  }
+  function renderCatalogFilters(base, list) {
+    const active = document.activeElement;
+    const focus = active?.dataset.facet ? { facet: active.dataset.facet, value: active.value } : null;
+    const currency = isSupplier() ? '¥' : '₽';
+    $('#priceFilterTitle').textContent = `Цена, ${currency}`;
+    $('#priceFilterHint').textContent = isSupplier() ? 'Цена за штуку для минимальной оптовой партии.' : 'Цена карточки с доставкой. У товаров с площадок — цена «от»; цена размера может отличаться.';
+    for (const [id, key] of [['priceMin', 'min'], ['priceMax', 'max']]) if (document.activeElement !== $('#' + id)) $('#' + id).value = catalogFilters[key];
+    const error = priceError();
+    $('#priceFilterError').textContent = error; $('#priceFilterError').hidden = !error;
+    ['#priceMin', '#priceMax'].forEach((id) => $(id).setAttribute('aria-invalid', String(!!error)));
+    $$('[data-filter-flag]').forEach((el) => { el.checked = catalogFilters[el.dataset.filterFlag]; });
+    const selected = [];
+    if (catalogFilters.min !== '' || catalogFilters.max !== '') selected.push({ facet: 'price', value: '', label: `${catalogFilters.min !== '' ? 'От ' + catalogFilters.min : ''}${catalogFilters.max !== '' ? ' до ' + catalogFilters.max : ''} ${currency}` });
+    if (catalogFilters.sale) selected.push({ facet: 'sale', value: '', label: 'Со скидкой' });
+    if (catalogFilters.fresh) selected.push({ facet: 'fresh', value: '', label: 'Новинки' });
+    FACETS.forEach((facet) => {
+      const options = new Map();
+      base.forEach((p) => facetValues(p, facet).forEach((v) => { if (!options.has(v.key)) options.set(v.key, { ...v, count: 0 }); }));
+      base.filter((p) => matchesCatalogFilters(p, facet)).forEach((p) => facetValues(p, facet).forEach((v) => { if (options.has(v.key)) options.get(v.key).count++; }));
+      catalogFilters[facet].forEach((key) => { if (!options.has(key)) {
+        const known = PRODUCTS.flatMap((p) => facetValues(p, facet)).find((v) => v.key === key);
+        options.set(key, { ...(known || { key, label: key }), count: 0 });
+      } });
+      const sizes = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', '2xl', '3xl', '4xl', '5xl'];
+      const values = [...options.values()].sort((a, b) => {
+        if (facet === 'size' && sizes.includes(a.key) && sizes.includes(b.key)) return sizes.indexOf(a.key) - sizes.indexOf(b.key);
+        return a.label.localeCompare(b.label, 'ru', { numeric: true });
+      });
+      const box = $(`[data-facet-values="${facet}"]`);
+      box.innerHTML = values.map((v) => {
+        const checked = catalogFilters[facet].has(v.key);
+        if (checked) selected.push({ facet, value: v.key, label: v.label });
+        return `<label class="filter-check${!v.count && !checked ? ' is-disabled' : ''}"><input type="checkbox" data-facet="${facet}" value="${esc(v.key)}" ${checked ? 'checked' : ''} ${!v.count && !checked ? 'disabled' : ''}>${facet === 'color' ? `<i class="filter-swatch" aria-hidden="true"${v.swatch ? ` style="background:${v.swatch}"` : ''}></i>` : ''}<span>${esc(v.label)}</span><small>${v.count}</small></label>`;
+      }).join('') + `<p class="note" data-facet-no-match ${values.length ? 'hidden' : ''}>${values.length ? 'Ничего не найдено' : 'Характеристика не заполнена у этих товаров'}</p>`;
+      applyFacetSearch(facet);
+    });
+    if (focus) $$('input[data-facet]').find((el) => el.dataset.facet === focus.facet && el.value === focus.value)?.focus({ preventScroll: true });
+    $('#selectedFilters').innerHTML = selected.map((v) => `<button class="chip" type="button" data-remove-filter="${v.facet}" data-value="${esc(v.value)}" aria-label="Убрать фильтр: ${esc(v.label)}">${esc(v.label)} <span aria-hidden="true">×</span></button>`).join('');
+    $('#selectedFilters').hidden = !selected.length;
+    $('#filterCount').textContent = selected.length; $('#filterCount').hidden = !selected.length;
+    $('.catalog-results [data-filter-reset]').hidden = !selected.length && state.cat === 'all' && !state.q;
+    $('#catalogCount').textContent = `Найдено ${list.length} ${plural(list.length, 'товар', 'товара', 'товаров')}${catalogLoad.running || catalogLoad.failed.length ? ' в загруженной части каталога' : ''}`;
+    $('[data-filter-apply]').textContent = `Показать ${list.length} ${plural(list.length, 'товар', 'товара', 'товаров')}`;
+  }
+  function resetCatalogFilters() {
+    catalogFilters.min = ''; catalogFilters.max = ''; catalogFilters.sale = false; catalogFilters.fresh = false;
+    FACETS.forEach((key) => catalogFilters[key].clear());
+    state.cat = 'all'; state.q = ''; $('#q').value = '';
+    $$('[data-facet-search]').forEach((el) => { el.value = ''; });
+    renderCatalog();
   }
 
   const catalogView = { key: '', limit: 60 };
@@ -628,15 +744,18 @@
 
   function renderCatalog() {
     $('#catChips').innerHTML = [...FILTERS.filter((f) => f.id !== 'poizon' || PRODUCTS.some(isPoizon)), ...CATS].map((c) => `<button class="chip" type="button" data-chip="${esc(c.id)}" aria-pressed="${state.cat === c.id}">${esc(c.name)}</button>`).join('');
-    const priceOf = (p) => (isSupplier() ? p.tiers[0][1] : (isMarket(p) ? marketFrom(p) : retail(p).total));
+    const priceOf = catalogPrice;
     const sorters = {
       pop: (a, b) => b.sold - a.sold,
       cheap: (a, b) => priceOf(a) - priceOf(b),
+      expensive: (a, b) => priceOf(b) - priceOf(a),
       fast: (a, b) => SHIP[shipFor(a)].days[0] - SHIP[shipFor(b)].days[0] || b.sold - a.sold,
       rating: (a, b) => b.rating - a.rating,
     };
-    const list = filterProducts(state.cat, state.q).sort(sorters[state.sort]);
-    const key = [state.mode, state.cat, state.q, state.sort].join('|');
+    const base = filterProducts(state.cat, state.q);
+    const list = base.filter((p) => matchesCatalogFilters(p)).sort(sorters[state.sort]);
+    renderCatalogFilters(base, list);
+    const key = [state.mode, state.cat, state.q, state.sort, catalogFilterState()].join('|');
     if (catalogView.key !== key) { catalogView.key = key; catalogView.limit = 60; }
     $('#catalogGrid').innerHTML = list.slice(0, catalogView.limit).map(cardHTML).join('');
     $('#catalogEmpty').hidden = list.length > 0 || catalogLoad.running || catalogLoad.failed.length > 0;
@@ -2640,6 +2759,7 @@ ${aiCatalogJSON()}
   /* ---------- Режим ---------- */
   function setMode(mode, silent) {
     if (mode !== 'buyer' && mode !== 'supplier') return;
+    if (state.mode !== mode) { catalogFilters.min = ''; catalogFilters.max = ''; }
     state.mode = mode;
     document.documentElement.dataset.mode = mode;
     $$('[data-mode-switch] [data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
@@ -2759,6 +2879,15 @@ ${aiCatalogJSON()}
     if (d.lcSize !== undefined) { pickLinkSize(d.lcSize); return; }
     if (d.siteRetry !== undefined) { startLive(); return; }
     if (d.catalogRetry !== undefined) { loadRestOfCatalog(catalogLoad.failed); return; }
+    if (d.filterReset !== undefined) { resetCatalogFilters(); return; }
+    if (d.filterApply !== undefined) { if (window.innerWidth < 900) $('#catalogFilters').open = false; $('#catalogGrid').scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    if (d.removeFilter !== undefined) {
+      const key = d.removeFilter;
+      if (key === 'price') { catalogFilters.min = ''; catalogFilters.max = ''; }
+      else if (key === 'sale' || key === 'fresh') catalogFilters[key] = false;
+      else if (FACETS.includes(key)) catalogFilters[key].delete(d.value);
+      renderCatalog(); return;
+    }
     if (d.catalogMore !== undefined) { catalogView.limit += 60; renderCatalog(); return; }
     if (d.detailRetry !== undefined && pdState) { loadProductDetail(byId[pdState.id]); return; }
     if (d.color !== undefined && pdState) { pdState.color = d.color; rerenderProduct(); return; }
@@ -3064,6 +3193,12 @@ ${aiCatalogJSON()}
 
   function onChange(e) {
     const t = e.target;
+    if (t.dataset.facet) {
+      const values = catalogFilters[t.dataset.facet];
+      if (t.checked) values.add(t.value); else values.delete(t.value);
+      renderCatalog(); return;
+    }
+    if (t.dataset.filterFlag) { catalogFilters[t.dataset.filterFlag] = t.checked; renderCatalog(); return; }
     if (t.id === 'aiPhoto') { aiPhotoPicked(t.files[0]); t.value = ''; return; }
     if (t.id === 'avaInput') { uploadAvatar(t.files[0]); t.value = ''; return; }
     if (t.type === 'radio' && t.closest('.ship')) {
@@ -3087,6 +3222,8 @@ ${aiCatalogJSON()}
 
   function onInput(e) {
     const t = e.target;
+    if (t.dataset.facetSearch) { applyFacetSearch(t.dataset.facetSearch); return; }
+    if (t.id === 'priceMin' || t.id === 'priceMax') { catalogFilters[t.id === 'priceMin' ? 'min' : 'max'] = t.value; renderCatalog(); return; }
     if (t.id === 'q') { state.q = t.value; renderCatalog(); }
     if (t.id === 'buildRange') buildOut();
     if (t.id === 'plPeople') updatePoolShare();
@@ -3263,6 +3400,7 @@ ${aiCatalogJSON()}
   function liveProduct(c) {
     const tiers = (c.tiers || []).map((t) => [t.min_qty, Number(t.price_cny)]).sort((a, b) => a[0] - b[0]);
     return {
+      brand: c.brand || c.market?.brand || '', filterSizes: c.sizes?.length ? c.sizes : (c.market?.sizes || []).map((v) => v.size), filterColors: c.colors || [],
       id: c.slug, t: c.title, cat: c.category, sup: c.supplier_code, supName: c.supplier,
       cny: Number(c.price_cny), kg: Number(c.weight_kg) || 0.5,
       tiers,
@@ -3716,6 +3854,7 @@ ${aiCatalogJSON()}
     store.load();
     applyTheme(document.documentElement.getAttribute('data-ui'));
     initCookies();
+    $('#catalogFilters').open = window.matchMedia('(min-width: 900px)').matches;
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${esc(c.id)}" data-close-menu>${esc(c.name)}</a>`).join('');
     document.addEventListener('click', onClick);
