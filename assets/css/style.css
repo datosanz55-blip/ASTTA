@@ -212,10 +212,11 @@ html[data-mode="supplier"] .mode__thumb { transform: translateX(100%); }
 /* ---------- Каркас ---------- */
 main {
   max-width: 1320px; margin: 0 auto;
-  padding-left: var(--gl); padding-right: var(--gr); padding-block: 0 48px;
+  padding-left: var(--gl); padding-right: var(--gr); padding-block: 0 32px;
 }
-.view { display: flex; flex-direction: column; gap: 64px; }
-.block { display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 90px; }
+.view { display: flex; flex-direction: column; gap: 16px; }
+.view[data-view="home"] { gap: 32px; }
+.block { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 90px; }
 .block__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
 .block__head h2, .pagehead h1, .community h2 {
   font-family: var(--font-display); font-weight: 600; text-transform: uppercase;
@@ -303,7 +304,7 @@ main {
 /* ---------- Полоса преимуществ: светящаяся лента во всю ширину ---------- */
 .perkband {
   position: relative; overflow: hidden; isolation: isolate;
-  margin: -64px calc(50% - 50vw) 0; padding-block: 44px;
+  margin: 0 calc(50% - 50vw); padding-block: 12px;
   -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
   mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
   background:
@@ -1076,7 +1077,8 @@ html[data-mode="supplier"] .pd__price b { color: var(--accent-ink); }
   .topbar__actions { margin-left: 0; gap: 8px; }
   .topbtn span { display: inline; }
   .subbar { display: none; }
-  .view { gap: 96px; }
+  .view { gap: 20px; }
+  .view[data-view="home"] { gap: 48px; }
   .view[data-view="home"] { padding-top: 4px; }
 
   .hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; min-height: 600px; padding: 40px 48px; }
@@ -1092,7 +1094,7 @@ html[data-mode="supplier"] .pd__price b { color: var(--accent-ink); }
   }
   .hero__dots { display: flex; left: 48px; bottom: 32px; }
 
-  .perkband { margin-top: -96px; padding-block: 132px; }
+  .perkband { padding-block: 16px; }
   .perks { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-block: 14px; }
   .perks li { justify-content: center; gap: 18px; padding: 22px 12px; font-size: 15px; }
   .perks .ic { width: 38px; height: 38px; }
@@ -1569,7 +1571,6 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 /* Ошибка API не открывает демонстрационную витрину. */
 .site-unavailable main, .site-unavailable .splash { display: none; }
 #siteError { min-height: 60vh; }
-#catalogMore, #catalogRetry { margin: 24px auto; }
 
 /* Почта — второй способ входа, используется в любой теме. */
 .auth-options { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -1578,3 +1579,6 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 #emailAddressForm, #emailVerifyForm { min-width: 0; }
 #emailAddressForm input { min-width: 0; }
 .pbody .panel b { overflow-wrap: anywhere; }
+#catalogMore, #catalogRetry { margin: 4px auto; }
+/* Пустой статус не должен добавлять отдельный промежуток в flex-раскладке каталога. */
+#catalogStatus:empty { display: none; }
