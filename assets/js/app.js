@@ -580,6 +580,7 @@
     });
     const empty = $('#liveEmpty');
     if (empty) empty.hidden = !(live.on && !PRODUCTS.length);
+    syncHomeNav();
   }
 
   const PLATFORMS = [[/1688\./i, '1688'], [/taobao\.|tb\.cn/i, 'Taobao'], [/tmall\./i, 'Tmall'], [/poizon|dewu|dw4\.co/i, 'Poizon'], [/pinduoduo|yangkeduo/i, 'Pinduoduo']];
@@ -2671,6 +2672,31 @@ ${aiCatalogJSON()}
   /* ---------- Навигация ---------- */
   const VIEWS = ['home', 'catalog', 'trends', 'feed', 'cart', 'profile'];
   let currentView = 'home';
+  function syncHomeNav() {
+    const nav = $('#homeSectionNav');
+    if (!nav) return;
+    nav.hidden = currentView !== 'home';
+    document.documentElement.classList.toggle('is-home', currentView === 'home');
+    let active = null;
+    const links = [...nav.querySelectorAll('a')];
+    links.forEach((a) => {
+      const section = document.getElementById(a.hash.slice(1));
+      a.hidden = !section || section.hidden;
+      if (!a.hidden && (!active || section.getBoundingClientRect().top <= 140)) active = a;
+      a.removeAttribute('aria-current');
+    });
+    if (active) active.setAttribute('aria-current', 'location');
+  }
+  function initHomeNav() {
+    let pending = false;
+    const update = () => {
+      if (pending || currentView !== 'home') return;
+      pending = true;
+      requestAnimationFrame(() => { pending = false; syncHomeNav(); });
+    };
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+  }
   function route() {
     let hash;
     try { hash = decodeURIComponent(location.hash.slice(1)); } catch (e) { hash = ''; }
@@ -2682,6 +2708,7 @@ ${aiCatalogJSON()}
       if (a.dataset.nav === view) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
     });
+    syncHomeNav();
     if (view === 'catalog') renderCatalog();
     document.documentElement.classList.toggle('is-trends', view === 'trends');
     if (view === 'trends') enterTrends(); else leaveTrends();
@@ -2693,7 +2720,7 @@ ${aiCatalogJSON()}
     if (hash === 'support' && live.on) { openAgentLive(); return; }
     if (!VIEWS.includes(hash) && hash) {
       const target = document.getElementById(hash);
-      if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }));
     } else if (changed) {
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
@@ -3716,7 +3743,8 @@ ${aiCatalogJSON()}
     store.load();
     applyTheme(document.documentElement.getAttribute('data-ui'));
     initCookies();
-    $$('[data-rate]').forEach((el) => { el.textContent = rateText; });
+    initHomeNav();
+    $$('[data-rate]').forEach((el) => { el.textContent = rateText; el.closest('.rate').hidden = !allowDemo; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${esc(c.id)}" data-close-menu>${esc(c.name)}</a>`).join('');
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);

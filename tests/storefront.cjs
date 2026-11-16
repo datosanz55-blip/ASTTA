@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const total = 1944;
 const product = (n) => ({slug: `item-${n}`, title: n === 1944 ? 'Последний товар' : `Товар ${n}`, category: 'shoes', supplier: 'Фабрика', supplier_code: 'factory', price_cny: '100', unit_price_cny:'100', weight_kg:'1', size_grid:'shoes', sold_count:total - n, tiers:[], retail_rub:'1620', fee_retail:'.05', fee_wholesale:'.03', image:'/assets/img/runner.webp'});
 const site = {rate:'11.4',retail_fee:'.05',wholesale_fee:'.03',link_rate:'13',link_delivery_rub:'1000', shipping:[{code:'auto',name:'Авто',rub_per_kg:'420',days_min:18,days_max:25,is_default:true,for_bulky_only:false}],telegram_bot:'astta_shop_bot',chat:false,market:false};
-async function setup(browser, {offline = false, saved = false, failPage = null} = {}) {
+async function setup(browser, {offline = false, saved = false, failPage = null, rateMissing = false} = {}) {
  const context=await browser.newContext({viewport:{width:1280,height:900}});
  const page=await context.newPage(); const errors=[],posts=[],requests=[];
  let active=0, maxActive=0, failures=failPage ? 1 : 0;
@@ -18,7 +18,7 @@ async function setup(browser, {offline = false, saved = false, failPage = null} 
   if(p.startsWith('/api/')) {
    if(offline) return route.fulfill({status:503,json:{detail:'offline'}});
    let data;
-   if(p==='/api/site') data=site;
+   if(p==='/api/site') data={...site,rate:rateMissing ? null : site.rate};
    else if(p==='/api/suppliers') data=[{code:'factory',name:'Фабрика',fact_days:[18,25]}];
    else if(p==='/api/categories') data=[{slug:'shoes',name_ru:'Обувь'}];
    else if(p==='/api/feed') data={items:[],total:0};
@@ -123,6 +123,46 @@ async function setup(browser, {offline = false, saved = false, failPage = null} 
    }
    assert.deepEqual(t.errors,[]);await t.context.close();
   }
-  console.log('Storefront checks passed: 1944 products, retry, cart persistence, variants, support, API outage.');
+  {
+   const t=await setup(browser),p=t.page;
+   await p.waitForSelector('html.is-live');
+   await p.emulateMedia({reducedMotion:'reduce'});
+   await p.goto('http://astta.test/#home');await p.waitForSelector('html.is-live');
+   await p.evaluate(()=>document.fonts.ready);
+   await p.addStyleTag({content:'*,*::before,*::after { transition: none !important; animation: none !important; }'});
+   for(const theme of ['dark','light','bimbo']) {
+    await p.evaluate(theme=>document.documentElement.setAttribute('data-ui',theme),theme);
+    for(const width of [320,390,768,900,1024,1280,1440,1920]) {
+     await p.setViewportSize({width,height:900});
+     await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+     for(let slide=0;slide<3;slide++) {
+      await p.locator('.hero__dots button').nth(slide).dispatchEvent('click');
+      const layout=await p.evaluate(()=>{
+       const hero=document.querySelector('.hero'),copy=document.querySelector('.hero__copy').getBoundingClientRect(),visual=document.querySelector('.hero__visual'),photo=visual.getBoundingClientRect();
+       const title=document.querySelector('.htext.is-on :is(h1,h2)'),range=document.createRange();range.selectNodeContents(title);
+       const text=range.getBoundingClientRect();
+       const assertClip=getComputedStyle(visual).overflow==='hidden';
+       return {clipped:assertClip && hero.scrollLeft===0,separate:copy.right<=photo.left+1 || copy.top>=photo.bottom-1,contained:text.right<=copy.right+1 && text.left>=copy.left-1,overflow:document.documentElement.scrollWidth>innerWidth};
+      });
+      assert(layout.clipped && layout.separate && layout.contained && !layout.overflow,`${theme}, ${width}px, slide ${slide+1}: ${JSON.stringify(layout)}`);
+     }
+     if(width>=900) {assert(await p.locator('.rate').isVisible(),'desktop exchange rate visible');assert.match(await p.locator('.rate').innerText(),/11,40/);}
+    }
+   }
+   await p.setViewportSize({width:1440,height:900});
+   assert(await p.locator('#homeSectionNav').isVisible());
+   assert.equal(await p.locator('#homeSectionNav a[href="#homePoizon"]').isVisible(),false,'empty sections omitted');
+   await p.locator('#homeSectionNav a[href="#faq"]').click();
+   await p.waitForFunction(()=>document.querySelector('#homeSectionNav a[href="#faq"]').getAttribute('aria-current')==='location');
+   await p.goto('http://astta.test/#catalog');await p.waitForSelector('html.is-live');
+   assert.equal(await p.locator('#homeSectionNav').isVisible(),false,'rail only on home');
+   assert.deepEqual(t.errors,[]);await t.context.close();
+  }
+  {
+   const t=await setup(browser,{rateMissing:true});await t.page.waitForSelector('html.is-live');
+   assert.equal(await t.page.locator('.rate').isVisible(),false,'missing rate must not show demo value');
+   await t.context.close();
+  }
+  console.log('Storefront checks passed: catalog, cart, support, API outage, hero layouts, home navigation, desktop rate.');
  } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
