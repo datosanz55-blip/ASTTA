@@ -249,8 +249,8 @@ def marketplace_card(info) -> dict:
                 else "Номер товара не нашёлся в ссылке"}
     try:
         item = apify.fetch_item(info.code, info.item_id)
-    except apify.ApifyError as exc:
-        return {"note": str(exc)}
+    except apify.ApifyError:
+        return {"note": "Площадка временно не отдаёт данные. Предложи повторить проверку или уточнить у агента."}
     if not item:
         return {"note": "Товар не нашёлся на площадке или снят с продажи"}
     from links.market_quotes import public_item
