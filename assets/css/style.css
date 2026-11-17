@@ -1589,3 +1589,28 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .market-photos img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 12px; }
 .lcmarket .market-photos { flex: 0 0 88px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .lcmarket .market-photos img { object-fit: contain; }
+
+/* Keep horizontal product strips inside the sheet and reachable with any input. */
+.sheet__body { min-width: 0; overflow-x: hidden; }
+.chat, .msgs, .airesult { min-width: 0; max-width: 100%; }
+.aicards { width: 100%; min-width: 0; max-width: 100%; scrollbar-width: thin; padding-bottom: 8px; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
+.aicards::-webkit-scrollbar { display: block; height: 6px; }
+.aicards::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 4px; }
+.aicards__head { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--muted); font-size: 13px; }
+.aicards__head > div { display: flex; gap: 6px; }
+.aicards__head .iconbtn { width: 40px; height: 40px; }
+.aicards__head [data-step="-1"] .ic { transform: rotate(180deg); }
+.aicards__head button:disabled, .gal__arrow:disabled { opacity: .35; cursor: default; }
+.aicard { min-width: 0; flex-basis: min(210px, 78vw); }
+.aicard__body b { overflow-wrap: anywhere; }
+.gal__arrow { position: absolute; z-index: 2; top: 40%; display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.94); color: #101510; box-shadow: 0 2px 12px #0003; }
+.gal__arrow--prev { left: 10px; }
+.gal__arrow--next { right: 10px; }
+.gal__arrow--prev .ic { transform: rotate(180deg); }
+.pd--market .pd__info { gap: 16px; }
+.pd--market .pd__info > h2 { font-size: clamp(26px, 3vw, 36px); line-height: 1.15; padding-right: 28px; }
+.pd--market .mkprice__row b { font-size: 34px; }
+.pd--market .mksteps { padding: 0; border: 0; background: none; box-shadow: none; }
+.pd__details { border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); font-size: 14px; }
+.pd__details summary { cursor: pointer; color: var(--ink); }
+.pd__details > div { padding-top: 14px; }

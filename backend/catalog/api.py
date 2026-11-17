@@ -30,6 +30,7 @@ class ProductCard(Schema):
     slug: str
     title: str
     brand: str = ""
+    gender: str = ""
     sizes: list[str] = []
     colors: list[str] = []
     category: str
@@ -113,6 +114,7 @@ def _card(request, product, ctx):
         "slug": product.slug,
         "title": product.title_ru,
         "brand": product.brand_name,
+        "gender": product.audience,
         "sizes": product.size_list,
         "colors": product.color_list,
         "category": product.category.slug,

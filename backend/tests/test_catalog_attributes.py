@@ -50,7 +50,7 @@ def test_import_brand_and_accept_old_template(supplier, shoes):
     # Старые Excel без новой колонки принимаются и не стирают бренд.
     wb = load_workbook(BytesIO(build_template()))
     ws = wb.worksheets[0]
-    ws.delete_cols(13)
+    ws.delete_cols(13, 2)
     ws.append(ROW)
     stream = BytesIO()
     wb.save(stream)
