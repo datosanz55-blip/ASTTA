@@ -198,7 +198,7 @@ class ProductAdmin(ModelAdmin):
                     "status_label")
     list_display_links = ("cover", "title_ru")
     list_editable = ("price_cny", "sale_percent")
-    list_filter = ("status", "category", "supplier", "is_new", "bulky")
+    list_filter = ("status", "category", "supplier", "gender", "is_new", "bulky")
     search_fields = ("title_ru", "title_zh", "brand", "sku", "slug")
     list_per_page = 50
     save_on_top = True
@@ -211,7 +211,8 @@ class ProductAdmin(ModelAdmin):
     # Вкладки сверху карточки: Основное, Описание, Цена, Размеры. Фото и оптовые цены — блоками под ними.
     fieldsets = (
         (_("Основное"), {"classes": ["tab"], "fields": (
-            "title_ru", "brand", "status", ("supplier", "category"), ("sku", "slug"), "is_new", "moderation_note")}),
+            "title_ru", "brand", "gender", "status", ("supplier", "category"),
+            ("sku", "slug"), "is_new", "moderation_note")}),
         (_("Описание"), {"classes": ["tab"], "fields": ("description_ru", "title_zh", "description_zh",
                                                        "source_url")}),
         (_("Цена и доставка"), {"classes": ["tab"], "fields": (

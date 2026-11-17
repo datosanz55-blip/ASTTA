@@ -20,6 +20,7 @@ from django.utils.text import slugify
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from catalog.audience import normalize_gender
 from catalog.images import MAX_SOURCE_BYTES, ImageError, prepare_image
 from catalog.models import Category, PriceTier, Product, ProductImage, Supplier
 
@@ -38,10 +39,11 @@ COLUMNS = [
     ("source_url", "Ссылка у поставщика", False),
     ("title_zh", "Название на китайском (можно пусто)", False),
     ("brand", "Бренд (можно пусто)", False),
+    ("gender", "Пол / аудитория (можно пусто)", False),
 ]
 EXAMPLE_ROW = ["RUN-001", "Кроссовки беговые, сетка", "Обувь", 268, 1.1, "6:198; 30:176", "36-45", "чёрный, белый",
                "нет", "Лёгкие, верх из сетки, подошва EVA", "https://detail.1688.com/offer/000000000.html",
-               "轻便跑步鞋", "Бренд производителя"]
+               "轻便跑步鞋", "Бренд производителя", "унисекс"]
 YES = {"да", "yes", "y", "1", "true", "是"}
 
 PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -168,12 +170,13 @@ def _read_rows(file, result, translate=False):
     # Колонки сверяем по заголовкам: файл по старому шаблону молча разложил бы значения не по своим полям.
     header = [str(v or "").strip() for v in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())]
     titles = [title for _, title, _ in COLUMNS]
-    has_brand = header[:len(titles)] == titles
-    if not has_brand and (header[:len(titles) - 1] != titles[:-1] or any(header[len(titles) - 1:])):
+    supported = [length for length in (len(titles), len(titles) - 1, len(titles) - 2)
+                 if header[:length] == titles[:length] and not any(header[length:])]
+    if not supported:
         result.errors.append("Колонки не совпадают с шаблоном: скачайте свежий шаблон и перенесите данные в него")
         return []
-
-    names = [name for name, _, _ in (COLUMNS if has_brand else COLUMNS[:-1])]
+    names = [name for name, _, _ in COLUMNS[:supported[0]]]
+    has_brand = "brand" in names
     example = dict(zip(names, EXAMPLE_ROW[:len(names)], strict=True))
     rows = []
     for index, values in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -189,7 +192,12 @@ def _read_rows(file, result, translate=False):
         if missing:
             result.errors.append(f"Строка {index}: не заполнено: {', '.join(missing)}")
             continue
+        gender_text = str(data.get("gender") or "").strip()
+        gender = normalize_gender(gender_text)
+        if gender_text and not gender and gender_text.casefold() not in ("не указан", "unknown"):
+            result.errors.append(f"Строка {index}: пол — мужское, женское, унисекс, для мальчиков/девочек или детское")
         rows.append({
+            "gender": gender if gender_text else None,
             "row": index,
             "brand": _text(data.get("brand"), "бренд", 80, index, result.errors) if has_brand else None,
             "sku": str(data["sku"]).strip(),
@@ -353,6 +361,8 @@ def import_catalog(file, supplier: Supplier, photos=None, publish: bool = False,
             product.category = r["category"]
             if r["brand"] is not None:
                 product.brand = r["brand"]
+            if r["gender"] is not None:
+                product.gender = r["gender"]
             product.title_ru = r["title_ru"]
             product.title_zh = r["title_zh"]
             product.description_ru = r["description_ru"]

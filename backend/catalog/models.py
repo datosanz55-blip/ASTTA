@@ -78,6 +78,16 @@ class Product(models.Model):
         CLOTHES = "clothes", _("Одежда")
         SHOES = "shoes", _("Обувь")
 
+    class Gender(models.TextChoices):
+        UNKNOWN = "", _("Не указан")
+        MEN = "men", _("Мужское")
+        WOMEN = "women", _("Женское")
+        UNISEX = "unisex", _("Унисекс")
+        BOYS = "boys", _("Для мальчиков")
+        GIRLS = "girls", _("Для девочек")
+        KIDS = "kids", _("Детское")
+
+    gender = models.CharField(_("пол / аудитория"), max_length=12, choices=Gender.choices, blank=True)
     supplier = models.ForeignKey(Supplier, verbose_name=_("поставщик"), on_delete=models.PROTECT,
                                  related_name="products")
     category = models.ForeignKey(Category, verbose_name=_("категория"), on_delete=models.PROTECT,
@@ -135,6 +145,12 @@ class Product(models.Model):
     def brand_name(self) -> str:
         value = self.brand or (self.market or {}).get("brand", "")
         return value.strip()[:80] if isinstance(value, str) else ""
+
+    @property
+    def audience(self):
+        from catalog.audience import product_gender
+
+        return product_gender(self)
 
     @property
     def is_market(self) -> bool:

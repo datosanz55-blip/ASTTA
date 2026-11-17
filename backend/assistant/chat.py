@@ -15,6 +15,7 @@ from django.db.models import Q
 from assistant import llm
 from assistant.models import AiLog
 from assistant.services import facts_text, find_articles
+from catalog.audience import LABELS, matches_audience, requested_audience, requested_outfit
 from catalog.market import retail_rub
 from catalog.models import Product
 from pricing.services import PricingContext, PricingError
@@ -32,6 +33,12 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 - Цены, наличие, размеры и сроки бери ТОЛЬКО из инструментов и фактов ниже. Никогда не придумывай товары и цены.
 - Подбор под задачу и бюджет: вызови search_catalog (можно несколько раз с разными словами), выбери подходящее,
   уложись в бюджет и назови итог. Цены уже под ключ: товар, доставка и сбор.
+- В образе для мужчины/женщины используй только подходящий пол или явно указанный унисекс.
+  gender="" означает, что пол неизвестен: не определяй его по фото, цвету, фасону или размеру.
+  Не подставляй детские вещи взрослому. Если подходящих вещей мало — скажи об этом, не добавляй случайные товары.
+  Пол и другие условия сохраняются при просьбах «дешевле»/«другой вариант».
+- Не называй набор с ценами «от» готовой корзиной с точным итогом: размер ещё не выбран.
+- Пиши коротко, максимум несколько предложений перед карточками. Не дублируй все характеристики карточки.
 - Правила сервиса (оплата, возврат, доставка, таможня) — search_knowledge. Нет ответа — так и скажи
   и предложи написать агенту, не выдумывай.
 - Пустой результат поиска или match="popular" значит, что точных совпадений нет (это не сбой). Скажи честно,
@@ -132,7 +139,9 @@ def _stems(text):
     return [w[:5] for w in re.findall(r"[a-zа-яё0-9]+", (text or "").lower()) if len(w) >= 3]
 
 
-def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None) -> list[dict]:
+def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None, *,
+                   audience="", outfit=False) -> list[dict]:
+    audience = audience or requested_audience([{"role": "user", "content": query}])
     stems = _stems(query)[:6]
     qs = _published()
     if category:
@@ -149,9 +158,11 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
             # Размытый запрос («что-нибудь в подарок») или такого нет: даём популярное, модель честно скажет.
             match = "popular"
     results = []
-    for product in qs.order_by("-sold_count", "id")[:60]:
+    for product in qs.order_by("-sold_count", "id")[:300]:
+        if not matches_audience(product, audience, outfit):
+            continue
         price = retail_rub(product, ctx)
-        if max_price_rub and price is not None and price > Decimal(str(max_price_rub)):
+        if max_price_rub and (price is None or price > Decimal(str(max_price_rub))):
             continue
         hay = f"{product.title_ru} {product.description_ru} {product.category.name_ru}".lower()
         score = sum(hay.count(st) for st in stems)
@@ -159,6 +170,7 @@ def search_catalog(query: str, max_price_rub=None, category: str = "", ctx=None)
     results.sort(key=lambda r: (-r[0], -r[1].sold_count))
     return [{"slug": p.slug, "title": p.title_ru, "price_rub": int(price) if price is not None else None,
              "category": p.category.name_ru, "supplier": p.supplier.name, "sizes": p.size_list[:12],
+             "gender": p.audience, "gender_label": LABELS[p.audience],
              "sale_percent": p.sale_percent, "match": match, **_market_note(p)}
             for _, p, price in results[:CATALOG_LIMIT]]
 
@@ -168,20 +180,25 @@ def _market_note(product) -> dict:
     if not product.is_market:
         return {}
     return {"price_is_from": True, "marketplace": product.market.get("source"),
-            "note": "цена «от»: точная зависит от размера — пусть покупатель откроет товар на сайте, нажмёт "
-                    "«Открыть на площадке» и пришлёт цену своего размера в юанях или скриншот"}
+            "note": "цена «от»: точная зависит от размера — предложи выбрать размер и запустить "
+                    "проверку цены размера на ASTTA; не отправляй его узнавать цену в китайском приложении"}
 
 
-def get_product(slug: str, ctx=None) -> dict:
+def get_product(slug: str, ctx=None, *, audience="", outfit=False) -> dict:
     product = _published().filter(slug=slug).first()
     if product is None:
         return {"error": "товар не найден"}
+    if not matches_audience(product, audience, outfit):
+        return {"title": product.title_ru, "gender": product.audience, "gender_label": LABELS[product.audience],
+                "recommendation_allowed": False,
+                "note": "Не подходит запрошенной аудитории или образу. Выбери другой товар из search_catalog."}
     retail = retail_rub(product, ctx)
     price = int(retail) if retail is not None else None
     tiers = sorted(product.tiers.all(), key=lambda t: t.min_qty)
     return {"slug": product.slug, "title": product.title_ru, "description": product.description_ru[:1200],
             "images": [image.image.url for image in product.images.all()][:6],
             "price_rub": price, "sizes": product.size_list, "colors": product.color_list,
+            "gender": product.audience, "gender_label": LABELS[product.audience],
             "weight_kg": float(product.weight_kg), "bulky": product.bulky,
             "wholesale": [{"from_qty": t.min_qty, "price_cny": float(t.price_cny)} for t in tiers],
             **_market_note(product)}
@@ -296,12 +313,12 @@ class ChatAnswer:
     market_jobs: list[str] = field(default_factory=list)
 
 
-def _run_tool(name: str, args: dict, buyer, ctx) -> object:
+def _run_tool(name: str, args: dict, buyer, ctx, *, audience="", outfit=False) -> object:
     if name == "search_catalog":
         return search_catalog(str(args.get("query", "")), args.get("max_price_rub"), str(args.get("category") or ""),
-                              ctx=ctx)
+                              ctx=ctx, audience=audience, outfit=outfit)
     if name == "get_product":
-        return get_product(str(args.get("slug", "")), ctx=ctx)
+        return get_product(str(args.get("slug", "")), ctx=ctx, audience=audience, outfit=outfit)
     if name == "search_knowledge":
         return search_knowledge(str(args.get("query", "")))
     if name == "estimate_link_price":
@@ -427,6 +444,7 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
     except PricingError:
         ctx = None
     messages = [{"role": "system", "content": SYSTEM.format(facts=facts_text())}, *turns]
+    audience, outfit = requested_audience(history), requested_outfit(history)
     seen_products: set[str] = set()
     memos: list[str] = []
     images, market_jobs = [], []
@@ -444,7 +462,7 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
                 step["reasoning_content"] = reply.raw_message["reasoning_content"]
             messages.append(step)
             for call in reply.tool_calls:
-                result = _run_tool(call["name"], call["arguments"], buyer, ctx)
+                result = _run_tool(call["name"], call["arguments"], buyer, ctx, audience=audience, outfit=outfit)
                 if call["name"] == "search_catalog":
                     seen_products.update(item["slug"] for item in result)
                 elif call["name"] == "get_product" and "slug" in result:
@@ -472,6 +490,9 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
         log.save()
         return ChatAnswer(text, handoff=not photo, log_id=log.pk)
     # Карточки показываем только для товаров, которые модель реально получила из каталога.
+    if audience or outfit:
+        seen_products = {p.slug for p in _published().filter(slug__in=seen_products)
+                         if matches_audience(p, audience, outfit)}
     text, products, handoff, order_line = _split_tail(reply.content, seen_products)
     conversation = "\n".join(str(m.get("content")) for m in messages)
     said = "\n".join(str(m["content"]) for m in history if m.get("role") == "user")

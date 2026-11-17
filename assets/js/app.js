@@ -1534,7 +1534,7 @@
     const p = byId[id];
     if (!p) return;
     pdState = { id, size: null, color: null, ship: shipFor(p), qty: isSupplier() && hasWholesale(p) ? p.tiers[0][0] : 1, needSize: !!opts.needSize, wheelDiameter: null, wheelChosen: false };
-    openSheet(productHTML(), {});
+    openSheet(productHTML(), { keepProduct: true });
     trackView(id);
     if (opts.needSize) toast('Выберите вариант товара');
     loadProductDetail(p);
@@ -1582,38 +1582,34 @@
   }
 
   function marketProductHTML(p) {
-    const m = p.market;
-    const src = m.source;
-    const name = MARKET_NAME[src] || src;
-    const from = marketFrom(p), to = marketTo(p);
+    const m = p.market, src = m.source, name = MARKET_NAME[src] || src;
+    const result = pdState.marketResult, quote = result?.quote;
     const sizes = (m.sizes || []).filter((x) => x && x.size);
-    const cheaper = m.poizon_rub_min && from && from < m.poizon_rub_min
-      ? `<div class="mkcompare">${icon('tag')}<span>В приложении Poizon — от <s>${rub(m.poizon_rub_min)}</s>. У нас дешевле на <b>${rub(m.poizon_rub_min - from)}</b></span></div>` : '';
-    return `<div class="pd" data-market="1" data-id="${esc(p.id)}">
+    return `<div class="pd pd--market" data-market="1" data-id="${esc(p.id)}">
       <div class="pd__media pd__media--market">${galleryHTML(p)}<span class="mkbadge mkbadge--${esc(src)}">${esc(name)}</span>${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
-        <div class="mkhead">${m.brand ? `<b>${esc(m.brand)}</b>` : ''}${src === 'poizon' ? `<span class="mkauth">${icon('check')}Оригинал · проверка подлинности Poizon</span>` : `<span class="mkauth mkauth--plain">с ${esc(name)}</span>`}</div>
         <h2>${esc(p.t)}</h2>
-        <div class="pd__rating">${m.article ? `<span class="mono">${esc(m.article)}</span>` : ''}${p.sold ? `<span>${nf0.format(p.sold)} продаж на ${esc(name)}</span>` : ''}<span>Доставка ${daysText(SHIP.auto.days)}</span></div>
         <div class="mkprice">
-          <div class="mkprice__row"><small>от</small><b>${rub(from)}</b>${to && to > from ? `<span>до ${rub(to)}</span>` : ''}</div>
-          <p>Под ключ: товар, доставка до России и наш сбор. ${to && to > from ? 'Точная цена зависит от размера.' : 'Точная цена зависит от варианта.'}</p>
+          <div class="mkprice__row">${quote ? '' : '<small>от</small>'}<b>${rub(quote ? Number(quote.total_rub) : marketFrom(p))}</b></div>
+          <p>${quote ? 'Размер ' + esc(quote.size) + ' · с доставкой в Россию' : 'С доставкой в Россию. Точная цена — после выбора размера.'}</p>
         </div>
-        ${cheaper}
-        ${sizes.length ? `<div class="stack" style="gap:10px">
-          <span class="sublabel">Размер${src === 'poizon' ? ' · китайский и наш' : ''}</span>
-          <div class="mksizes" role="group" aria-label="Размер">${sizes.map((x) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.size)}</b>${x.ru ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
-          ${m.fit_advice ? `<p class="mkfit">${icon('ruler')}<span>${esc(m.fit_advice)}</span></p>` : ''}
+        ${sizes.length ? `<div class="mkpick">
+          <span class="sublabel">Выберите размер</span>
+          <div class="mksizes" role="group" aria-label="Размер">${sizes.map((x) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.size)}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
         </div>` : ''}
         <div class="mksteps" id="mkQuote" aria-live="polite">
-          <h3>Цена выбранного размера</h3>
-          ${pdState.size ? marketStatusHTML(pdState.marketResult, pdState.size) : '<p class="note">Выберите размер — проверим актуальную цену и посчитаем доставку.</p>'}
+          ${quote ? '<p class="note">Цена проверена на площадке. Действует 5 минут.</p>' : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
           <div class="mkbtns">
-            ${pdState.marketResult?.quote ? '<button class="btn btn--lime" type="button" data-mk-order>Оформить заказ</button>' : pdState.size ? `<button class="btn btn--line" type="button" data-mk-check ${['pending', 'working'].includes(pdState.marketResult?.status) ? 'disabled' : ''}>Проверить ещё раз</button>` : !sizes.length ? '<button class="btn btn--lime" type="button" data-mk-link>Выбрать размер и проверить</button>' : ''}
-            <button class="btn btn--ghost" type="button" data-open-chat>Уточнить у агента</button>
+            ${quote ? '<button class="btn btn--lime" type="button" data-mk-order>Оформить заказ</button>' : pdState.size ? `<button class="btn btn--lime" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить ещё раз'}</button>` : !sizes.length ? '<button class="btn btn--lime" type="button" data-mk-link>Указать размер и проверить</button>' : ''}
+            <button class="linkbtn" type="button" data-open-chat>Уточнить у агента</button>
           </div>
         </div>
-        <button class="btn btn--ghost" type="button" data-mk-ai>${icon('spark')}Спросить ASTTA AI про эту модель</button>
+        <details class="pd__details"><summary>О товаре и доставке</summary><div class="stack">
+          ${m.article ? `<p>Артикул: <span class="mono">${esc(m.article)}</span></p>` : ''}
+          <p>Доставка: ${daysText(SHIP.auto.days)}. В расчёт включены товар, доставка и сервис ASTTA.</p>
+          ${m.fit_advice ? `<p>${esc(m.fit_advice)}</p>` : ''}
+          <button class="linkbtn" type="button" data-mk-ai>Спросить ИИ об этой модели</button>
+        </div></details>
       </div>
     </div>`;
   }
@@ -1623,17 +1619,22 @@
     if (imgs.length < 2) return `<img class="gal__img" src="${esc(imgs[0])}" alt="${esc(p.t)}" width="720" height="720">`;
     return `<div class="gal">
       <div class="gal__track" data-gal-track>${imgs.map((src, i) => `<img class="gal__img" src="${esc(src)}" alt="${esc(p.t)}${i ? `, фото ${i + 1}` : ''}" width="720" height="720"${i ? ' loading="lazy"' : ''}>`).join('')}</div>
+      <button class="gal__arrow gal__arrow--prev" type="button" data-gal-step="-1" aria-label="Предыдущее фото" disabled>${icon('arrow')}</button>
+      <button class="gal__arrow gal__arrow--next" type="button" data-gal-step="1" aria-label="Следующее фото">${icon('arrow')}</button>
       <span class="gal__count" data-gal-count>1 / ${imgs.length}</span>
       <div class="gal__thumbs">${imgs.map((src, i) => `<button type="button" class="gal__thumb${i ? '' : ' is-on'}" data-gal-go="${i}" aria-label="Фото ${i + 1}"><img src="${esc(src)}" alt="" width="64" height="64" loading="lazy"></button>`).join('')}</div>
     </div>`;
   }
   function galleryGo(i) {
     const track = $('[data-gal-track]');
-    if (track) track.scrollTo({ left: track.clientWidth * i, behavior: 'smooth' });
+    if (track) track.scrollTo({ left: track.clientWidth * Math.max(0, Math.min(i, track.children.length - 1)), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }
   function galleryScrolled(track) {
     const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
-    const count = $('[data-gal-count]');
+    const gallery = track.closest('.gal');
+    const count = $('[data-gal-count]', gallery);
+    $('[data-gal-step="-1"]', gallery).disabled = i <= 0;
+    $('[data-gal-step="1"]', gallery).disabled = i >= track.children.length - 1;
     if (count) count.textContent = `${i + 1} / ${track.children.length}`;
     $$('.gal__thumb').forEach((b, n) => b.classList.toggle('is-on', n === i));
   }
@@ -2006,10 +2007,14 @@ ${aiCatalogJSON()}
     const compat = (m.compat || []).length ? `<ul class="aicompat">${m.compat.map((x) => `<li>${icon('check')}${esc(x)}</li>`).join('')}</ul>` : '';
     const total = catTotal + customTotal;
     return `<div class="airesult">
-      <div class="aicards">${cards}</div>
+      <div class="aicards__head"><span>Товары подборки</span><div data-ai-controls="${idx}">
+        <button type="button" class="iconbtn" data-ai-scroll="${idx}" data-step="-1" aria-label="Предыдущие товары" aria-controls="aiCards${idx}" disabled>${icon('arrow')}</button>
+        <button type="button" class="iconbtn" data-ai-scroll="${idx}" data-step="1" aria-label="Следующие товары" aria-controls="aiCards${idx}">${icon('arrow')}</button>
+      </div></div>
+      <div class="aicards" id="aiCards${idx}" data-ai-rail="${idx}" tabindex="0" role="region" aria-label="Товары подборки">${cards}</div>
       ${compat}
       <div class="aitotal">
-        <div><span>${custom.length ? 'Итого, оценка' : 'Готовая корзина'}</span><b>${custom.length ? '≈ ' : ''}${rub(total)}</b></div>
+        <div><span>${custom.length || cat.some((c) => isMarket(byId[c.id])) ? 'Подборка · ориентир от' : 'Итого за подборку'}</span><b>${custom.length ? '≈ ' : ''}${rub(total)}</b></div>
         <div class="aitotal__btns">
           ${cat.length && !live.on ? `<button class="btn btn--lime btn--sm" type="button" data-ai-add="${idx}">${custom.length ? 'Из каталога в корзину' : 'Добавить всё'}</button>` : ''}
           ${custom.length ? `<button class="btn ${cat.length ? 'btn--line' : 'btn--lime'} btn--sm" type="button" data-ai-custom="${idx}">Индивидуальный заказ</button>` : ''}
@@ -2023,13 +2028,29 @@ ${aiCatalogJSON()}
 
   const AI_STAGES = ['Разбираю запрос…', 'Ищу в каталоге ASTTA…', 'Подбираю под заказ из Китая…', 'Проверяю совместимость и бюджет…', 'Собираю корзину…'];
 
-  function aiRender() {
+  function updateAiRail(rail) {
+    const controls = $(`[data-ai-controls="${rail.dataset.aiRail}"]`);
+    if (!controls) return;
+    controls.hidden = rail.scrollWidth <= rail.clientWidth + 2;
+    $('[data-step="-1"]', controls).disabled = rail.scrollLeft <= 2;
+    $('[data-step="1"]', controls).disabled = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 2;
+  }
+  function initAiRails() { $$('.aicards').forEach(updateAiRail); }
+  function scrollAiRail(rail, direction) {
+    rail.scrollBy({ left: direction * Math.max(180, rail.clientWidth * .8), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  }
+
+  function aiRender(forceFollow = false) {
     const box = $('#aiMsgs');
     if (!box) return;
+    const body = $('#sheetBody'), top = body.scrollTop;
+    const follow = forceFollow || body.scrollHeight - body.scrollTop - body.clientHeight < 100;
+    const positions = new Map($$('.aicards', box).map((r) => [r.id, r.scrollLeft]));
     box.innerHTML = ai.log.map((m, idx) => {
       if (m.me) return `<div class="msg msg--me">${m.thumb ? `<img class="msg__img" src="${esc(m.thumb)}" alt="">` : ''}${esc(m.text)}</div>`;
       if (m.typing) return `<div class="msg msg--typing"><span id="aiStage">${AI_STAGES[ai.stage % AI_STAGES.length]}</span>${ai.ctl ? ' <button class="linkbtn" type="button" data-ai-stop>Стоп</button>' : ''}</div>`;
-      let html = `<div class="msg msg--ai">${esc(m.reply || m.text)}</div>`;
+      const reply = esc(m.reply || m.text).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+      let html = `<div class="msg msg--ai">${reply}</div>`;
       html += aiResultHTML(m, idx);
       html += marketPhotosHTML(m.images);
       if (m.marketResults) html += Object.values(m.marketResults).map((r) => marketStatusHTML(r, r.quote?.size || '') + (r.item?.sizes?.length ? `<div class="quick">${r.item.sizes.map((s) => typeof s === 'string' ? s : s.size).filter(Boolean).slice(0, 40).map((size) => `<button class="chip" type="button" data-ai-market-size="${idx}" data-size-value="${esc(size)}" data-market-url="${esc(r.url)}">${esc(size)}</button>`).join('')}</div>` : '')).join('');
@@ -2040,7 +2061,10 @@ ${aiCatalogJSON()}
     }).join('');
     const head = $('#aiMode');
     if (head) head.textContent = ai.mode === 'server' ? 'ASTTA AI · подбирает из каталога, отвечает по правилам сервиса' : ai.mode === 'claude' ? 'работает на Claude · подбирает из каталога и под заказ' : (ai.mode === 'demo' ? 'демо-режим: сценарии по каталогу' : 'подбирает товары под задачу и бюджет');
-    box.lastElementChild && box.lastElementChild.scrollIntoView({ block: 'end' });
+    $$('.aicards', box).forEach((r) => { r.scrollLeft = positions.get(r.id) || 0; });
+    initAiRails();
+    if (follow) box.lastElementChild?.scrollIntoView({ block: 'end' });
+    else body.scrollTop = top;
   }
 
   function openAI() {
@@ -2103,7 +2127,7 @@ ${aiCatalogJSON()}
     if (!opts.silent) ai.log.push({ me: true, text: opts.label || q, thumb: opts.thumb });
     ai.stage = 0;
     ai.log.push({ typing: true });
-    aiRender();
+    aiRender(true);
     const tick = setInterval(() => { ai.stage += 1; const el = $('#aiStage'); if (el) el.textContent = AI_STAGES[ai.stage % AI_STAGES.length]; }, 4000);
     const finish = (entry) => {
       clearInterval(tick);
@@ -3108,6 +3132,12 @@ ${aiCatalogJSON()}
     if (d.color !== undefined && pdState) { pdState.color = d.color; rerenderProduct(); return; }
     if (d.fav !== undefined) { toggleFav(d.fav); return; }
     if (d.gotoChip) { state.cat = d.gotoChip; go('catalog'); renderCatalog(); return; }
+    if (d.aiScroll !== undefined) { const rail = document.getElementById('aiCards' + d.aiScroll); if (rail) scrollAiRail(rail, Number(d.step)); return; }
+    if (d.galStep !== undefined) {
+      const track = $('[data-gal-track]');
+      if (track) galleryGo(Math.round(track.scrollLeft / Math.max(1, track.clientWidth)) + Number(d.galStep));
+      return;
+    }
     if (d.aiMarketSize !== undefined) {
       const size = t.dataset.sizeValue, url = t.dataset.marketUrl;
       const entry = { reply: 'Проверяю цену размера ' + size, images: [] };
@@ -3605,6 +3635,13 @@ ${aiCatalogJSON()}
   }
 
   function onKey(e) {
+    if (e.target.matches('.aicards') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+      e.preventDefault();
+      if (e.key === 'Home' || e.key === 'End') e.target.scrollLeft = e.key === 'Home' ? 0 : e.target.scrollWidth;
+      else scrollAiRail(e.target, e.key === 'ArrowLeft' ? -1 : 1);
+      requestAnimationFrame(() => updateAiRail(e.target));
+      return;
+    }
     if (e.key === 'Escape') { closeSheet(); closeMenu(); }
   }
 
@@ -4123,7 +4160,7 @@ ${aiCatalogJSON()}
     document.addEventListener('input', onInput);
     document.addEventListener('submit', onSubmit);
     document.addEventListener('keydown', onKey);
-    document.addEventListener('scroll', (e) => { if (e.target.matches && e.target.matches('[data-gal-track]')) galleryScrolled(e.target); }, true);
+    document.addEventListener('scroll', (e) => { if (e.target.matches?.('[data-gal-track]')) galleryScrolled(e.target); if (e.target.matches?.('.aicards')) updateAiRail(e.target); }, true);
     $('#menuBtn').addEventListener('click', openMenu);
     $('#searchBtn').addEventListener('click', () => {
       go('catalog');
@@ -4142,6 +4179,7 @@ ${aiCatalogJSON()}
     startLive();
     // Ширина кнопок меняется, когда загрузится шрифт и когда переключатель переезжает из шапки в строку ниже.
     window.addEventListener('resize', placeModeThumbs);
+    window.addEventListener('resize', initAiRails);
     if (document.fonts) document.fonts.ready.then(placeModeThumbs);
   }
 
