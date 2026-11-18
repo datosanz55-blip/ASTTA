@@ -122,3 +122,20 @@ def test_buyer_nickname_is_unique_and_editable(db):
     client.force_login(User.objects.create_user(username="other-buyer"))
     assert rename("МОЙНИК").status_code == 409
     assert client.get(url).json()["nickname"] == ""
+
+
+def test_restore_session_from_cookie(db):
+    client = Client()
+    url = "/api/me?allow_guest=true"
+    anonymous = client.get(url)
+    assert anonymous.status_code == 200 and anonymous.json() is None
+    assert client.get("/api/me").status_code == 401
+
+    client.force_login(User.objects.create_user(username="restored-buyer", first_name="Анна"))
+    # Use a fresh client with only the session cookie, like a browser after clearing local storage.
+    refreshed = Client()
+    refreshed.cookies = client.cookies.copy()
+    response = refreshed.get(url)
+    assert response.json()["first_name"] == "Анна"
+    assert "no-store" in response.headers["Cache-Control"]
+    assert {"Cookie", "Authorization"} <= set(response.headers["Vary"].split(", "))
