@@ -103,3 +103,22 @@ def test_order_items_have_photo_and_link(supplier, shoes, pricing_setup):
     item = order["items"][0]
     assert item["product_slug"] == "hoodie" and item["image"].endswith(".webp")
     assert Order.objects.count() == 1
+
+
+def test_buyer_nickname_is_unique_and_editable(db):
+    client = Client()
+    buyer = User.objects.create_user(username="mail-buyer")
+    client.force_login(buyer)
+    url = "/api/me"
+
+    def rename(value):
+        return client.patch(url, {"nickname": value}, content_type="application/json")
+
+    assert client.get(url).json()["nickname"] == ""
+    assert rename("  МойНик  ").json()["nickname"] == "МойНик"
+    assert client.get(url).json()["nickname"] == "МойНик"
+    assert rename("мойник").status_code == 200
+    assert rename("a b").status_code == 422
+    client.force_login(User.objects.create_user(username="other-buyer"))
+    assert rename("МОЙНИК").status_code == 409
+    assert client.get(url).json()["nickname"] == ""

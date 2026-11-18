@@ -1068,7 +1068,7 @@
     if ((live.on && !me) || (!live.on && !state.tg)) {
       return `${tgCardHTML()}<p class="note pguest">${icon('heart')}Избранное и просмотры пока хранятся в этом браузере. Войдите — перенесём их в аккаунт и покажем на любом устройстве.</p>`;
     }
-    const name = me ? ([me.first_name, me.last_name].filter(Boolean).join(' ') || 'Покупатель') : (state.tg.name || 'Вы');
+    const name = me ? (me.nickname || [me.first_name, me.last_name].filter(Boolean).join(' ') || 'Покупатель') : (state.tg.name || 'Вы');
     const username = me ? me.username : state.tg.username;
     const ava = me && me.photo_url
       ? `<img class="phead__ava" src="${esc(me.photo_url)}" alt="" width="72" height="72" referrerpolicy="no-referrer">`
@@ -1091,6 +1091,7 @@
     return `<div class="phead">
       <div class="phead__avawrap">${ava}${cam}</div>
       <div class="phead__txt"><b>${esc(name)}</b><span>${username ? `@${esc(username)}` : ''}${username && since ? ' · ' : ''}${since}</span>
+        ${me ? `<button class="linkbtn" type="button" data-edit-nickname>${me.nickname ? 'Изменить ник' : 'Выбрать ник'}</button>` : ''}
         ${me && me.avatar_url ? `<button class="linkbtn" type="button" data-ava-reset>${me.telegram_id ? 'Вернуть фото из Telegram' : 'Убрать фото'}</button>` : ''}</div>
       ${live.tma ? '' : '<button class="linkbtn" type="button" data-tg-logout>Выйти</button>'}
     </div>
@@ -3227,6 +3228,17 @@ ${aiCatalogJSON()}
         .catch((e) => { entry.reply = e.message; aiRender(); });
       return;
     }
+    if (d.editNickname !== undefined && live.me) {
+      openSheet(`<form class="stack" id="nicknameForm">
+        <h2 class="sheet__title">Ник в ASTTA</h2>
+        <label class="field"><span>Ваш ник</span><input name="nickname" required minlength="3" maxlength="24"
+          autocomplete="off" value="${esc(live.me.nickname || '')}"></label>
+        <p class="note">От 3 до 24 символов. Русские или латинские буквы, цифры, дефис и подчёркивание.</p>
+        <p class="note" data-nickname-error role="alert" hidden></p>
+        <button class="btn btn--lime" type="submit">Сохранить ник</button>
+      </form>`, { narrow: true });
+      return;
+    }
     if (d.reviewWrite !== undefined) { openCustomerReviewForm(); return; }
     if (d.reviewsMore !== undefined) { loadCustomerReviews(); return; }
     if (d.reviewsRetry !== undefined) { loadCustomerReviews(true); return; }
@@ -3639,6 +3651,7 @@ ${aiCatalogJSON()}
       })();
       return;
     }
+    if (f.id === 'nicknameForm') { saveNickname(f); return; }
     if (f.id === 'meForm') {
       saveProfile({ phone: $('#meePhone').value, city: $('#meeCity').value, delivery_address: $('#meeAddr').value },
         $('button[type=submit]', f), 'Данные сохранены');
@@ -4186,6 +4199,22 @@ ${aiCatalogJSON()}
       </div>
       <button class="btn btn--lime" type="submit">Сохранить</button>
     </form>${emailAccountHTML()}${payMethodHTML()}`;
+  }
+
+  async function saveNickname(form) {
+    const button = $('button[type=submit]', form);
+    const error = $('[data-nickname-error]', form);
+    button.disabled = true;
+    error.hidden = true;
+    try {
+      live.me = await api('/api/me', { method: 'PATCH', body: { nickname: form.elements.nickname.value.trim() } });
+      if (form.isConnected && !$('#sheet').hidden) closeSheet();
+      renderProfile();
+      toast('Ник сохранён');
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+    } finally { button.disabled = false; }
   }
 
   async function saveProfile(fields, btn, done) {

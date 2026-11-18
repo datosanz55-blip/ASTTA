@@ -6,11 +6,13 @@
 Cookie в мини-приложении не используем: в Telegram Web оно открыто во фрейме, и браузер их не сохранит.
 """
 
+import re
 import secrets
 from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth import login, logout
+from django.db import IntegrityError, transaction
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from ninja import Router, Schema
@@ -94,6 +96,7 @@ class StatsOut(Schema):
 
 
 class MeOut(Schema):
+    nickname: str = ""
     email: str = ""
     email_verified: bool = False
     telegram_id: int | None
@@ -117,6 +120,7 @@ MEASURE_KEYS = {"height": (100, 230), "chest": (60, 160), "waist": (40, 160), "h
 
 
 class ProfileIn(Schema):
+    nickname: str | None = None
     pay_method: str | None = None
     phone: str | None = None
     city: str | None = None
@@ -146,7 +150,8 @@ def me_out(user: User) -> dict:
     identity = getattr(user, "email_identity", None)
     return {
         "email": identity.email if identity else "", "email_verified": identity is not None,
-        "telegram_id": user.telegram_id, "username": user.telegram_username, "first_name": user.first_name,
+        "nickname": user.nickname, "telegram_id": user.telegram_id, "username": user.telegram_username,
+        "first_name": user.first_name,
         "last_name": user.last_name, "photo_url": user.avatar.url if user.avatar else user.telegram_photo_url,
         "avatar_url": user.avatar.url if user.avatar else "", "pay_method": user.pay_method,
         "favorites": list(user.favorites.values_list("product__slug", flat=True)[:500]),
@@ -265,6 +270,13 @@ def me_update(request, payload: ProfileIn):
     if buyer is None:
         raise HttpError(401, "Войдите через Telegram")
     fields = []
+    nickname = payload.nickname.strip() if payload.nickname is not None else None
+    if nickname is not None:
+        if not re.fullmatch(r"[A-Za-zА-Яа-яЁё0-9_-]{3,24}", nickname):
+            raise HttpError(422, "Ник: 3–24 символа, русские или латинские буквы, цифры, дефис или подчёркивание")
+        buyer.nickname = nickname
+        buyer.nickname_key = nickname.lower()
+        fields.extend(("nickname", "nickname_key"))
     for name, limit in (("phone", 32), ("city", 80), ("delivery_address", 300)):
         value = getattr(payload, name)
         if value is not None:
@@ -291,7 +303,13 @@ def me_update(request, payload: ProfileIn):
         buyer.measures = clean
         fields.append("measures")
     if fields:
-        buyer.save(update_fields=fields)
+        try:
+            with transaction.atomic():
+                buyer.save(update_fields=fields)
+        except IntegrityError:
+            if nickname and User.objects.filter(nickname_key=nickname.lower()).exclude(pk=buyer.pk).exists():
+                raise HttpError(409, "Этот ник уже занят") from None
+            raise
     return me_out(buyer)
 
 
