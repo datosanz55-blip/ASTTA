@@ -13,8 +13,10 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import login, logout
 from django.db import IntegrityError, transaction
+from django.http import HttpResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
+from django.utils.cache import patch_cache_control, patch_vary_headers
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja.utils import check_csrf
@@ -255,11 +257,15 @@ def telegram_logout(request):
     return {"ok": True}
 
 
-@router.get("/me", response=MeOut, throttle=[per_ip("me", "120/m")], summary="Профиль покупателя и его заказы")
-def me(request):
+@router.get("/me", response=MeOut | None, throttle=[per_ip("me", "120/m")], summary="Профиль покупателя и его заказы")
+def me(request, response: HttpResponse, allow_guest: bool = False):
+    patch_cache_control(response, private=True, no_store=True)
+    patch_vary_headers(response, ("Cookie", "Authorization"))
     buyer = current_buyer(request)
     if buyer is None:
-        raise HttpError(401, "Войдите через Telegram")
+        if allow_guest:
+            return None
+        raise HttpError(401, "Войдите в аккаунт")
     return me_out(buyer)
 
 

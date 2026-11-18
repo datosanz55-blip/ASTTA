@@ -1021,6 +1021,12 @@
   }
 
   function renderProfile() {
+    if (live.on && !live.me && live.sessionState !== 'ready') {
+      $('#profileBody').innerHTML = live.sessionState === 'error'
+        ? '<p class="note">Не удалось загрузить профиль. <button class="linkbtn" type="button" data-retry-session>Повторить</button></p>'
+        : '<p class="note" role="status">Загружаем профиль…</p>';
+      return;
+    }
     const ids = profileTabIds();
     if (!ids.includes(state.ptab)) state.ptab = 'orders';
     const counts = { orders: ordersList().length, favs: state.favs.size };
@@ -1381,8 +1387,8 @@
       live.me = await api('/api/auth/email/verify', { method: 'POST', body: {
         challenge_id: emailFlow.challenge, code: form.elements.code.value.trim(), purpose: emailFlow.purpose,
       } });
-      live.csrf = ''; signedFlag(true);
-      await loadMe(true);
+      live.csrf = '';
+      await loadMe();
       state.ptab = emailFlow.purpose === 'link' ? 'data' : 'orders';
       closeSheet(); go('profile'); renderProfile();
       toast(emailFlow.purpose === 'link' ? 'Почта подтверждена и привязана' : 'Вы вошли в аккаунт');
@@ -3228,6 +3234,7 @@ ${aiCatalogJSON()}
         .catch((e) => { entry.reply = e.message; aiRender(); });
       return;
     }
+    if (d.retrySession !== undefined) { loadMe(); renderProfile(); return; }
     if (d.editNickname !== undefined && live.me) {
       openSheet(`<form class="stack" id="nicknameForm">
         <h2 class="sheet__title">Ник в ASTTA</h2>
@@ -3933,26 +3940,34 @@ ${aiCatalogJSON()}
     if (currentView === 'catalog') renderCatalog();
   }
 
-  // Профиль и заказы: вошедший покупатель — из /api/me, гость — по токенам заказов, сохранённым в браузере.
-  // Гостя на /api/me не спрашиваем: лишний ответ 401 Lighthouse считает ошибкой. Флаг ставим после входа.
-  const SIGNED_KEY = 'astta-signed-in';
-  const signedFlag = (on) => { try { if (on) localStorage.setItem(SIGNED_KEY, '1'); else localStorage.removeItem(SIGNED_KEY); } catch (e) { /* ничего */ } };
-  const maybeSignedIn = () => { try { return !!localStorage.getItem(SIGNED_KEY); } catch (e) { return true; } };
-  async function loadMe(force) {
+  // Восстанавливаем профиль по серверной сессии, даже если хранилище браузера пустое.
+  async function loadMe() {
+    live.sessionState = 'loading';
     try {
-      if (!force && !live.tma && !maybeSignedIn()) throw new Error('guest');
-      live.me = await api('/api/me');
-      signedFlag(true);
-      state.tg = { name: live.me.first_name, username: live.me.username || '' };
-      if (live.me.measures && Object.keys(live.me.measures).length) state.measures = live.me.measures;
-      const fromBrowser = [...state.favs].filter((id) => !live.me.favorites.includes(id));
-      if (fromBrowser.length) {
-        try { live.me.favorites = (await api('/api/me/favorites', { method: 'POST', body: { slugs: fromBrowser } })).favorites; } catch (e) { /* перенесём при следующем входе */ }
+      live.me = await api('/api/me?allow_guest=true');
+      live.sessionState = 'ready';
+      if (!live.me) {
+        if (!live.tma) state.tg = null;
+      } else {
+        state.tg = { name: live.me.first_name, username: live.me.username || '' };
+        if (live.me.measures && Object.keys(live.me.measures).length) state.measures = live.me.measures;
+        const fromBrowser = [...state.favs].filter((id) => !live.me.favorites.includes(id));
+        if (fromBrowser.length) {
+          try { live.me.favorites = (await api('/api/me/favorites', { method: 'POST', body: { slugs: fromBrowser } })).favorites; } catch (e) { /* перенесём при следующем входе */ }
+        }
+        state.favs = new Set(live.me.favorites);
+        resetProfileCache();
+        store.save();
       }
-      state.favs = new Set(live.me.favorites);
-      resetProfileCache();
-      store.save();
-    } catch (e) { live.me = null; if (!live.tma) state.tg = null; if (e.status === 401) signedFlag(false); }
+    } catch (e) {
+      if (e.status === 401) {
+        live.me = null;
+        state.tg = null;
+        live.sessionState = 'ready';
+      } else {
+        live.sessionState = 'error';
+      }
+    }
     const tokens = [...new Set([...(live.me ? live.me.orders.map((o) => o.token) : []), ...guestTokens()])].slice(0, 20);
     const got = await Promise.all(tokens.map((t) => api(`/api/orders/${encodeURIComponent(t)}`).catch(() => null)));
     live.orders = got.filter(Boolean);
@@ -4099,7 +4114,7 @@ ${aiCatalogJSON()}
     try {
       await api('/api/auth/telegram', { method: 'POST', body: fields });
       live.csrf = ''; // после входа Django выдаёт новый токен защиты
-      await loadMe(true);
+      await loadMe();
       toast(state.tg && state.tg.username ? `Вы вошли как @${state.tg.username}` : 'Вы вошли');
     } catch (e) { toast(e.message); }
     route();
@@ -4131,7 +4146,6 @@ ${aiCatalogJSON()}
     try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { toast('Не удалось выйти. Повторите попытку.'); return; }
     live.csrf = ''; live.me = null; state.tg = null;
     state.favs = new Set(); state.viewed = []; resetProfileCache(); store.save();
-    signedFlag(false);
     live.orders = []; live.loaded = false;
     await loadMe();
     renderProfile();

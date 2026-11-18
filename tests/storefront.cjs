@@ -19,7 +19,6 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
  const profile = {telegram_id:telegramAccount?777:null,username:telegramAccount?'anna':'',first_name:'Анна',last_name:'',
   email:telegramAccount?'':'anna@example.com',email_verified:!telegramAccount,phone:'',city:'',delivery_address:'',
   measures:{},member_since:'2026-11-16',stats:{orders:0,active:0,delivered:0,spent_rub:'0'},orders:[],favorites:[],avatar_url:'',photo_url:'',pay_method:''};
- if(telegramAccount) await context.addInitScript(()=>localStorage.setItem('astta-signed-in','1'));
 
  page.on('pageerror',e=>errors.push(e.message));
  if(saved) await context.addInitScript(()=>{ if (!localStorage.getItem('fixture-seeded')) { localStorage.setItem('fixture-seeded','1');localStorage.setItem('astta-demo',JSON.stringify({carts:{buyer:[{id:'item-1944',qty:2,size:'42',color:'белый'}],supplier:[]}}));} });
@@ -62,8 +61,8 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
    }
    else if(p==='/api/auth/logout') {authenticated=false;data={ok:true};}
    else if(p==='/api/me') {
-    if(!authenticated) return route.fulfill({status:401,json:{detail:'Войдите'}});
-    data=profile;
+    if(!authenticated && !url.searchParams.has('allow_guest')) return route.fulfill({status:401,json:{detail:'Войдите'}});
+    data=authenticated ? profile : null;
    }
 
    else if(p==='/api/orders' && req.method()==='POST') { posts.push(JSON.parse(req.postData()));data={number:'A-000123',token:'test-order',total_rub:'1620.00'}; }
@@ -205,7 +204,7 @@ if (require.main === module) (async()=>{
    await p.locator('#emailError:visible').waitFor();
    await p.locator('#emailCode').fill('123456');await p.locator('#emailVerifyForm button').click();
    await p.locator('.phead').waitFor();
-   assert.equal(await p.evaluate(()=>localStorage.getItem('astta-signed-in')),'1');
+   await p.evaluate(()=>localStorage.clear());
    await p.reload();await p.locator('.phead').waitFor();
    await p.locator('[data-ptab="data"]').first().click();
    await p.getByText('anna@example.com',{exact:true}).waitFor();
