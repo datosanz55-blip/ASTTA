@@ -7,11 +7,11 @@ const root = path.resolve(__dirname, '..');
 const total = 1944;
 const product = (n) => ({slug: `item-${n}`, title: n === 1944 ? 'Последний товар' : `Товар ${n}`, category: 'shoes', supplier: 'Фабрика', supplier_code: 'factory', brand:n%4===1||n%4===2?'Nike':'Adidas',sizes:[n%2?'42':'43'],colors:[n%4===1?'Black':n%4===3?'чёрный':'белый'],sale_percent:n%4===2?10:0,is_new:!!(n%2),price_cny:String((n%4||4)*100), unit_price_cny:String((n%4||4)*100), weight_kg:'1', size_grid:'shoes', sold_count:total - n, tiers:[], retail_rub:'1620', fee_retail:'.05', fee_wholesale:'.03', image:'/assets/img/runner.webp',...(n===1943?{market:{source:'poizon',brand:'Adidas',url:'https://example.com/item',price_cny_max:700,sizes:[{size:'42'}]},retail_rub:'1500'}:{})});
 const site = {rate:'11.4',retail_fee:'.05',wholesale_fee:'.03',link_rate:'13',link_delivery_rub:'1000', shipping:[{code:'auto',name:'Авто',rub_per_kg:'420',days_min:18,days_max:25,is_default:true,for_bulky_only:false}],telegram_bot:'astta_shop_bot',chat:false,market:false};
-async function setup(browser, {offline = false, saved = false, failPage = null, mailEnabled = false, telegramAccount = false, rateMissing = false, items = null, market = false, usability = false, touch = false} = {}) {
+async function setup(browser, {offline = false, saved = false, failPage = null, mailEnabled = false, telegramAccount = false, rateMissing = false, items = null, market = false, usability = false, touch = false, marketSizes = ['40','42','43']} = {}) {
  const itemCount = items ? items.length : total;
  const context=await browser.newContext({viewport:{width:1280,height:900},hasTouch:touch,isMobile:touch});
  const marketJobs=new Map();let marketJobNumber=0;
- const marketItem={title:'Nike Dunk',price_cny:599,price_cny_max:899,sizes:['40','42','43'],images:['/api/link/image?token=fixture']};
+ const marketItem={title:'Nike Dunk',price_cny:599,price_cny_max:899,sizes:marketSizes,images:['/api/link/image?token=fixture']};
  const marketJob=(size,qty=1)=>{const id='lookup-'+(++marketJobNumber);const job={id,size,qty,polls:0};marketJobs.set(id,job);return job;};
  const page=await context.newPage(); const errors=[],posts=[],requests=[];
  let active=0, maxActive=0, failures=failPage ? 1 : 0;

@@ -24,6 +24,7 @@ from django.utils import timezone
 from catalog.images import ImageError, prepare_image
 from catalog.importer import unique_slug
 from catalog.models import Category, MarketImport, Product, ProductImage, Supplier
+from catalog.presentation import variant_label
 
 API = "https://api.apify.com/v2"
 ACTORS = {
@@ -117,7 +118,9 @@ def market_out(product: Product, memo: dict | None = None) -> dict | None:
     return {"source": m.get("source"), "url": m.get("url", ""), "poizon_url": m.get("poizon_url", ""),
             "price_cny_max": m.get("price_cny_max"),
             "retail_max_rub": link_total(product, m.get("price_cny_max"), memo),
-            "poizon_rub_min": m.get("poizon_rub_min"), "sizes": m.get("sizes", []),
+            "poizon_rub_min": m.get("poizon_rub_min"),
+            "sizes": [{**s, "label": variant_label(s["size"], i)} for i, s in enumerate(m.get("sizes", []))
+                      if isinstance(s, dict) and s.get("size")],
             "fit_advice": m.get("fit_advice", ""), "brand": m.get("brand", ""), "article": m.get("article", ""),
             "model3d": m.get("model3d", "")}
 
@@ -172,7 +175,7 @@ def poizon_item(row: dict) -> dict | None:
     for sku in row.get("sizes") or []:
         if not isinstance(sku, dict):
             continue
-        size = str(sku.get("size") or "").strip()[:12]
+        size = str(sku.get("size") or "").strip()[:32]
         if not size or size in seen or sku.get("skuStatus") not in (None, 1):
             continue
         seen.add(size)

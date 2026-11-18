@@ -1635,3 +1635,6 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 @media(max-width:600px){.customer-reviews__grid{grid-template-columns:1fr}.customer-reviews .block__head{align-items:flex-start;flex-direction:column;gap:12px}}
 
 .customer-review__head b{min-width:0;overflow-wrap:anywhere}
+
+.mksize b{overflow-wrap:anywhere;white-space:normal}
+.mksizes .mksize{max-width:100%;min-width:0}

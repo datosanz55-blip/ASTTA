@@ -17,7 +17,7 @@ from assistant.models import AiLog
 from assistant.services import facts_text, find_articles
 from catalog.audience import LABELS, matches_audience, requested_audience, requested_outfit
 from catalog.market import retail_rub
-from catalog.models import Product
+from catalog.visibility import storefront_products
 from pricing.services import PricingContext, PricingError
 
 MAX_ROUNDS = 4  # сколько раз подряд модель может вызвать инструменты, прежде чем ответить
@@ -131,7 +131,7 @@ TOOLS = [
 
 
 def _published():
-    return (Product.objects.filter(status=Product.Status.PUBLISHED, supplier__is_active=True)
+    return (storefront_products()
             .select_related("category", "supplier").prefetch_related("tiers"))
 
 
