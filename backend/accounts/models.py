@@ -21,6 +21,8 @@ class User(AbstractUser):
         ADMIN = "admin", _("Администратор")
 
     role = models.CharField(_("роль"), max_length=16, choices=Role.choices, default=Role.BUYER)
+    nickname = models.CharField("ник ASTTA", max_length=24, blank=True)
+    nickname_key = models.CharField(max_length=24, null=True, unique=True, editable=False)  # noqa: DJ001
     phone = models.CharField(_("телефон"), max_length=32, blank=True)
     telegram_id = models.BigIntegerField("Telegram ID", null=True, blank=True, unique=True)
     telegram_username = models.CharField(_("ник в Telegram"), max_length=64, blank=True)
