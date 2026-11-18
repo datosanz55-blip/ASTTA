@@ -1613,7 +1613,7 @@
         </div>
         ${sizes.length ? `<div class="mkpick">
           <span class="sublabel">Выберите размер или вариант</span>
-          <div class="mksizes" role="group" aria-label="Размер и вариант">${sizes.map((x, i) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.label || variantLabel(x.size, i))}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
+          <div class="mksizes${sizes.some((x, i) => (x.label || variantLabel(x.size, i)).length > 8) ? ' mksizes--variants' : ''}" role="group" aria-label="Размер и вариант">${sizes.map((x, i) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.label || variantLabel(x.size, i))}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
         </div>` : ''}
         <div class="mksteps" id="mkQuote" aria-live="polite">
           ${quote ? '<p class="note">Цена проверена на площадке. Действует 5 минут.</p>' : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}

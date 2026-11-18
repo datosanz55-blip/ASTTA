@@ -1638,3 +1638,7 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 
 .mksize b{overflow-wrap:anywhere;white-space:normal}
 .mksizes .mksize{max-width:100%;min-width:0}
+
+.mksizes--variants{grid-template-columns:repeat(auto-fill,minmax(min(140px,100%),1fr))}
+.mksizes--variants .mksize{padding:12px 10px;justify-content:center;text-align:center}
+.mksizes--variants .mksize b{font-size:14px;line-height:1.35}
