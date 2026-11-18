@@ -1600,15 +1600,16 @@
         <div class="mksteps" id="mkQuote" aria-live="polite">
           ${quote ? '<p class="note">Цена проверена на площадке. Действует 5 минут.</p>' : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
           <div class="mkbtns">
-            ${quote ? '<button class="btn btn--lime" type="button" data-mk-order>Оформить заказ</button>' : pdState.size ? `<button class="btn btn--lime" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить ещё раз'}</button>` : !sizes.length ? '<button class="btn btn--lime" type="button" data-mk-link>Указать размер и проверить</button>' : ''}
+            <button class="btn btn--lime" type="button" data-mk-order>${quote ? 'Оформить заказ' : 'Заказать'}</button>
+            ${!quote && pdState.size ? `<button class="btn btn--ghost" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить цену'}</button>` : ''}
             <button class="linkbtn" type="button" data-open-chat>Уточнить у агента</button>
           </div>
         </div>
+        <button class="btn btn--ghost pd__model-info" type="button" data-mk-ai>${icon('spark')}Рассказать о модели</button>
         <details class="pd__details"><summary>О товаре и доставке</summary><div class="stack">
           ${m.article ? `<p>Артикул: <span class="mono">${esc(m.article)}</span></p>` : ''}
           <p>Доставка: ${daysText(SHIP.auto.days)}. В расчёт включены товар, доставка и сервис ASTTA.</p>
           ${m.fit_advice ? `<p>${esc(m.fit_advice)}</p>` : ''}
-          <button class="linkbtn" type="button" data-mk-ai>Спросить ИИ об этой модели</button>
         </div></details>
       </div>
     </div>`;
@@ -1641,8 +1642,13 @@
 
   function orderMarketProduct() {
     const p = byId[pdState.id], result = pdState.marketResult;
-    if (!result?.quote) return;
-    const size = pdState.size, quote = result.quote, item = result.item;
+    if (!pdState.size && p.market.sizes?.length) {
+      const first = $('[data-mk-size]');
+      first?.scrollIntoView({ block: 'center', behavior: 'smooth' }); first?.focus();
+      toast('Выберите размер, чтобы заказать'); return;
+    }
+    const size = pdState.size, quote = result?.quote, item = result?.item;
+    if (!quote) { openLinkCalc(p.market.url, { title: p.t, size }); return; }
     closeSheet();
     openLinkCalc(p.market.url, { title: p.t, size, price: Number(quote.price_cny), quote, item });
   }
@@ -1759,6 +1765,58 @@
         ${reviews}
       </div>
     </div>`;
+  }
+
+  /* ---------- Настоящие отзывы об ASTTA ---------- */
+  const customerReviews = { items: [], page: 0, loading: false, more: false };
+  function renderCustomerReviews() {
+    $('#customerReviews').innerHTML = customerReviews.items.length ? customerReviews.items.map((r) => `<article class="customer-review">
+      <div class="customer-review__head"><b>${esc(r.author)}</b><span aria-label="Оценка ${Number(r.rating)} из 5">${'★'.repeat(Math.max(1, Math.min(5, Number(r.rating) || 1)))}</span></div>
+      <p>${esc(r.text)}</p><time datetime="${esc(r.created_at)}">${esc(new Date(r.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))}</time>
+    </article>`).join('') : '<p class="note">Пока нет опубликованных отзывов. Поделитесь своим опытом — ваш отзыв может стать первым.</p>';
+    $('#reviewsMore').hidden = !customerReviews.more;
+  }
+  async function loadCustomerReviews(reset = false) {
+    if (customerReviews.loading || !live.on) return;
+    customerReviews.loading = true;
+    const button = $('#reviewsMore'); button.disabled = true;
+    try {
+      const page = reset ? 1 : customerReviews.page + 1;
+      const data = await api('/api/reviews?page=' + page);
+      customerReviews.items = reset ? data.items : [...customerReviews.items, ...data.items];
+      customerReviews.page = page; customerReviews.more = data.has_more;
+      $('#reviewsSummary').textContent = data.total ? `${nf1.format(data.average)} из 5 · ${data.total} ${plural(data.total, 'отзыв', 'отзыва', 'отзывов')}. Публикуем после проверки, без изменения оценки.` : 'Опыт покупателей: о заказах, доставке и работе сервиса.';
+      renderCustomerReviews();
+    } catch (e) {
+      if (!customerReviews.items.length) $('#customerReviews').innerHTML = '<p class="note">Не удалось загрузить отзывы. <button class="linkbtn" type="button" data-reviews-retry>Попробовать ещё раз</button></p>';
+      else toast(e.message);
+    } finally { customerReviews.loading = false; button.disabled = false; }
+  }
+  function openCustomerReviewForm() {
+    if (!live.on) { toast('Отзывы доступны на рабочем сайте после входа'); return; }
+    if (!live.me) {
+      openSheet(`<div class="stack"><h2 class="sheet__title">Оставить отзыв</h2><p>Войдите в аккаунт, чтобы поделиться опытом. Публично покажем только ваше имя, оценку и текст.</p><button class="btn btn--lime" type="button" data-tg-login>Войти</button></div>`, { narrow: true }); return;
+    }
+    openSheet(`<form class="stack" id="customerReviewForm">
+      <h2 class="sheet__title">Ваш отзыв об ASTTA</h2>
+      <fieldset class="review-rating"><legend>Оценка сервиса</legend>${[1, 2, 3, 4, 5].map((n) => `<label><input type="radio" name="rating" value="${n}" required><span>${n} ★</span></label>`).join('')}</fieldset>
+      <label class="field"><span>Как прошёл заказ?</span><textarea name="text" minlength="10" maxlength="2000" rows="5" required placeholder="Расскажите о товаре, доставке и работе сервиса"></textarea></label>
+      <label class="consent"><input name="consent" type="checkbox" required><span>Согласен на обработку данных и публикацию моего имени и текста отзыва. <a href="privacy.html" target="_blank" rel="noopener">Политика конфиденциальности</a></span></label>
+      <p class="note">Отзыв появится после проверки. Не указывайте телефон, адрес и другие личные данные.</p>
+      <p class="note" id="reviewFormError" role="alert" hidden></p>
+      <button class="btn btn--lime" type="submit">Отправить отзыв</button>
+    </form>`, { narrow: true });
+  }
+  async function submitCustomerReview(form) {
+    if (!form.reportValidity()) return;
+    const button = $('button[type=submit]', form), error = $('#reviewFormError');
+    button.disabled = true; error.hidden = true;
+    try {
+      const result = await api('/api/reviews', { method: 'POST', body: { rating: Number(form.elements.rating.value), text: form.elements.text.value.trim(), consent: form.elements.consent.checked } });
+      if (!form.isConnected) { toast(result.message); return; }
+      openSheet(`<div class="stack"><h2 class="sheet__title">Спасибо за отзыв!</h2><p>${esc(result.message)}</p><button class="btn btn--lime" type="button" data-close>Готово</button></div>`, { narrow: true });
+    } catch (e) { if (form.isConnected) { error.textContent = e.message; error.hidden = false; } }
+    finally { button.disabled = false; }
   }
 
   function reviewsHTML(p) {
@@ -3147,6 +3205,9 @@ ${aiCatalogJSON()}
         .catch((e) => { entry.reply = e.message; aiRender(); });
       return;
     }
+    if (d.reviewWrite !== undefined) { openCustomerReviewForm(); return; }
+    if (d.reviewsMore !== undefined) { loadCustomerReviews(); return; }
+    if (d.reviewsRetry !== undefined) { loadCustomerReviews(true); return; }
     if (d.mkSize !== undefined) { pdState.size = d.mkSize; checkMarketSize(); return; }
     if (t.matches('[data-mk-check]')) { checkMarketSize(); return; }
     if (t.matches('[data-mk-link]')) { const p = byId[pdState.id]; openLinkCalc(p.market.url, { title: p.t }); return; }
@@ -3542,6 +3603,7 @@ ${aiCatalogJSON()}
       requestEmailCode($('button[type=submit]', f)); return;
     }
     if (f.id === 'emailVerifyForm') { verifyEmailCode(f); return; }
+    if (f.id === 'customerReviewForm') { submitCustomerReview(f); return; }
     if (f.id === 'supportForm') { submitSupport(f); return; }
     if (f.id === 'solveForm') {
       const file = $('#solveFile').files[0];
@@ -3647,7 +3709,7 @@ ${aiCatalogJSON()}
 
   /* ---------- Сервер: каталог, лента, заказы, вход ---------- */
   // В рабочем окружении товары, цены, заказы и вход берём только из /api. Открыт как файл или локально без
-  // сервера — работает на демо-данных выше. Отзывы, ролики, лайки и чат пока только демо: на боевом сайте
+  // сервера — работает на демо-данных выше. Отзывы о товарах, ролики и лайки пока только демо: на боевом сайте
   // их не показываем, чтобы не выдавать придуманное за настоящее.
   const live = { on: false, site: null, csrf: '', tma: '', me: null, orders: [], loaded: false };
   const GUEST_KEY = 'astta-orders';
@@ -3782,6 +3844,7 @@ ${aiCatalogJSON()}
     loadRestOfCatalog(Array.from({ length: Math.max(0, Math.ceil(first.total / 60) - 1) }, (_, i) => i + 2));
     if (location.hash === '#support') openAgentLive();
     await loadMe();
+    loadCustomerReviews(true);
   }
 
   function applyLiveProducts(items, cats) {

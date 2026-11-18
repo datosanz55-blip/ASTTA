@@ -40,6 +40,7 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
    } else if(p==='/api/ai/chat' && usability) {const job=marketJob('42');data={answer:'**Подборка для парня.** Выберите вещи и проверьте размер. <img src=x onerror=alert(1)>',products:items.map(c=>c.slug),handoff:false,market_jobs:[job.id]};}
    else if(p==='/api/ai/chat' && market) {const job=marketJob('42');data={answer:'Проверяю размер 42',products:[],handoff:false,images:marketItem.images,market_jobs:[job.id]};}
    else if(p==='/api/link/order' && market) {posts.push(req.postData());data={number:'A-000123',token:'test-order',total_rub:'25374.00',status:'awaiting_payment'};}
+   else if(p==='/api/reviews') data={items:[],total:0,average:null,page:1,has_more:false};
    else if(p==='/api/suppliers') data=[{code:'factory',name:'Фабрика',fact_days:[18,25]}];
    else if(p==='/api/categories') data=[{slug:'shoes',name_ru:'Обувь'}];
    else if(p==='/api/feed') data={items:[],total:0};

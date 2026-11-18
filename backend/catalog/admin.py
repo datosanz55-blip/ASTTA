@@ -17,6 +17,7 @@ from catalog.images import ImageError, prepare_image
 from catalog.importer import build_template, import_catalog
 from catalog.models import (
     Category,
+    CustomerReview,
     MarketImport,
     PostImage,
     PriceTier,
@@ -442,3 +443,24 @@ class MarketImportAdmin(ModelAdmin):
             MarketImport.objects.filter(pk=job.pk).update(status=MarketImport.Status.QUEUED, created=0, updated=0,
                                                            skipped=0, finished_at=None)
             _start_import(request, job.pk)
+
+
+@admin.register(CustomerReview)
+class CustomerReviewAdmin(ModelAdmin):
+    list_display = ("id", "user", "rating", "status", "created_at")
+    list_filter = ("status", "rating")
+    search_fields = ("text", "user__first_name", "user__username")
+    readonly_fields = ("user", "rating", "text", "consent_at", "created_at")
+    fields = ("user", "rating", "text", "status", "consent_at", "created_at")
+    actions = ("publish_reviews", "hide_reviews")
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.action(description="Опубликовать выбранные отзывы")
+    def publish_reviews(self, request, queryset):
+        self.message_user(request, f"Опубликовано: {queryset.update(status=CustomerReview.Status.PUBLISHED)}")
+
+    @admin.action(description="Скрыть выбранные отзывы")
+    def hide_reviews(self, request, queryset):
+        self.message_user(request, f"Скрыто: {queryset.update(status=CustomerReview.Status.REJECTED)}")
