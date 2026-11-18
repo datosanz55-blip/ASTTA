@@ -26,7 +26,7 @@
 <link rel="preload" href="assets/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/oswald-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://{{.Host}}/#org", "name": "ASTTA", "url": "https://{{.Host}}/", "logo": "https://{{.Host}}/public/icon-512.png", "sameAs": ["https://t.me/astta_shop_bot"], "description": "Маркетплейс товаров из Китая от поставщиков TT Логистики: цена в рублях сразу с доставкой, заказ по ссылке или фото."}, {"@type": "WebSite", "@id": "https://{{.Host}}/#site", "url": "https://{{.Host}}/", "name": "ASTTA", "inLanguage": "ru-RU", "publisher": {"@id": "https://{{.Host}}/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как считается цена?", "acceptedAnswer": {"@type": "Answer", "text": "В каталоге цена в рублях уже с доставкой до России и сервисным сбором ASTTA. Для товара по ссылке или скриншоту сайт сразу считает предварительную цену: цена в юанях по курсу сервиса плюс логистика. Перед выкупом агент сверяет цену на площадке."}}, {"@type": "Question", "name": "Когда платить?", "acceptedAnswer": {"@type": "Answer", "text": "Сразу при оформлении заказа. Если у поставщика не окажется товара, вернём деньги за него. Если цена на площадке выше расчёта, напишем до выкупа: доплатите разницу или получите деньги обратно."}}, {"@type": "Question", "name": "Можно заказать товар, которого нет в каталоге?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать."}}, {"@type": "Question", "name": "Как отслеживать заказ?", "acceptedAnswer": {"@type": "Answer", "text": "В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае."}}, {"@type": "Question", "name": "Как войти на сайт?", "acceptedAnswer": {"@type": "Answer", "text": "Через Telegram, без пароля: подтвердите вход в приложении Telegram."}}, {"@type": "Question", "name": "Можно купить оптом?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Включите режим «Опт» вверху: цены за штуку в юанях, оптовые ступени от количества и совместный опт, когда партию собирают несколько покупателей."}}]}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://{{.Host}}/#org", "name": "ASTTA", "url": "https://{{.Host}}/", "logo": "https://{{.Host}}/public/icon-512.png", "sameAs": ["https://t.me/astta_shop_bot"], "description": "Маркетплейс товаров из Китая от поставщиков TT Логистики: цена в рублях сразу с доставкой, заказ по ссылке или фото."}, {"@type": "WebSite", "@id": "https://{{.Host}}/#site", "url": "https://{{.Host}}/", "name": "ASTTA", "inLanguage": "ru-RU", "publisher": {"@id": "https://{{.Host}}/#org"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как считается цена?", "acceptedAnswer": {"@type": "Answer", "text": "В каталоге цена в рублях уже с доставкой до России и сервисным сбором ASTTA. Для товара по ссылке или скриншоту сайт сразу считает предварительную цену: цена в юанях по курсу сервиса плюс логистика. Перед выкупом агент сверяет цену на площадке."}}, {"@type": "Question", "name": "Когда платить?", "acceptedAnswer": {"@type": "Answer", "text": "Сразу при оформлении заказа. Если у поставщика не окажется товара, вернём деньги за него. Если цена на площадке выше расчёта, напишем до выкупа: доплатите разницу или получите деньги обратно."}}, {"@type": "Question", "name": "Можно заказать товар, которого нет в каталоге?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать."}}, {"@type": "Question", "name": "Как отслеживать заказ?", "acceptedAnswer": {"@type": "Answer", "text": "В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае."}}, {"@type": "Question", "name": "Как войти на сайт?", "acceptedAnswer": {"@type": "Answer", "text": "Через Telegram, без пароля: подтвердите вход в приложении Telegram."}}]}]}</script>
 <script src="assets/js/theme.js" data-storefront></script>
 <link rel="stylesheet" href="assets/css/style.css">
 <link rel="stylesheet" href="assets/css/bimbo.css">
@@ -106,11 +106,6 @@
       <a href="#profile" data-nav="profile">Профиль</a>
     </nav>
 
-    <div class="mode mode--top" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
-      <span class="mode__thumb" aria-hidden="true"></span>
-      <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
-      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
-    </div>
 
     <div class="topbar__actions">
       <button class="topbtn topbtn--ai" type="button" data-ai-open aria-label="ASTTA AI"><span>AI</span><svg class="ic"><use href="#i-spark"/></svg></button>
@@ -124,11 +119,6 @@
 
 <div class="subbar">
   <div class="subbar__in">
-    <div class="mode" role="radiogroup" aria-label="Раздел площадки" data-mode-switch>
-      <span class="mode__thumb" aria-hidden="true"></span>
-      <button type="button" role="radio" data-mode="buyer" aria-checked="true">Покупателям</button>
-      <button type="button" role="radio" data-mode="supplier" aria-checked="false">Опт</button>
-    </div>
     <p class="rate" hidden><span class="mono">1 ¥ = <b data-rate>11,40</b> ₽</span></p>
   </div>
 </div>
@@ -149,11 +139,10 @@
         <div class="hero__media">
           <img class="is-on" fetchpriority="high" src="assets/img/hero-street.webp" srcset="assets/img/hero-street-800.webp 800w, assets/img/hero-street.webp 1000w" sizes="(max-width: 760px) 100vw, 50vw" alt="Мужской образ с синей курткой" width="1000" height="1250">
           <img fetchpriority="low" decoding="async" src="assets/img/hero-essentials.webp" srcset="assets/img/hero-essentials-800.webp 800w, assets/img/hero-essentials.webp 1000w" sizes="(max-width: 760px) 100vw, 50vw" alt="Кроссовки, худи и сумка: базовые вещи" width="1000" height="1250" loading="lazy">
-          <img fetchpriority="low" decoding="async" src="assets/img/hero-studio.webp" srcset="assets/img/hero-studio-800.webp 800w, assets/img/hero-studio.webp 1000w" sizes="(max-width: 760px) 100vw, 50vw" alt="Женский образ с чёрным жакетом и джинсами" width="1000" height="1250" loading="lazy">
         </div>
         <div class="hero__meta">
           <span class="hero__tag" id="heroTag">Новинки</span>
-          <div class="hero__count" aria-hidden="true"><b id="heroNum">01</b><i></i><span>03</span></div>
+          <div class="hero__count" aria-hidden="true"><b id="heroNum">01</b><i></i><span>02</span></div>
         </div>
       </div>
       <div class="hero__copy">
@@ -166,10 +155,6 @@
             <h2>Без<br>сюрпризов.</h2>
             <p>Фото со склада до отправки.</p>
           </div>
-          <div class="htext">
-            <h2>Опт для<br>своих.</h2>
-            <p>Цены в юанях от 5 штук.</p>
-          </div>
         </div>
         <div class="hero__cta">
           <a class="btn btn--lime" href="#catalog">В каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a>
@@ -179,7 +164,6 @@
       <div class="hero__dots" role="tablist" aria-label="Слайды">
         <button type="button" role="tab" aria-label="Слайд 1" aria-selected="true"></button>
         <button type="button" role="tab" aria-label="Слайд 2" aria-selected="false"></button>
-        <button type="button" role="tab" aria-label="Слайд 3" aria-selected="false"></button>
       </div>
     </section>
 
@@ -251,10 +235,6 @@
     <section class="block" id="liveEmpty" hidden>
       <div class="emptystate"><h2>Каталог наполняется</h2><p>Поставщики загружают товары. Пока можно заказать любой товар по ссылке или скриншоту с Poizon, Taobao и 1688: посчитаем цену с доставкой сразу.</p></div>
     </section>
-    <section class="block" id="homeCollections">
-      <div class="block__head"><div class="block__title"><h2>Подборки</h2><p class="block__lead">Выбирай по интересам: стиль, выгодные предложения и всё, что нужно, в одном месте.</p></div><a href="#catalog" class="more">Весь каталог <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
-      <div class="tiles" id="tiles"></div>
-    </section>
 
     <section class="block">
       <div class="block__head"><h2>ASTTA Trends</h2><a href="#trends" class="more">Смотреть <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
@@ -281,10 +261,6 @@
       <div class="cats" id="homeCats"></div>
     </section>
 
-    <section class="block" id="homeGroups">
-      <div class="block__head"><h2>Совместный опт</h2><span class="hint">Берём партию вместе по оптовой цене</span></div>
-      <div class="groups" id="groups"></div>
-    </section>
 
     <section class="block mkblock" hidden id="homePoizon">
       <div class="block__head"><h2>Оригиналы с Poizon</h2><button class="more" type="button" data-goto-chip="poizon">Все оригиналы <svg class="ic"><use href="#i-arrow-ur"/></svg></button></div>
@@ -312,7 +288,6 @@
         <details class="faq__item"><summary>Можно заказать товар, которого нет в каталоге?</summary><p>Да. Пришлите ссылку с Poizon, Taobao, 1688, Pinduoduo или Tmall либо скриншот с ценой: посчитаем стоимость с доставкой, и товар можно сразу заказать.</p></details>
         <details class="faq__item"><summary>Как отслеживать заказ?</summary><p>В профиле на сайте и в Telegram-боте @astta_shop_bot: статусы от выкупа до пункта выдачи, фото и фактический вес со склада в Китае.</p></details>
         <details class="faq__item"><summary>Как войти на сайт?</summary><p>Через Telegram, без пароля: подтвердите вход в приложении Telegram.</p></details>
-        <details class="faq__item"><summary>Можно купить оптом?</summary><p>Да. Включите режим «Опт» вверху: цены за штуку в юанях, оптовые ступени от количества и совместный опт, когда партию собирают несколько покупателей.</p></details>
       </div>
     </section>
 
@@ -416,10 +391,8 @@
 <nav class="home-section-nav" id="homeSectionNav" aria-label="Разделы главной" hidden>
   <a href="#hero" aria-label="Главное"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span>Главное</span></a>
   <a href="#ai" aria-label="AI-помощник"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg><span>AI-помощник</span></a>
-  <a href="#homeCollections" aria-label="Подборки"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><span>Подборки</span></a>
   <a href="#link" aria-label="Заказ по ссылке"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg><span>Заказ по ссылке</span></a>
   <a href="#homeCategories" aria-label="Категории"><svg class="ic" aria-hidden="true"><use href="#i-tag"/></svg><span>Категории</span></a>
-  <a href="#homeGroups" aria-label="Совместный опт"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span>Совместный опт</span></a>
   <a href="#homePoizon" aria-label="Оригиналы Poizon"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Оригиналы Poizon</span></a>
   <a href="#homeFeed" aria-label="Лента"><svg class="ic" aria-hidden="true"><use href="#i-feed"/></svg><span>Лента</span></a>
   <a href="#homeReviews" aria-label="Отзывы"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span>Отзывы</span></a>

@@ -41,7 +41,7 @@ async function setup(browser, {offline = false, saved = false, failPage = null, 
    else if(p==='/api/link/order' && market) {posts.push(req.postData());data={number:'A-000123',token:'test-order',total_rub:'25374.00',status:'awaiting_payment'};}
    else if(p==='/api/reviews') data={items:[],total:0,average:null,page:1,has_more:false};
    else if(p==='/api/suppliers') data=[{code:'factory',name:'Фабрика',fact_days:[18,25]}];
-   else if(p==='/api/categories') data=[{slug:'shoes',name_ru:'Обувь'}];
+   else if(p==='/api/categories') data=[{slug:'shoes',name_ru:'Обувь'},{slug:'avtotovari',name_ru:'Автотовары / Колёсные диски'}];
    else if(p==='/api/feed') data={items:[],total:0};
    else if(p==='/api/products') {
     const n=Number(url.searchParams.get('page')||1); requests.push(n); active++;maxActive=Math.max(active,maxActive);
@@ -148,9 +148,7 @@ if (require.main === module) (async()=>{
    await p.locator('#supportForm button[type=submit]').click();await p.getByRole('heading',{name:'Обращение №123 принято'}).waitFor();
    assert.equal(t.posts.at(-1).message,'Помогите с заказом');
    await p.keyboard.press('Escape');
-   await p.locator('[data-mode="supplier"]').first().click();
    await p.goto('http://astta.test/#catalog');
-   assert.equal(await p.locator('#catalogGrid .card').count(),0,'no invented wholesale tiers');
    await p.locator('[data-ai-open]').first().click();
    await p.locator('#aiChatInput').fill('Подбери подарок');
    await p.locator('#aiChatForm button[type=submit]').click();
@@ -171,7 +169,6 @@ if (require.main === module) (async()=>{
     assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`theme must not overflow at ${width}px`);
    }
    await p.setViewportSize({width:390,height:844});
-   await p.locator('.subbar [data-mode="buyer"]').click();
    await p.goto('http://astta.test/#catalog');
    await p.locator('#catalogFilters').evaluate(el=>{el.open=true});
    await p.locator('[data-facet="size"][value="42"]').check();
@@ -244,7 +241,7 @@ if (require.main === module) (async()=>{
     for(const width of [320,390,768,900,1024,1280,1440,1920]) {
      await p.setViewportSize({width,height:900});
      await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-     for(let slide=0;slide<3;slide++) {
+     for(let slide=0;slide<2;slide++) {
       await p.locator('.hero__dots button').nth(slide).dispatchEvent('click');
       const layout=await p.evaluate(()=>{
        const hero=document.querySelector('.hero'),copy=document.querySelector('.hero__copy').getBoundingClientRect(),visual=document.querySelector('.hero__visual'),photo=visual.getBoundingClientRect();
