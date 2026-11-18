@@ -514,29 +514,6 @@
     return PRODUCTS.filter((p) => !state.favs.has(p.id)).sort((a, b) => score(b) - score(a)).slice(0, limit);
   }
 
-  function groupHTML(p) {
-    const g = p.group;
-    const joined = state.joined.has(p.id);
-    const have = g.have + (joined ? (isSupplier() ? 10 : 1) : 0);
-    const pct = Math.min(100, Math.round((have / g.need) * 100));
-    const left = Math.max(0, g.need - have);
-    const price = isSupplier()
-      ? `<b>${cny(g.cny)}</b> за шт <s>${cny(p.tiers[0][1])}</s>`
-      : `<b>${rub(retail(p, { cny: g.cny }).total)}</b> под ключ <s>${rub(retail(p).total)}</s>`;
-    return `<article class="group">
-      <img src="${pimg(p)}" alt="" loading="lazy" width="92" height="92">
-      <div class="group__body">
-        <h3 class="group__title"><button type="button" data-open="${p.id}">${esc(p.t)}</button></h3>
-        <div class="group__price">${price}</div>
-        <div class="bar" role="progressbar" aria-label="Собрано штук" aria-valuemin="0" aria-valuemax="${g.need}" aria-valuenow="${have}"><i style="width:${pct}%"></i></div>
-        <div class="group__row">
-          <span>${left ? `Собрано ${have} из ${g.need} шт · ${g.days} ${plural(g.days, 'день', 'дня', 'дней')}` : 'Партия собрана, цена открыта'}</span>
-          <button class="btn ${joined ? 'btn--line' : 'btn--accent'}" type="button" data-join="${p.id}" aria-pressed="${joined}">${joined ? 'Вы участвуете' : 'Участвовать'}</button>
-        </div>
-      </div>
-    </article>`;
-  }
-
   function postHTML(post) {
     const s = SUPPLIERS[post.sup] || { name: post.supName || 'Поставщик', about: '', short: '··' };
     const p = byId[post.pid];
@@ -571,36 +548,17 @@
   }
 
   /* ---------- Главная ---------- */
-  const TILES = [
-    { title: 'До 1\u00a0000\u00a0₽', img: 'tile-discount', filter: 'budget' },
-    { title: 'Новинки', img: 'tile-new', filter: 'new' },
-    { title: 'Хиты', img: 'tile-hits', filter: 'all', sort: 'pop' },
-    { title: 'Совместный опт', img: 'tile-group', filter: 'group' },
-    { title: 'Опт от поставщиков', img: 'tile-opt', filter: 'all', mode: 'supplier' },
-  ];
-
-  function tileHTML(tile, i) {
-    const n = filterProducts(tile.filter, '').length;
-    return `<button class="tile" type="button" data-tile="${i}">
-      <img src="${img(tile.img)}"${imgSet(tile.img, 756, '(max-width: 760px) 50vw, 20vw')} alt="" loading="lazy" width="900" height="1000">
-      <span class="roundbtn" aria-hidden="true">${icon('arrow-ur')}</span>
-      <span class="tile__body"><span class="tile__text"><span class="tile__title">${tile.title}</span><span class="tile__sub">${n} ${plural(n, 'товар', 'товара', 'товаров')}</span></span></span>
-    </button>`;
-  }
-
   function renderHome() {
     $('#reelRail').innerHTML = TRENDS.map(reelThumbHTML).join('');
     // Пустые подборки и разделы на главной прячем: на боевом сайте нет роликов и совместного опта.
-    $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${esc(c.id)}"><img src="${esc(c.src || img(c.img))}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${esc(c.name)}</span></button>`).join('');
-    $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
     // «Хиты» временно убраны с главной, включая старую HTML-версию из кеша.
     const popular = $('#popular'); if (popular) { popular.innerHTML = ''; popular.closest('section').hidden = true; }
     // Блока может не быть, если сервер отдал старый index.html к новому app.js: тогда просто пропускаем его.
     const poizonGrid = $('#poizonGrid');
     if (poizonGrid) poizonGrid.innerHTML = PRODUCTS.filter(isPoizon).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
     $('#feedPreview').innerHTML = POSTS.slice(0, 3).map(postHTML).join('');
-    ['#reelRail', '#groups', '#popular', '#poizonGrid', '#feedPreview', '#homeCats'].forEach((sel) => {
+    ['#reelRail', '#popular', '#poizonGrid', '#feedPreview', '#homeCats'].forEach((sel) => {
       const box = $(sel);
       if (box) box.closest('section').hidden = !box.innerHTML.trim();
     });
@@ -624,7 +582,7 @@
   }
 
   /* ---------- Каталог ---------- */
-  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'poizon', name: 'Оригиналы Poizon' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }, { id: 'group', name: 'Совместный опт' }];
+  const FILTERS = [{ id: 'all', name: 'Все' }, { id: 'poizon', name: 'Оригиналы Poizon' }, { id: 'budget', name: 'До 1\u00a0000\u00a0₽' }, { id: 'new', name: 'Новинки' }];
   const isPoizon = (p) => !!(p.market && p.market.source === 'poizon');
 
   function filterProducts(filter, q) {
@@ -1747,7 +1705,6 @@
     }
 
     const colors = (p.colors || []).length ? `<div class="stack" style="gap:10px"><span class="sublabel">Цвет</span><div class="sizes" role="group" aria-label="Цвет">${p.colors.map((color) => `<button class="size" type="button" data-color="${esc(color)}" aria-pressed="${pdState.color === color}">${esc(color)}</button>`).join('')}</div></div>` : '';
-    const optNote = !sup && hasWholesale(p) ? `<div class="optnote"><span>Опт от ${p.tiers[0][0]} шт: <b>${cny(p.tiers[0][1])}</b></span><button class="linkbtn" type="button" data-switch-mode="supplier">Перейти в «Опт»</button></div>` : '';
 
     const minQty = sup ? p.tiers[0][0] : 1;
     const qty = `<div class="qty" role="group" aria-label="Количество">
@@ -1778,7 +1735,7 @@
           <button class="btn btn--lime" type="button" data-pd-add ${live.on && !p.detail ? 'disabled' : ''}>${live.on && !p.detail ? 'Загружаем варианты…' : sup ? 'Добавить партию' : 'В корзину'}</button>
         </div>
         ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
-        ${optNote}
+
         ${sup || live.on ? '' : `<button class="proofbox${pdState.proof ? ' is-on' : ''}" type="button" data-proof aria-pressed="${!!pdState.proof}">
           <span class="proofbox__check">${icon('check')}</span>
           <span class="proofbox__body"><b>ASTTA Proof · +${rub(proofOf(p).price)}</b><span>Проверим именно ваш экземпляр на складе до отправки: ${proofOf(p).list.slice(0, 3).join(', ').toLowerCase()}. Отчёт с фото и видео придёт в заказ.</span></span>
@@ -3054,37 +3011,6 @@ ${aiCatalogJSON()}
   }
 
   /* ---------- Режим ---------- */
-  function setMode(mode, silent) {
-    if (mode !== 'buyer' && mode !== 'supplier') return;
-    if (state.mode !== mode) { catalogFilters.min = ''; catalogFilters.max = ''; }
-    state.mode = mode;
-    document.documentElement.dataset.mode = mode;
-    $$('[data-mode-switch] [data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
-    $$('[data-mode-text]').forEach((el) => {
-      const [a, b] = el.dataset.modeText.split('|');
-      el.textContent = mode === 'supplier' ? b : a;
-    });
-    store.save();
-    renderAll();
-    if (pdState) {
-      const p = byId[pdState.id];
-      pdState.qty = mode === 'supplier' && hasWholesale(p) ? Math.max(p.tiers[0][0], pdState.qty) : 1;
-      rerenderProduct();
-    }
-    placeModeThumbs();
-    if (!silent) toast(mode === 'supplier' ? 'Опт: цены за штуку в юанях, скидка от партии' : 'Покупателям: цены в рублях под ключ');
-  }
-  // Кнопки «Покупателям» и «Опт» разной ширины: зелёная подложка встаёт ровно под выбранную.
-  function placeModeThumbs() {
-    $$('[data-mode-switch]').forEach((sw) => {
-      const btn = $('[aria-checked="true"]', sw);
-      const thumb = $('.mode__thumb', sw);
-      if (!btn || !thumb || !btn.offsetWidth) return;
-      thumb.style.width = `${btn.offsetWidth}px`;
-      thumb.style.transform = `translateX(${btn.offsetLeft - 4}px)`;
-    });
-  }
-
   /* ---------- Навигация ---------- */
   const VIEWS = ['home', 'catalog', 'trends', 'feed', 'cart', 'profile'];
   let currentView = 'home';
@@ -3160,7 +3086,7 @@ ${aiCatalogJSON()}
   }
 
   /* ---------- Герой ---------- */
-  const HERO_TAGS = ['Новинки', 'Проверка заказа', 'Опт'];
+  const HERO_TAGS = ['Новинки', 'Проверка заказа'];
   function initHero() {
     const hero = $('#hero');
     const imgs = $$('.hero__media img', hero);
@@ -3270,17 +3196,6 @@ ${aiCatalogJSON()}
       else if (t.tagName !== 'A') go('catalog');
       return;
     }
-    if (d.tile !== undefined) {
-      const tile = TILES[Number(d.tile)];
-      state.cat = tile.filter; state.q = ''; $('#q').value = '';
-      if (tile.sort) { state.sort = tile.sort; $('#sort').value = tile.sort; }
-      if (tile.mode && tile.mode !== state.mode) setMode(tile.mode, true);
-      go('catalog');
-      return;
-    }
-
-    if (d.mode) { setMode(d.mode); return; }
-    if (d.switchMode) { setMode(d.switchMode); return; }
     if (d.open) { openProduct(d.open); return; }
     if (d.add) { addToCart(d.add); return; }
     if (d.openChat !== undefined) { openChat(d.openChat); return; }
@@ -3897,6 +3812,7 @@ ${aiCatalogJSON()}
     products.forEach((p) => { byId[p.id] = p; });
     const demoCat = Object.fromEntries(CATS.map((c) => [c.id, c.img]));
     replaceAll(CATS, cats.map((c) => {
+      if (c.slug.toLowerCase() === 'avtotovari') return { id: c.slug, name: c.name_ru, src: img('cat-wheel') };
       const top = products.find((p) => p.cat === c.slug);
       return { id: c.slug, name: c.name_ru, img: demoCat[c.slug] || 'cat-home', src: demoCat[c.slug] ? '' : (top && top.image) || '' };
     }));
@@ -4309,14 +4225,15 @@ ${aiCatalogJSON()}
       if (reel && !e.target.closest('.reel__side, .reel__info')) likeReel(Number(reel.dataset.reel), true);
     });
     readTelegramLaunch();
-    setMode(state.mode, true);
+    state.mode = 'buyer';
+    document.documentElement.dataset.mode = state.mode;
+    $$('[data-mode-text]').forEach((el) => { el.textContent = el.dataset.modeText.split('|')[0]; });
+    store.save();
+    renderAll();
     route();
     initHero();
     startLive();
-    // Ширина кнопок меняется, когда загрузится шрифт и когда переключатель переезжает из шапки в строку ниже.
-    window.addEventListener('resize', placeModeThumbs);
     window.addEventListener('resize', initAiRails);
-    if (document.fonts) document.fonts.ready.then(placeModeThumbs);
   }
 
   init();

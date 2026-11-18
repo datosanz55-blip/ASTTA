@@ -25,9 +25,6 @@ const variant=(id,diameter,width,pcd,offset,price)=>({
   const price20card=await p.locator('#catalogGrid .card__price').innerText();
   await p.locator('[data-facet="size"][value="20x9"]').uncheck();
   assert.notEqual(await p.locator('#catalogGrid .card__price').innerText(),price20card);
-  await p.locator('[data-mode="supplier"]').first().click();
-  assert.equal(await p.locator('#catalogGrid .card').count(),0,'no invented wholesale options');
-  await p.locator('[data-mode="buyer"]').first().click();
   await p.locator('#catalogGrid [data-open]').click();await p.locator('[data-wheel-diameter="20"]').waitFor();
   await p.locator('[data-pd-add]').click();
   assert.equal(await p.locator('.pd').count(),1,'choosing full wheel specification is required');

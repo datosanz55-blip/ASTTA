@@ -48,8 +48,14 @@ const item=(slug,brand,extra={})=>({slug,title:'Модель '+slug,brand,catego
   assert(t.posts.at(-1).includes(raw),'order keeps original supplier value');
   await p.keyboard.press('Escape');await p.goto('http://astta.test/#home');
   await p.waitForFunction(()=>!document.querySelector('[data-view=home]').hidden);
+  assert.equal(await p.locator('#homeCollections,#homeGroups,[data-mode="supplier"]').count(),0);
+  assert.equal(await p.locator('.hero__dots button').count(),2);
+  const wheelCover=p.locator('#homeCats [data-cat="avtotovari"] img');
+  await wheelCover.scrollIntoViewIfNeeded();
+  await p.waitForFunction(()=>document.querySelector('#homeCats [data-cat="avtotovari"] img')?.naturalWidth>0);
+  assert.match(await wheelCover.getAttribute('src'),/cat-wheel\.webp$/);
   const images=await p.locator('.hero__media img').evaluateAll(imgs=>imgs.map(i=>i.getAttribute('src')));
-  assert.deepEqual(images,['assets/img/hero-street.webp','assets/img/hero-essentials.webp','assets/img/hero-studio.webp']);
+  assert.deepEqual(images,['assets/img/hero-street.webp','assets/img/hero-essentials.webp']);
   await p.locator('.hero__media img').first().scrollIntoViewIfNeeded();
   assert(await p.locator('.hero__media img').first().evaluate(e=>e.complete&&e.naturalWidth>0));
   assert.deepEqual(t.errors,[]);await t.context.close();
