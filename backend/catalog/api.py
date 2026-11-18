@@ -7,6 +7,8 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 
 from catalog.models import Category, Product, Supplier, SupplierPost
+from catalog.presentation import brand_family, size_options
+from catalog.visibility import storefront_products
 from catalog.wheels import wheel_spec
 from pricing.services import PricingContext, PricingError
 
@@ -30,6 +32,8 @@ class ProductCard(Schema):
     slug: str
     title: str
     brand: str = ""
+    brand_group: str = ""
+    size_options: list[dict[str, str]] = []
     gender: str = ""
     sizes: list[str] = []
     colors: list[str] = []
@@ -114,6 +118,8 @@ def _card(request, product, ctx):
         "slug": product.slug,
         "title": product.title_ru,
         "brand": product.brand_name,
+        "brand_group": brand_family(product.brand_name),
+        "size_options": size_options(product),
         "gender": product.audience,
         "sizes": product.size_list,
         "colors": product.color_list,
@@ -141,7 +147,7 @@ def _card(request, product, ctx):
 
 
 def _published():
-    return (Product.objects.filter(status=Product.Status.PUBLISHED, supplier__is_active=True)
+    return (storefront_products()
             .select_related("category", "supplier").prefetch_related("tiers", "images"))
 
 

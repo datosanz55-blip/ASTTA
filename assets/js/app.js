@@ -380,6 +380,7 @@
      Цена размера на площадке разная: показываем «от» и «до», заказ — по цене размера, которую называет покупатель
      (форма «Цена по ссылке»). Цены считает сервер той же формулой, что заказ по ссылке. */
   const MARKET_NAME = { poizon: 'Poizon', taobao: 'Taobao' };
+  const isStorefrontVisible = (p) => !(p?.market?.source === 'taobao' && (p.photoFailed || (p.live && !p.image)));
   const isMarket = (p) => !!(p && p.market);
   const hasWholesale = (p) => !isMarket(p) && !!p.tiers.length;
   const marketFrom = (p) => (p.retailRub != null ? p.retailRub : linkTotal(p.cny));
@@ -389,11 +390,12 @@
     return m.price_cny_max ? linkTotal(Number(m.price_cny_max)) : null;
   };
   function marketCardHTML(p) {
+    if (!isStorefrontVisible(p)) return '';
     const src = p.market.source;
     const days = SHIP.auto.days;
     return `<article class="card card--market">
       <div class="card__media">
-        <img class="card__img" src="${pimg(p)}" alt="" loading="lazy" width="720" height="720">
+        <img class="card__img" data-product-photo="${esc(p.id)}" src="${esc(pimg(p))}" alt="" loading="lazy" width="720" height="720">
         <span class="mkbadge mkbadge--${esc(src)}">${esc(MARKET_NAME[src] || src)}</span>
         ${favBtnHTML(p, 'card__fav')}
         <button class="card__add" type="button" data-open="${esc(p.id)}" aria-label="Подробнее: ${esc(p.t)}">${icon('arrow')}</button>
@@ -450,7 +452,7 @@
     const days = SHIP[shipFor(p)].days;
     return `<article class="card">
       <div class="card__media">
-        <img class="card__img" src="${pimg(p)}" alt="" loading="lazy" width="720" height="720">
+        <img class="card__img" data-product-photo="${esc(p.id)}" src="${esc(pimg(p))}" alt="" loading="lazy" width="720" height="720">
         ${badge}
         ${favBtnHTML(p, 'card__fav')}
         <button class="card__add" type="button" data-add="${p.id}" aria-label="В корзину: ${esc(p.t)}">${icon('plus')}</button>
@@ -592,7 +594,8 @@
     $('#tiles').innerHTML = TILES.map((tile, i) => (tile.mode || filterProducts(tile.filter, '').length ? tileHTML(tile, i) : '')).join('');
     $('#homeCats').innerHTML = CATS.map((c) => `<button class="cat" type="button" data-cat="${esc(c.id)}"><img src="${esc(c.src || img(c.img))}"${c.src ? '' : imgSet(c.img, 640, '(max-width: 760px) 40vw, 15vw')} alt="" loading="lazy" width="640" height="800"><span>${esc(c.name)}</span></button>`).join('');
     $('#groups').innerHTML = PRODUCTS.filter((p) => p.group).map(groupHTML).join('');
-    $('#popular').innerHTML = groupWheelProducts(PRODUCTS.filter((p) => !isMarket(p))).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
+    // «Хиты» временно убраны с главной, включая старую HTML-версию из кеша.
+    const popular = $('#popular'); if (popular) { popular.innerHTML = ''; popular.closest('section').hidden = true; }
     // Блока может не быть, если сервер отдал старый index.html к новому app.js: тогда просто пропускаем его.
     const poizonGrid = $('#poizonGrid');
     if (poizonGrid) poizonGrid.innerHTML = PRODUCTS.filter(isPoizon).sort((a, b) => b.sold - a.sold).slice(0, 8).map(cardHTML).join('');
@@ -627,6 +630,7 @@
   function filterProducts(filter, q) {
     const ql = (q || '').toLowerCase();
     return PRODUCTS.filter((p) => {
+      if (!isStorefrontVisible(p)) return false;
       if (isSupplier() && !hasWholesale(p)) return false;
       if (filter === 'new' && !p.isNew) return false;
       if (filter === 'group' && !p.group) return false;
@@ -672,15 +676,29 @@
     if ((min !== null && (!Number.isFinite(min) || min < 0)) || (max !== null && (!Number.isFinite(max) || max < 0))) return 'Цена должна быть неотрицательным числом';
     return min !== null && max !== null && min > max ? 'Цена «от» не может быть больше цены «до»' : '';
   }
+  function brandFamily(value) {
+    const text = String(value || '').trim(), key = filterKey(text).replace(/[®™]/g, '');
+    const groups = { adidas: 'Adidas', 'adidas neo': 'Adidas', 'adidas originals': 'Adidas', 'adidas terrex': 'Adidas', 'adidas performance': 'Adidas', 'adidas sportswear': 'Adidas', 'adidas neo label': 'Adidas', '阿迪达斯': 'Adidas', nike: 'Nike', 'nike acg': 'Nike', 'nike sb': 'Nike', 'nike sportswear': 'Nike', 'nike running': 'Nike', '耐克': 'Nike', 'new balance': 'New Balance', newbalance: 'New Balance' };
+    return groups[key] || text;
+  }
+  function variantLabel(value, index = 0) {
+    let text = String(value || '').trim();
+    text = text.replace(/(\d+(?:\.\d+)?)\s*[-–~至]\s*(\d+(?:\.\d+)?)\s*斤/g, (_, a, b) => `${Number(a) / 2}–${Number(b) / 2} кг`).replace(/(\d+(?:\.\d+)?)\s*斤/g, (_, a) => `${Number(a) / 2} кг`);
+    const words = [['一对装', 'Пара'], ['一双装', 'Пара'], ['均码', 'Единый размер'], ['通用码', 'Единый размер'], ['特大码', 'Очень большой размер'], ['加大码', 'Большой размер'], ['大码', 'Большой размер'], ['小码', 'Маленький размер'], ['中码', 'Средний размер'], ['不可调节', 'не регулируется'], ['可调节', 'регулируется'], ['体重', 'Вес '], ['适合', 'для '], ['建议', 'рекомендуется '], ['身高', 'Рост '], ['厘米', ' см'], ['公斤', ' кг'], ['千克', ' кг']];
+    words.sort((a, b) => b[0].length - a[0].length).forEach(([original, translated]) => { text = text.replaceAll(original, translated); });
+    text = text.replace(/(регулируется)(?=\d)/g, '$1 ');
+    if (/[\u3400-\u9fff]/.test(text)) return `Вариант ${index + 1} · уточните у агента`;
+    return text.replace(/(\d)\s*[-~]\s*(\d)/g, '$1–$2').replaceAll('（', ' (').replaceAll('）', ')').replace(/\s+/g, ' ').trim();
+  }
   function facetValues(p, facet) {
     let values;
-    if (facet === 'brand') values = [p.brand || p.market?.brand || ''];
+    if (facet === 'brand') values = [p.brandGroup || brandFamily(p.brand || p.market?.brand || '')];
     else if (facet === 'color') return [...new Map((p.filterColors?.length ? p.filterColors : p.colors || []).map((v) => { const c = colorValue(v); return [c.key, c]; })).values()].filter((v) => v.key);
-    else if (facet === 'size') values = p.filterSizes?.length ? p.filterSizes : p.grid?.length ? p.grid.map((v) => v[0]) : (p.market?.sizes || []).map((v) => v.size);
+    else if (facet === 'size') values = p.filterSizeOptions?.length ? p.filterSizeOptions.map((v) => v.value) : p.market?.sizes?.length ? p.market.sizes.map((v) => v.size) : p.filterSizes?.length ? p.filterSizes : p.grid?.length ? p.grid.map((v) => v[0]) : (p.market?.sizes || []).map((v) => v.size);
     else if (facet === 'source') values = [p.market?.source || 'direct'];
     else if (facet === 'supplier') values = [p.sup];
-    return [...new Set((values || []).map((v) => String(v).trim()).filter(Boolean))].map((v) => ({
-      key: filterKey(v), label: facet === 'source' ? (v === 'direct' ? 'Прямые поставщики' : MARKET_NAME[v] || v) : facet === 'supplier' ? SUPPLIERS[v]?.name || v : v,
+    return [...new Set((values || []).map((v) => String(v).trim()).filter(Boolean))].map((v, i) => ({
+      key: filterKey(v), label: facet === 'source' ? (v === 'direct' ? 'Прямые поставщики' : MARKET_NAME[v] || v) : facet === 'supplier' ? SUPPLIERS[v]?.name || v : facet === 'size' ? (p.filterSizeOptions?.find((x) => x.value === v)?.label || variantLabel(v, i)) : v,
     }));
   }
   function matchesCatalogFilters(p, omit) {
@@ -1562,8 +1580,8 @@
     return urls.length ? `<div class="market-photos">${urls.slice(0, 6).map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" aria-label="Открыть фото товара"><img src="${esc(u)}" alt="Фото товара с площадки" loading="lazy" width="180" height="180"></a>`).join('')}</div>` : '';
   }
   function marketStatusHTML(result, size) {
-    if (!result || ['pending', 'working'].includes(result.status)) return `<p class="note" role="status">${icon('spark')} Проверяем ${size ? 'цену размера ' + esc(size) : 'товар и фото'}… Обычно это занимает до двух минут.</p>`;
-    if (result.quote) return `<div class="sum"><div class="sum__row"><span>Размер ${esc(result.quote.size)} · ${cny(Number(result.quote.price_cny))}</span><b>${rub(Number(result.quote.total_rub))}</b></div><p class="note">Цена проверена на площадке. Действует 5 минут.</p></div>`;
+    if (!result || ['pending', 'working'].includes(result.status)) return `<p class="note" role="status">${icon('spark')} Проверяем ${size ? 'цену размера ' + esc(variantLabel(size)) : 'товар и фото'}… Обычно это занимает до двух минут.</p>`;
+    if (result.quote) return `<div class="sum"><div class="sum__row"><span>Размер ${esc(variantLabel(result.quote.size))} · ${cny(Number(result.quote.price_cny))}</span><b>${rub(Number(result.quote.total_rub))}</b></div><p class="note">Цена проверена на площадке. Действует 5 минут.</p></div>`;
     return `<p class="note" role="status">${esc(result.note || 'Выберите размер, чтобы проверить цену.')}</p>`;
   }
   async function checkMarketSize() {
@@ -1591,24 +1609,25 @@
         <h2>${esc(p.t)}</h2>
         <div class="mkprice">
           <div class="mkprice__row">${quote ? '' : '<small>от</small>'}<b>${rub(quote ? Number(quote.total_rub) : marketFrom(p))}</b></div>
-          <p>${quote ? 'Размер ' + esc(quote.size) + ' · с доставкой в Россию' : 'С доставкой в Россию. Точная цена — после выбора размера.'}</p>
+          <p>${quote ? 'Вариант: ' + esc(variantLabel(quote.size)) + ' · с доставкой в Россию' : 'С доставкой в Россию. Точная цена — после выбора размера.'}</p>
         </div>
         ${sizes.length ? `<div class="mkpick">
-          <span class="sublabel">Выберите размер</span>
-          <div class="mksizes" role="group" aria-label="Размер">${sizes.map((x) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.size)}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
+          <span class="sublabel">Выберите размер или вариант</span>
+          <div class="mksizes${sizes.some((x, i) => (x.label || variantLabel(x.size, i)).length > 8) ? ' mksizes--variants' : ''}" role="group" aria-label="Размер и вариант">${sizes.map((x, i) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.label || variantLabel(x.size, i))}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
         </div>` : ''}
         <div class="mksteps" id="mkQuote" aria-live="polite">
           ${quote ? '<p class="note">Цена проверена на площадке. Действует 5 минут.</p>' : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
           <div class="mkbtns">
-            ${quote ? '<button class="btn btn--lime" type="button" data-mk-order>Оформить заказ</button>' : pdState.size ? `<button class="btn btn--lime" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить ещё раз'}</button>` : !sizes.length ? '<button class="btn btn--lime" type="button" data-mk-link>Указать размер и проверить</button>' : ''}
+            <button class="btn btn--lime" type="button" data-mk-order>${quote ? 'Оформить заказ' : 'Заказать'}</button>
+            ${!quote && pdState.size ? `<button class="btn btn--ghost" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить цену'}</button>` : ''}
             <button class="linkbtn" type="button" data-open-chat>Уточнить у агента</button>
           </div>
         </div>
+        <button class="btn btn--ghost pd__model-info" type="button" data-mk-ai>${icon('spark')}Рассказать о модели</button>
         <details class="pd__details"><summary>О товаре и доставке</summary><div class="stack">
           ${m.article ? `<p>Артикул: <span class="mono">${esc(m.article)}</span></p>` : ''}
           <p>Доставка: ${daysText(SHIP.auto.days)}. В расчёт включены товар, доставка и сервис ASTTA.</p>
           ${m.fit_advice ? `<p>${esc(m.fit_advice)}</p>` : ''}
-          <button class="linkbtn" type="button" data-mk-ai>Спросить ИИ об этой модели</button>
         </div></details>
       </div>
     </div>`;
@@ -1641,8 +1660,13 @@
 
   function orderMarketProduct() {
     const p = byId[pdState.id], result = pdState.marketResult;
-    if (!result?.quote) return;
-    const size = pdState.size, quote = result.quote, item = result.item;
+    if (!pdState.size && p.market.sizes?.length) {
+      const first = $('[data-mk-size]');
+      first?.scrollIntoView({ block: 'center', behavior: 'smooth' }); first?.focus();
+      toast('Выберите размер, чтобы заказать'); return;
+    }
+    const size = pdState.size, quote = result?.quote, item = result?.item;
+    if (!quote) { openLinkCalc(p.market.url, { title: p.t, size }); return; }
     closeSheet();
     openLinkCalc(p.market.url, { title: p.t, size, price: Number(quote.price_cny), quote, item });
   }
@@ -1759,6 +1783,58 @@
         ${reviews}
       </div>
     </div>`;
+  }
+
+  /* ---------- Настоящие отзывы об ASTTA ---------- */
+  const customerReviews = { items: [], page: 0, loading: false, more: false };
+  function renderCustomerReviews() {
+    $('#customerReviews').innerHTML = customerReviews.items.length ? customerReviews.items.map((r) => `<article class="customer-review">
+      <div class="customer-review__head"><b>${esc(r.author)}</b><span aria-label="Оценка ${Number(r.rating)} из 5">${'★'.repeat(Math.max(1, Math.min(5, Number(r.rating) || 1)))}</span></div>
+      <p>${esc(r.text)}</p><time datetime="${esc(r.created_at)}">${esc(new Date(r.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))}</time>
+    </article>`).join('') : '<p class="note">Пока нет опубликованных отзывов. Поделитесь своим опытом — ваш отзыв может стать первым.</p>';
+    $('#reviewsMore').hidden = !customerReviews.more;
+  }
+  async function loadCustomerReviews(reset = false) {
+    if (customerReviews.loading || !live.on) return;
+    customerReviews.loading = true;
+    const button = $('#reviewsMore'); button.disabled = true;
+    try {
+      const page = reset ? 1 : customerReviews.page + 1;
+      const data = await api('/api/reviews?page=' + page);
+      customerReviews.items = reset ? data.items : [...customerReviews.items, ...data.items];
+      customerReviews.page = page; customerReviews.more = data.has_more;
+      $('#reviewsSummary').textContent = data.total ? `${nf1.format(data.average)} из 5 · ${data.total} ${plural(data.total, 'отзыв', 'отзыва', 'отзывов')}. Публикуем после проверки, без изменения оценки.` : 'Опыт покупателей: о заказах, доставке и работе сервиса.';
+      renderCustomerReviews();
+    } catch (e) {
+      if (!customerReviews.items.length) $('#customerReviews').innerHTML = '<p class="note">Не удалось загрузить отзывы. <button class="linkbtn" type="button" data-reviews-retry>Попробовать ещё раз</button></p>';
+      else toast(e.message);
+    } finally { customerReviews.loading = false; button.disabled = false; }
+  }
+  function openCustomerReviewForm() {
+    if (!live.on) { toast('Отзывы доступны на рабочем сайте после входа'); return; }
+    if (!live.me) {
+      openSheet(`<div class="stack"><h2 class="sheet__title">Оставить отзыв</h2><p>Войдите в аккаунт, чтобы поделиться опытом. Публично покажем только ваше имя, оценку и текст.</p><button class="btn btn--lime" type="button" data-tg-login>Войти</button></div>`, { narrow: true }); return;
+    }
+    openSheet(`<form class="stack" id="customerReviewForm">
+      <h2 class="sheet__title">Ваш отзыв об ASTTA</h2>
+      <fieldset class="review-rating"><legend>Оценка сервиса</legend>${[1, 2, 3, 4, 5].map((n) => `<label><input type="radio" name="rating" value="${n}" required><span>${n} ★</span></label>`).join('')}</fieldset>
+      <label class="field"><span>Как прошёл заказ?</span><textarea name="text" minlength="10" maxlength="2000" rows="5" required placeholder="Расскажите о товаре, доставке и работе сервиса"></textarea></label>
+      <label class="consent"><input name="consent" type="checkbox" required><span>Согласен на обработку данных и публикацию моего имени и текста отзыва. <a href="privacy.html" target="_blank" rel="noopener">Политика конфиденциальности</a></span></label>
+      <p class="note">Отзыв появится после проверки. Не указывайте телефон, адрес и другие личные данные.</p>
+      <p class="note" id="reviewFormError" role="alert" hidden></p>
+      <button class="btn btn--lime" type="submit">Отправить отзыв</button>
+    </form>`, { narrow: true });
+  }
+  async function submitCustomerReview(form) {
+    if (!form.reportValidity()) return;
+    const button = $('button[type=submit]', form), error = $('#reviewFormError');
+    button.disabled = true; error.hidden = true;
+    try {
+      const result = await api('/api/reviews', { method: 'POST', body: { rating: Number(form.elements.rating.value), text: form.elements.text.value.trim(), consent: form.elements.consent.checked } });
+      if (!form.isConnected) { toast(result.message); return; }
+      openSheet(`<div class="stack"><h2 class="sheet__title">Спасибо за отзыв!</h2><p>${esc(result.message)}</p><button class="btn btn--lime" type="button" data-close>Готово</button></div>`, { narrow: true });
+    } catch (e) { if (form.isConnected) { error.textContent = e.message; error.hidden = false; } }
+    finally { button.disabled = false; }
   }
 
   function reviewsHTML(p) {
@@ -1978,7 +2054,7 @@ ${aiCatalogJSON()}
   }
 
   function aiResultHTML(m, idx) {
-    const cat = m.cat || [];
+    const cat = (m.cat || []).filter((c) => byId[c.id] && isStorefrontVisible(byId[c.id]));
     const custom = m.custom || [];
     if (!cat.length && !custom.length) return '';
     const catTotal = cat.reduce((sum, c) => sum + (isMarket(byId[c.id]) ? marketFrom(byId[c.id]) : retail(byId[c.id]).total), 0);
@@ -1986,7 +2062,7 @@ ${aiCatalogJSON()}
     const cards = cat.map((c) => {
       const p = byId[c.id];
       return `<article class="aicard">
-        <button class="aicard__img" type="button" data-open="${c.id}" aria-label="${esc(p.t)}"><img src="${pimg(p)}" alt="" width="160" height="160" loading="lazy"></button>
+        <button class="aicard__img" type="button" data-open="${c.id}" aria-label="${esc(p.t)}"><img data-product-photo="${esc(p.id)}" src="${esc(pimg(p))}" alt="" width="160" height="160" loading="lazy"></button>
         <div class="aicard__body">
           ${c.role ? `<span class="aicard__role">${esc(c.role)}</span>` : ''}
           <b>${esc(p.t)}</b>
@@ -2053,7 +2129,7 @@ ${aiCatalogJSON()}
       let html = `<div class="msg msg--ai">${reply}</div>`;
       html += aiResultHTML(m, idx);
       html += marketPhotosHTML(m.images);
-      if (m.marketResults) html += Object.values(m.marketResults).map((r) => marketStatusHTML(r, r.quote?.size || '') + (r.item?.sizes?.length ? `<div class="quick">${r.item.sizes.map((s) => typeof s === 'string' ? s : s.size).filter(Boolean).slice(0, 40).map((size) => `<button class="chip" type="button" data-ai-market-size="${idx}" data-size-value="${esc(size)}" data-market-url="${esc(r.url)}">${esc(size)}</button>`).join('')}</div>` : '')).join('');
+      if (m.marketResults) html += Object.values(m.marketResults).map((r) => marketStatusHTML(r, r.quote?.size || '') + (r.item?.sizes?.length ? `<div class="quick">${r.item.sizes.map((s) => typeof s === 'string' ? s : s.size).filter(Boolean).slice(0, 40).map((size, i) => `<button class="chip" type="button" data-ai-market-size="${idx}" data-size-value="${esc(size)}" data-market-url="${esc(r.url)}">${esc(variantLabel(size, i))}</button>`).join('')}</div>` : '')).join('');
       if (m.questions && m.questions.length) html += `<div class="quick">${m.questions.map((q) => `<button class="chip chip--q" type="button" data-ai-fill="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
       if (m.order) html += `<button class="btn btn--lime btn--sm" type="button" data-ai-order="${idx}" style="align-self:flex-start">Оформить заказ · ${rub(m.order.total_rub)}</button>`;
       if (m.toAgent) html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="" style="align-self:flex-start">Написать агенту</button>';
@@ -2572,7 +2648,7 @@ ${aiCatalogJSON()}
         <div class="grid2">
           <label class="field" ${automatic ? 'hidden' : ''}><span>Цена на ${found ? esc(found[1]) : 'площадке'}, ¥</span><input id="lcPrice" ${automatic ? 'readonly' : ''} type="number" min="1" step="0.01" inputmode="decimal" placeholder="Цена вашего размера, например 635" value="${pre.price ? esc(String(pre.price)) : ''}"></label>
           <label class="field"><span>Количество</span><input id="lcQty" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${Math.max(1, parseInt(pre.qty, 10) || 1)}"></label>
-          <label class="field ${automatic ? '' : 'field--full'}"><span>${automatic ? 'Размер на площадке (EU/CN)' : 'Размер, цвет (если есть)'}</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off" value="${esc(pre.size || '')}"></label>
+          <label class="field ${automatic ? '' : 'field--full'}"><span>${automatic ? 'Размер или вариант' : 'Размер, цвет или вариант'}</span><input id="lcSize" placeholder="42, чёрный" autocomplete="off" value="${esc(variantLabel(pre.size || ''))}" data-raw-size="${esc(pre.size || '')}" data-size-label="${esc(variantLabel(pre.size || ''))}"></label>
         </div>
         <div class="quick lcsizes" id="lcSizes" hidden></div>
         ${pre.photo || automatic ? '' : '<label class="field"><span>Или скриншот с ценой вашего размера: прочитаем её сами</span><input id="lcPhoto" type="file" accept="image/*"></label>'}
@@ -2601,14 +2677,14 @@ ${aiCatalogJSON()}
     const chips = $('#lcSizes'), sizes = item.sizes || [];
     if (chips) {
       chips.hidden = !sizes.length;
-      chips.innerHTML = sizes.map((x) => typeof x === 'string' ? x : x.size).filter(Boolean).slice(0, 60).map((x) => `<button class="chip" type="button" data-lc-size="${esc(x)}" aria-pressed="${$('#lcSize')?.value === x}">${esc(x)}</button>`).join('');
+      chips.innerHTML = sizes.map((x) => typeof x === 'string' ? x : x.size).filter(Boolean).slice(0, 60).map((x, i) => `<button class="chip" type="button" data-lc-size="${esc(x)}" aria-pressed="${linkSizeValue() === x}">${esc(variantLabel(x, i))}</button>`).join('');
     }
   }
   async function checkLinkPrice() {
     const state = linkCalc;
     clearTimeout(state?.checkTimer);
     if (!state || !$('#lcSize') || !state.automatic) return;
-    const size = $('#lcSize').value.trim(), qty = Math.min(10000, Math.max(1, parseInt($('#lcQty').value, 10) || 1));
+    const size = linkSizeValue(), qty = Math.min(10000, Math.max(1, parseInt($('#lcQty').value, 10) || 1));
     const version = (state.version || 0) + 1; state.version = version;
     state.quote = null; state.checking = true; $('#lcPrice').value = ''; linkCalcOut();
     const alive = () => linkCalc === state && state.version === version && !$('#sheet').hidden && !!$('#lcQuoteStatus');
@@ -2624,9 +2700,13 @@ ${aiCatalogJSON()}
     try { await lookupMarket(state.text || state.url, size, qty, update, alive); }
     catch (e) { update({ status: 'failed', note: e.message }); }
   }
+  function linkSizeValue() {
+    const input = $('#lcSize');
+    return input ? (input.dataset.rawSize && input.value === input.dataset.sizeLabel ? input.dataset.rawSize : input.value.trim()) : '';
+  }
   function pickLinkSize(size) {
     const input = $('#lcSize'); if (!input) return;
-    input.value = size;
+    input.value = variantLabel(size); input.dataset.rawSize = size; input.dataset.sizeLabel = input.value;
     $$('#lcSizes [data-lc-size]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lcSize === size)));
     if (linkCalc?.automatic) checkLinkPrice();
   }
@@ -2709,9 +2789,9 @@ ${aiCatalogJSON()}
     if (bad) { toast('Укажите телефон, Telegram или почту'); input.focus(); return; }
     if (!consentOk('lcConsent')) return;
     const price = Number($('#lcPrice').value);
-    const extra = [$('#lcSize').value.trim(), price > 0 ? `цена ${cny(price)} × ${$('#lcQty').value || 1}` : ''].filter(Boolean).join(', ');
+    const extra = [linkSizeValue(), price > 0 ? `цена ${cny(price)} × ${$('#lcQty').value || 1}` : ''].filter(Boolean).join(', ');
     if (live.on) {
-      linkRequestLive({ text: linkCalc.text, price, qty: Math.max(1, parseInt($('#lcQty').value, 10) || 1), size: $('#lcSize').value.trim(),
+      linkRequestLive({ text: linkCalc.text, price, qty: Math.max(1, parseInt($('#lcQty').value, 10) || 1), size: linkSizeValue(),
         contact: input.value.trim(), file: linkCalcFile() }, $('#lcActions [data-act=ask]'));
       return;
     }
@@ -2829,7 +2909,7 @@ ${aiCatalogJSON()}
     if (!contactOk($('#lcContact')) || !consentOk('lcConsent')) return;
     const qty = Math.max(1, Math.min(10000, parseInt($('#lcQty').value, 10) || 1));
     placeLinkOrder({ title: (linkCalc.title || (linkCalc.platform ? `Товар с ${linkCalc.platform}` : linkCalc.url ? 'Товар по ссылке' : 'Товар по скриншоту')).slice(0, 200), url: linkCalc.url,
-      price, qty, note: $('#lcSize').value.trim(), contact: $('#lcContact').value.trim(), file: linkCalcFile(),
+      price, qty, note: linkSizeValue(), contact: $('#lcContact').value.trim(), file: linkCalcFile(),
       quoteId: linkCalc.quote?.id, btn: $('#lcActions [data-act=order]') });
   }
   function orderFromPhoto() {
@@ -3073,7 +3153,7 @@ ${aiCatalogJSON()}
   }
 
   /* ---------- Герой ---------- */
-  const HERO_TAGS = ['Новинки', 'Фото со склада', 'Опт'];
+  const HERO_TAGS = ['Новинки', 'Проверка заказа', 'Опт'];
   function initHero() {
     const hero = $('#hero');
     const imgs = $$('.hero__media img', hero);
@@ -3147,6 +3227,9 @@ ${aiCatalogJSON()}
         .catch((e) => { entry.reply = e.message; aiRender(); });
       return;
     }
+    if (d.reviewWrite !== undefined) { openCustomerReviewForm(); return; }
+    if (d.reviewsMore !== undefined) { loadCustomerReviews(); return; }
+    if (d.reviewsRetry !== undefined) { loadCustomerReviews(true); return; }
     if (d.mkSize !== undefined) { pdState.size = d.mkSize; checkMarketSize(); return; }
     if (t.matches('[data-mk-check]')) { checkMarketSize(); return; }
     if (t.matches('[data-mk-link]')) { const p = byId[pdState.id]; openLinkCalc(p.market.url, { title: p.t }); return; }
@@ -3542,6 +3625,7 @@ ${aiCatalogJSON()}
       requestEmailCode($('button[type=submit]', f)); return;
     }
     if (f.id === 'emailVerifyForm') { verifyEmailCode(f); return; }
+    if (f.id === 'customerReviewForm') { submitCustomerReview(f); return; }
     if (f.id === 'supportForm') { submitSupport(f); return; }
     if (f.id === 'solveForm') {
       const file = $('#solveFile').files[0];
@@ -3647,7 +3731,7 @@ ${aiCatalogJSON()}
 
   /* ---------- Сервер: каталог, лента, заказы, вход ---------- */
   // В рабочем окружении товары, цены, заказы и вход берём только из /api. Открыт как файл или локально без
-  // сервера — работает на демо-данных выше. Отзывы, ролики, лайки и чат пока только демо: на боевом сайте
+  // сервера — работает на демо-данных выше. Отзывы о товарах, ролики и лайки пока только демо: на боевом сайте
   // их не показываем, чтобы не выдавать придуманное за настоящее.
   const live = { on: false, site: null, csrf: '', tma: '', me: null, orders: [], loaded: false };
   const GUEST_KEY = 'astta-orders';
@@ -3693,6 +3777,7 @@ ${aiCatalogJSON()}
     const tiers = (c.tiers || []).map((t) => [t.min_qty, Number(t.price_cny)]).sort((a, b) => a[0] - b[0]);
     return {
       wheel: c.wheel || null,
+      brandGroup: c.brand_group || brandFamily(c.brand || c.market?.brand || ''), filterSizeOptions: c.size_options || [],
       brand: c.brand || c.market?.brand || '', filterSizes: c.sizes?.length ? c.sizes : (c.market?.sizes || []).map((v) => v.size), filterColors: c.colors || [],
       id: c.slug, t: c.title, cat: c.category, sup: c.supplier_code, supName: c.supplier,
       cny: Number(c.price_cny), kg: Number(c.weight_kg) || 0.5,
@@ -3782,6 +3867,7 @@ ${aiCatalogJSON()}
     loadRestOfCatalog(Array.from({ length: Math.max(0, Math.ceil(first.total / 60) - 1) }, (_, i) => i + 2));
     if (location.hash === '#support') openAgentLive();
     await loadMe();
+    loadCustomerReviews(true);
   }
 
   function applyLiveProducts(items, cats) {
@@ -4156,6 +4242,13 @@ ${aiCatalogJSON()}
     $$('[data-rate]').forEach((el) => { el.textContent = rateText; el.closest('.rate').hidden = !allowDemo; });
     $('#menuCats').innerHTML = CATS.map((c) => `<a href="#catalog" data-cat="${esc(c.id)}" data-close-menu>${esc(c.name)}</a>`).join('');
     document.addEventListener('click', onClick);
+    document.addEventListener('error', (e) => {
+      const id = e.target.dataset?.productPhoto, p = id && byId[id];
+      if (!p || p.market?.source !== 'taobao' || p.photoFailed) return;
+      p.photoFailed = true;
+      renderHome(); if (currentView === 'catalog') renderCatalog();
+      if ($('#aiMsgs')) aiRender();
+    }, true);
     document.addEventListener('change', onChange);
     document.addEventListener('input', onInput);
     document.addEventListener('submit', onSubmit);

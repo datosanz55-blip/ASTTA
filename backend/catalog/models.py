@@ -314,3 +314,27 @@ class MarketImport(models.Model):
     @property
     def query_list(self) -> list[str]:
         return [q.strip() for q in self.queries.splitlines() if q.strip()][:20]
+
+
+class CustomerReview(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "На проверке"
+        PUBLISHED = "published", "Опубликован"
+        REJECTED = "rejected", "Скрыт"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="customer_reviews",
+                             verbose_name="покупатель")
+    rating = models.PositiveSmallIntegerField("оценка", validators=[MinValueValidator(1), MaxValueValidator(5)])
+    text = models.TextField("отзыв", max_length=2000)
+    status = models.CharField("статус", max_length=12, choices=Status.choices, default=Status.PENDING)
+    consent_at = models.DateTimeField("согласие на публикацию")
+    created_at = models.DateTimeField("создан", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["status", "-created_at"], name="review_status_created")]
+        verbose_name = "отзыв об ASTTA"
+        verbose_name_plural = "отзывы об ASTTA"
+
+    def __str__(self):
+        return f"Отзыв №{self.pk} · {self.rating}/5"

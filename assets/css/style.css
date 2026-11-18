@@ -1614,3 +1614,31 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .pd__details { border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); font-size: 14px; }
 .pd__details summary { cursor: pointer; color: var(--ink); }
 .pd__details > div { padding-top: 14px; }
+
+/* Service reviews and visible product actions. */
+.customer-reviews__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:20px 0}
+.customer-review{min-width:0;padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--surface)}
+.customer-review__head{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.customer-review__head span{color:var(--accent-ink);white-space:nowrap;letter-spacing:2px}
+.customer-review p{white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0;line-height:1.6}
+.customer-review time{font-size:12px;color:var(--muted)}
+.customer-reviews__grid>.note{grid-column:1/-1}
+.review-rating{border:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;margin:0}
+.review-rating legend{margin-bottom:10px}
+.review-rating label{position:relative;cursor:pointer}
+.review-rating input{position:absolute;opacity:0}
+.review-rating span{display:block;padding:12px 14px;border:1px solid var(--line);border-radius:12px}
+.review-rating input:checked+span{background:var(--lime);color:var(--on-lime)}
+.review-rating input:focus-visible+span{outline:2px solid var(--lime);outline-offset:3px}
+.pd__model-info{align-self:flex-start;margin-top:12px}
+@media(max-width:900px){.customer-reviews__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.customer-reviews__grid{grid-template-columns:1fr}.customer-reviews .block__head{align-items:flex-start;flex-direction:column;gap:12px}}
+
+.customer-review__head b{min-width:0;overflow-wrap:anywhere}
+
+.mksize b{overflow-wrap:anywhere;white-space:normal}
+.mksizes .mksize{max-width:100%;min-width:0}
+
+.mksizes--variants{grid-template-columns:repeat(auto-fill,minmax(min(140px,100%),1fr))}
+.mksizes--variants .mksize{padding:12px 10px;justify-content:center;text-align:center}
+.mksizes--variants .mksize b{font-size:14px;line-height:1.35}

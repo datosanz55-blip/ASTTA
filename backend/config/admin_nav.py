@@ -24,6 +24,11 @@ def new_link_requests(request):
     return _count(LinkRequest.objects.filter(status=LinkRequest.Status.NEW))
 
 
+def pending_reviews(request):
+    from catalog.models import CustomerReview
+    return _count(CustomerReview.objects.filter(status=CustomerReview.Status.PENDING))
+
+
 def _perm(codename):
     return lambda request: request.user.has_perm(codename)
 
@@ -54,6 +59,8 @@ NAVIGATION = [
         _item(_("Категории"), "category", "admin:catalog_category_changelist", "catalog.view_category"),
     ]},
     {"title": _("Лента"), "separator": True, "items": [
+        _item(_("Отзывы об ASTTA"), "reviews", "admin:catalog_customerreview_changelist",
+              "catalog.view_customerreview", "pending_reviews"),
         _item(_("Посты"), "photo_library", "admin:catalog_supplierpost_changelist", "catalog.view_supplierpost"),
     ]},
     {"title": _("Цены"), "separator": True, "items": [
