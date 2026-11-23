@@ -91,6 +91,7 @@ def site(request):
         "link_delivery_rub": config.link_delivery_rub,
         "shipping": [ShippingOut.from_orm(m).dict() for m in ShippingMethod.objects.filter(is_active=True)],
         "email_login": email_enabled(),
+        "order_manager_telegram": settings.ORDER_MANAGER_TELEGRAM,
         "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",
         "ai": yandex.enabled(),
         "chat": llm.enabled(),

@@ -149,6 +149,7 @@ except ValueError:
 # Вход покупателей через Telegram: бот создаётся в @BotFather, домен сайта задаётся там же командой /setdomain.
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", "")
+ORDER_MANAGER_TELEGRAM = env("ORDER_MANAGER_TELEGRAM", "")
 # Сколько живут подписанные Telegram данные входа, секунд.
 TELEGRAM_AUTH_MAX_AGE = int(env("TELEGRAM_AUTH_MAX_AGE", str(60 * 60 * 24)))
 # Секрет вебхука бота: Telegram присылает его в каждом запросе, без него запросы к боту отклоняются.

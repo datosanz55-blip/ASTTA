@@ -118,3 +118,11 @@ def test_help_deep_link_opens_support_form(sent, db):
 def test_empty_message_does_not_crash(sent, db):
     assert hook(update("   ")).status_code == 200
     assert sent == []
+
+
+def test_order_start_opens_manager_form_with_order_number(sent, db):
+    assert hook(update("/start order_A-000123")).status_code == 200
+    _, params = sent[-1]
+    assert "A-000123" in params["text"]
+    button = params["reply_markup"]["inline_keyboard"][0][0]
+    assert button["web_app"]["url"] == "https://astta.ru/?order=A-000123#support"
