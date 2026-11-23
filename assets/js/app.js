@@ -7,6 +7,7 @@
   let FEE_RETAIL = 0.05;    // сервисный сбор ASTTA с розничной продажи
   let FEE_OPT = 0.03;       // сервисный сбор ASTTA с оптовой продажи
   // Заказ по ссылке или фото: цена с площадки по своему курсу плюс логистика за штуку (в админке меняются).
+  let LINK_FEE = 0;
   let LINK_RATE = 13;       // ₽ за 1 ¥
   let LINK_DELIVERY = 1000; // ₽ за штуку
   const SHIP = {
@@ -393,6 +394,7 @@
     if (!isStorefrontVisible(p)) return '';
     const src = p.market.source;
     const days = SHIP.auto.days;
+    const sold = [50, 20, 10].find((threshold) => p.sold >= threshold);
     return `<article class="card card--market">
       <div class="card__media">
         <img class="card__img" data-product-photo="${esc(p.id)}" src="${esc(pimg(p))}" alt="" loading="lazy" width="720" height="720">
@@ -404,7 +406,7 @@
         <div class="card__price"><small class="card__from">от</small>${rub(marketFrom(p))}</div>
         <div class="card__unit">${src === 'poizon' ? `${icon('check')}Оригинал` : 'Цена зависит от варианта'}</div>
         <h3 class="card__title"><button class="card__hit" type="button" data-open="${esc(p.id)}">${esc(p.t)}</button></h3>
-        <div class="card__meta"><span>${daysText(days)}</span>${p.sold ? `<span>${nf0.format(p.sold)} продаж</span>` : ''}</div>
+        <div class="card__meta"><span>${daysText(days)}</span>${src === 'poizon' && sold ? `<span>${sold}+ продаж на Poizon</span>` : ''}</div>
       </div>
     </article>`;
   }
@@ -876,7 +878,7 @@
         <div class="sum__row"><span>Доставка</span><span>${rub(t.delivery)}</span></div>
         ${t.proof ? `<div class="sum__row"><span>ASTTA Proof, проверка</span><span>${rub(t.proof)}</span></div>` : ''}
         <div class="sum__row sum__row--total"><span>Итого</span><span>${rub(t.total)}</span></div>
-        <p class="sum__note">${live.on ? 'После оформления агент пришлёт реквизиты для оплаты.' : 'Оплата сразу при заказе.'} Нет товара у поставщика — вернём деньги за него.</p>
+        <p class="sum__note">${live.on ? 'Менеджер подтвердит наличие, итоговую цену и оплату.' : 'Оплата сразу при заказе.'} Нет товара у поставщика — вернём деньги за него.</p>
       </div>`;
     root.innerHTML = `<div class="cart">
       <div class="cartlist">${rows}</div>
@@ -894,12 +896,12 @@
     const t = cartTotals();
     return `<div class="stack">
       <h2 class="sheet__title">Оформить</h2>
-      <p class="note">После оплаты сразу заказываем у поставщика. Если товара не окажется, вернём деньги за него.</p>
+      <p class="note">Передадим корзину менеджеру. Он проверит наличие, согласует итоговую цену и подскажет, как оплатить.</p>
       <form class="stack" id="checkoutForm" novalidate>
         <label class="field"><span>Телефон, Telegram или почта</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 …, @username или почта" value="${esc(tgContact())}" required></label>
         ${consentHTML('ckConsent')}
         <div class="sum"><div class="sum__row sum__row--total sum__row--solo"><span>Итого</span><span>${rub(t.total)}</span></div></div>
-        <button class="btn btn--lime btn--wide" type="submit">${live.on ? 'Оформить заказ' : 'Перейти к оплате'}</button>
+        <button class="btn btn--lime btn--wide" type="submit">${live.on ? 'Передать заказ менеджеру' : 'Перейти к оплате'}</button>
       </form>
     </div>`;
   }
@@ -1246,7 +1248,7 @@
     const opts = [['sbp', 'СБП', 'По QR-коду или в приложении банка, без комиссии'], ['card', 'Банковская карта', 'Мир, Visa, Mastercard российских банков']];
     return `<div class="panel">
       <h3>Способ оплаты</h3>
-      <p class="note">Онлайн-оплата подключается. Выберите, как удобнее, — предложим этот способ первым. Данные карты мы не храним: их вводят на странице банка.</p>
+      <p class="note">Укажите удобный способ оплаты. Менеджер согласует оплату после подтверждения заказа.</p>
       <div class="paym">${opts.map(([id, name, sub]) => `<button class="paym__opt${cur === id ? ' is-on' : ''}" type="button" data-pay-method="${id}" aria-pressed="${cur === id}">
         <span class="paym__ic">${icon(id === 'sbp' ? 'send' : 'card')}</span><span><b>${name}</b><small>${sub}</small></span><span class="paym__check">${icon('check')}</span></button>`).join('')}</div>
     </div>`;
@@ -2700,10 +2702,11 @@ ${aiCatalogJSON()}
         return;
       }
       box.innerHTML = `<div class="sum"><div class="sum__row"><span>Размер ${esc(quote.size)} · ${qty} шт.</span><b>${rub(Number(quote.total_rub))}</b></div></div>`;
-      $('#lcActions').innerHTML = `<button class="btn btn--lime btn--wide" type="submit" data-act="order">Заказать за ${rub(Number(quote.total_rub))}</button>`;
+      $('#lcActions').innerHTML = `<button class="btn btn--lime btn--wide" type="submit" data-act="order">Передать менеджеру</button>`;
       return;
     }
     $('#lcActions').innerHTML = linkActionsHTML(price, qty);
+    if (LINK_RATE === null) { box.innerHTML = '<p class="note">Цену рассчитает менеджер.</p>'; return; }
     if (!(price > 0)) {
       box.innerHTML = '<div class="sum"><div class="sum__note">Впишите цену вашего размера в юанях или пришлите скриншот — здесь появится расчёт.</div></div>';
       return;
@@ -2712,18 +2715,20 @@ ${aiCatalogJSON()}
   }
   // Есть цена — главная кнопка «Заказать», спросить агента можно и без заказа. Нет цены — только к агенту.
   function linkActionsHTML(price, qty = 1) {
-    return price > 0
-      ? `<button class="btn btn--lime btn--wide" type="submit" data-act="order">Заказать за ${rub(linkTotal(price, qty))}</button>
+    return price > 0 && LINK_RATE !== null
+      ? `<button class="btn btn--lime btn--wide" type="submit" data-act="order">${live.on ? 'Передать менеджеру' : 'Заказать за ' + rub(linkTotal(price, qty))}</button>
          <button class="btn btn--ghost btn--wide" type="submit" data-act="ask">Сначала спросить агента</button>`
       : '<button class="btn btn--lime btn--wide" type="submit" data-act="ask">Отправить агенту</button>';
   }
-  function linkTotal(price, qty = 1) { return round10(price * qty * LINK_RATE + LINK_DELIVERY * qty); }
+  function linkTotal(price, qty = 1) { return round10(price * qty * LINK_RATE * (1 + LINK_FEE) + LINK_DELIVERY * qty); }
   function linkSumHTML(price, qty = 1) {
+    if (LINK_RATE === null) return '<p class="note">Цену рассчитает менеджер.</p>';
     return `<div class="sum">
       <div class="sum__row"><span>Товар · ${cny(price * qty)} по ${LINK_RATE} ₽</span><span>${rub(price * qty * LINK_RATE)}</span></div>
       <div class="sum__row"><span>Логистика · ${rub(LINK_DELIVERY)} за штуку</span><span>${rub(LINK_DELIVERY * qty)}</span></div>
+      ${LINK_FEE ? `<div class="sum__row"><span>Сервисный сбор</span><span>${rub(price * qty * LINK_RATE * LINK_FEE)}</span></div>` : ''}
       <div class="sum__row sum__row--total"><span>Примерно</span><span>${rub(linkTotal(price, qty))}</span></div>
-      <div class="sum__note">Перед выкупом агент сверит цену и наличие на площадке. Окажется дороже — напишем до выкупа, нет товара — вернём деньги.</div>
+      <div class="sum__note">Менеджер проверит наличие и подтвердит итоговую цену до оплаты.</div>
     </div>`;
   }
   // Цена со скриншота. В превью на claude.ai картинку читает Claude, на сервере — Yandex Vision + YandexGPT.
@@ -2770,7 +2775,7 @@ ${aiCatalogJSON()}
   function openPhotoOrder() {
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">Товар по фото</h2>
-      <p class="note">Пришлите скриншот с Poizon, Taobao, 1688. Увидим цену — сразу посчитаем, и товар можно заказать. Не увидим — уточним у менеджера и пришлём цену в чате.</p>
+      <p class="note">Пришлите скриншот с Poizon, Taobao, 1688. Если цена видна, покажем предварительный расчёт. Менеджер проверит товар и согласует заказ.</p>
       <form class="stack" id="photoOrderForm" novalidate>
         <label class="field"><span>Фото или скриншот</span><input id="poPhoto" type="file" accept="image/*"></label>
         <img class="linkcalc__photo" id="poPreview" alt="" hidden>
@@ -3766,7 +3771,8 @@ ${aiCatalogJSON()}
     // Курса ещё нет — не показываем демо-курс как настоящий.
     $$('[data-rate]').forEach((el) => { const box = el.closest('.rate'); if (box) box.hidden = !site.rate; });
     FEE_RETAIL = Number(site.retail_fee); FEE_OPT = Number(site.wholesale_fee);
-    if (site.link_rate) LINK_RATE = Number(site.link_rate);
+    LINK_RATE = site.link_rate == null ? (site.rate == null ? null : Number(site.rate)) : Number(site.link_rate);
+    LINK_FEE = site.link_rate == null ? FEE_RETAIL : 0;
     if (site.link_delivery_rub) LINK_DELIVERY = Number(site.link_delivery_rub);
     applyShipping(site.shipping || []);
     if (!SHIP[state.ship]) state.ship = 'auto';
@@ -3921,6 +3927,7 @@ ${aiCatalogJSON()}
   const PAID_STEPS = ['paid', 'purchased', 'at_warehouse', 'shipped', 'border', 'in_russia', 'ready', 'delivered'];
   function serverOrderHTML(o) {
     const unpaid = o.status === 'awaiting_payment';
+    const telegram = unpaid ? orderTelegramLink(o.number) : '';
     const pill = o.status === 'delivered' || o.status === 'cancelled' ? 'pill' : 'pill pill--go';
     const events = [...o.events].reverse().map((e, i) => `<li class="${i === 0 ? 'is-now' : 'is-done'}"><span class="dot">${i === 0 ? '' : icon('check')}</span><div class="tl__body">
         <b>${esc(e.status_label)}</b><span>${esc(dateTime(e.created_at))}${e.weight_kg ? ` · вес ${nf1.format(Number(e.weight_kg))} кг` : ''}</span>
@@ -3933,22 +3940,34 @@ ${aiCatalogJSON()}
           <div class="order__num">${esc(o.number)}<button type="button" data-copy="${esc(o.number)}">Скопировать</button></div>
           <div class="order__sub">${rub(Number(o.total_rub))}${Number(o.refund_rub) ? ` · возврат ${rub(Number(o.refund_rub))}` : ''}</div>
         </div>
-        <span class="${pill}">${esc(o.status_label)}</span>
+        <span class="${pill}">${esc(unpaid ? 'Согласование с менеджером' : o.status_label)}</span>
       </div>
-      ${unpaid ? `<p class="note">Оплата картой и СБП подключается. Агент напишет вам со ссылкой на оплату, после неё сразу заказываем у поставщика.</p>` : ''}
+      ${unpaid ? `<p class="note">Менеджер подтвердит наличие и согласует оплату.</p>` : ''}
+      ${telegram ? `<a class="btn btn--ghost btn--sm" href="${esc(telegram)}" target="_blank" rel="noopener">Продолжить в Telegram</a>` : ''}
       ${events ? `<ol class="timeline">${events}</ol>` : ''}
       <button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>
     </article>`;
   }
 
-  function orderPlacedSheet(order, extra = '') {
+  function orderTelegramLink(number) {
+    const manager = live.site?.order_manager_telegram;
+    const username = (manager || live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
+    if (!/^[A-Za-z0-9_]+$/.test(username)) return '';
+    const query = manager ? 'text=' + encodeURIComponent('Здравствуйте! Хочу согласовать заказ ' + number)
+      : 'start=' + encodeURIComponent('order_' + number);
+    return 'https://t.me/' + username + '?' + query;
+  }
+
+  function orderPlacedSheet(order) {
     closeSheet();
+    const telegram = orderTelegramLink(order.number);
     openSheet(`<div class="success">
       <span class="success__ic">${icon('check')}</span>
       <h2 class="sheet__title">Заказ ${esc(order.number)} принят</h2>
-      <div class="sum"><div class="sum__row sum__row--total"><span>К оплате</span><span>${rub(Number(order.total_rub))}</span></div>${extra ? `<div class="sum__note">${extra}</div>` : ''}</div>
-      <p>Оплата картой и СБП подключается. Агент напишет вам в ближайшее время со ссылкой на оплату, после неё сразу заказываем у поставщика. Статусы и фото со склада будут в профиле${live.site && live.site.telegram_bot ? ` и в <a href="https://t.me/${esc(live.site.telegram_bot)}" target="_blank" rel="noopener">Telegram-боте</a>` : ''}.</p>
-      <div class="buyrow"><a class="btn btn--lime" href="#profile" data-close>Мой заказ</a></div>
+      <div class="sum"><div class="sum__row sum__row--total"><span>Предварительно</span><span>${rub(Number(order.total_rub))}</span></div></div>
+      <p>Менеджер проверит наличие, подтвердит итоговую цену и согласует оплату.</p>
+      <div class="buyrow">${telegram ? `<a class="btn btn--lime" href="${esc(telegram)}" target="_blank" rel="noopener">Продолжить в Telegram</a>` : ''}
+        <a class="btn btn--ghost" href="#profile" data-close>Мой заказ</a></div>
     </div>`, { narrow: true });
   }
 
@@ -3984,7 +4003,7 @@ ${aiCatalogJSON()}
       const order = await api('/api/link/order', { method: 'POST', body: linkForm({ quote_id: quoteId, text: url, price_cny: price, qty, size: note.slice(0, 32), title, contact, consent: 'true' }, file) });
       rememberOrder(order.token);
       live.orders.unshift(order); live.loaded = true;
-      orderPlacedSheet(order, 'Перед выкупом агент сверит цену и наличие. Окажется дороже — напишем до выкупа, и вы решите: доплатить или вернуть деньги. Нет товара — вернём деньги полностью.');
+      orderPlacedSheet(order);
     });
   }
   async function linkRequestLive({ text, price, qty, size, contact, comment, file }, btn) {
@@ -4069,7 +4088,8 @@ ${aiCatalogJSON()}
   }
   function openAgentLive(supId) {
     const supplier = SUPPLIERS[supId];
-    const question = supId ? '' : ([...ai.log].reverse().find((m) => m.me)?.text || '');
+    const order = new URLSearchParams(location.search).get('order') || '';
+    const question = /^A-[0-9]{6,20}$/.test(order) ? `Хочу согласовать заказ ${order}.` : supId ? '' : ([...ai.log].reverse().find((m) => m.me)?.text || '');
     openSheet(`<div class="stack"><h2 class="sheet__title">Написать агенту</h2>
       <p class="note">Сообщение попадёт команде ASTTA. Укажите контакт, по которому вам ответить.</p>
       <form class="stack" id="supportForm">

@@ -22,7 +22,10 @@ def _fresh_cache():
 
 @pytest.fixture
 def pricing_setup(db):
-    PricingConfig.load()
+    config = PricingConfig.load()
+    config.rate_markup = Decimal("0")
+    config.link_rate = Decimal("13")
+    config.save()
     ShippingMethod.objects.all().delete()  # миграция 0005 создаёт тарифы по умолчанию, в тестах задаём свои
     ShippingMethod.objects.create(code="auto", name="Авто", rub_per_kg=Decimal("420"), days_min=18, days_max=25,
                                   is_default=True)

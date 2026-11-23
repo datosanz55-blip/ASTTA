@@ -7,6 +7,8 @@
   «Старт» в боте или разрешил это при входе на сайт через Telegram.
 """
 
+import re
+
 from django.conf import settings
 
 from accounts.models import User
@@ -52,6 +54,10 @@ def handle_update(update: dict):
     first_name = (message.get("from") or {}).get("first_name") or ""
     if command == "/help" or (command == "/start" and parts[1:] == ["help"]):
         send(chat_id, HELP, open_button("Написать агенту", "/#support"))
+    elif command == "/start" and len(parts) == 2 and re.fullmatch(r"order_A-[0-9]{6,20}", parts[1]):
+        number = parts[1].removeprefix("order_")
+        send(chat_id, f"Чтобы согласовать заказ {number}, откройте форму для менеджера.",
+             open_button("Написать менеджеру", f"/?order={number}#support"))
     elif command == "/start":
         send(chat_id, f"Здравствуйте{', ' + first_name if first_name else ''}! Это ASTTA — товары из Китая "
                       "с ценой в рублях сразу с доставкой. Каталог, заказ по ссылке или фото и отслеживание — "

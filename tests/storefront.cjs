@@ -142,6 +142,8 @@ if (require.main === module) (async()=>{
    await p.locator('[data-checkout]').click();await p.locator('#ckContact').fill('@buyer');await p.locator('#ckConsent').check();
    await p.locator('#checkoutForm button[type=submit]').click();
    await p.waitForSelector('.success');
+   assert.equal(await p.getByRole('link',{name:'Продолжить в Telegram'}).getAttribute('href'),
+    'https://t.me/astta_shop_bot?start=order_A-000123');
    assert.equal(t.posts.at(-1).items[0].color,'чёрный');assert.equal(t.posts.at(-1).items[0].size,'42');
    await p.goto('http://astta.test/#support');await p.waitForSelector('#supportForm');
    await p.locator('#supportForm [name=contact]').fill('@buyer');await p.locator('#supportForm [name=message]').fill('Помогите с заказом');await p.locator('#supportConsent').check();
