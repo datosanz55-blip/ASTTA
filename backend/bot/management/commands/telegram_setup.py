@@ -7,8 +7,10 @@ from bot.telegram_api import BotError, call
 
 COMMANDS = [
     {"command": "start", "description": "Открыть ASTTA"},
-    {"command": "orders", "description": "Мои заказы"},
-    {"command": "help", "description": "Связаться с агентом"},
+    {"command": "new", "description": "Новая заявка менеджеру"},
+    {"command": "orders", "description": "Мои заявки и заказы"},
+    {"command": "help", "description": "Связаться с менеджером"},
+    {"command": "id", "description": "Мой Telegram ID"},
 ]
 DESCRIPTION = ("Товары из Китая с ценой в рублях сразу с доставкой: одежда, обувь, мебель, электроника. "
                "Каталог проверенных поставщиков, заказ по ссылке с Poizon, Taobao и 1688 или по скриншоту, "
@@ -27,7 +29,7 @@ class Command(BaseCommand):
         site = settings.SITE_URL.rstrip("/")
         try:
             call("setWebhook", url=f"{site}/api/tg/webhook", secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
-                 allowed_updates=["message"], drop_pending_updates=True)
+                 allowed_updates=["message"], drop_pending_updates=False)
             call("setMyCommands", commands=COMMANDS)
             call("setMyDescription", description=DESCRIPTION)
             call("setMyShortDescription", short_description=SHORT)

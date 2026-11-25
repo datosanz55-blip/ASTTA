@@ -14,6 +14,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from accounts.models import User
+from bot import inbox
 from bot.telegram_api import call
 from links.models import LinkRequest
 
@@ -55,6 +56,36 @@ def handle_update(update: dict):
     command = parts[0].split("@")[0].lower()
     chat_id = chat["id"]
     first_name = (message.get("from") or {}).get("first_name") or ""
+    team = inbox.manager_ids()
+    if command == "/id":
+        send(chat_id, f"Ваш Telegram ID: {chat_id}")
+        return
+    if team:
+        if chat_id in team and inbox.manager_message(chat_id, command, message):
+            return
+        if command == "/inbox":
+            send(chat_id, "Команда доступна только менеджерам.")
+            return
+        if command in ("/new", "/help") or (command == "/start" and parts[1:] == ["help"]):
+            inbox.start_request(chat_id)
+            return
+        if command == "/start" and len(parts) == 2 and re.fullmatch(r"order_A-[0-9]{6,20}", parts[1]):
+            inbox.start_request(chat_id, parts[1].removeprefix("order_"))
+            return
+        if command == "/start":
+            inbox.start_request(chat_id, keyboard=open_button("Открыть каталог", "/#catalog"))
+            return
+        if command == "/orders":
+            text = inbox.requests_text(chat_id)
+            send(chat_id, (text + "\n\n" if text else "") + orders_text(chat_id),
+                 open_button("Открыть заказы", "/#profile"))
+            return
+        if not command.startswith("/"):
+            inbox.customer_message(chat_id, message)
+            return
+        send(chat_id, "Начать заявку — /new. Мои заявки и заказы — /orders.")
+        return
+
     if command == "/help" or (command == "/start" and parts[1:] == ["help"]):
         send(chat_id, HELP, open_button("Написать агенту", "/#support"))
     elif command == "/start" and len(parts) == 2 and re.fullmatch(r"order_A-[0-9]{6,20}", parts[1]):
@@ -81,7 +112,7 @@ def handle_update(update: dict):
         contact = f"@{username}" if re.fullmatch(r"[A-Za-z0-9_]+", username) else f"tg://user?id={chat_id}"
         try:
             request = LinkRequest.objects.create(
-                text=message["text"].strip()[:2000], contact=contact,
+                text=message["text"].strip()[:2000], contact=contact, telegram_chat_id=chat_id,
                 comment="Заявка на заказ из Telegram", pd_consent_at=timezone.now(),
             )
         except Exception:

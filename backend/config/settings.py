@@ -148,6 +148,9 @@ except ValueError:
 
 # Вход покупателей через Telegram: бот создаётся в @BotFather, домен сайта задаётся там же командой /setdomain.
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_MANAGER_IDS = tuple(
+    int(value.strip()) for value in env("TELEGRAM_MANAGER_IDS", "").split(",") if value.strip()
+)
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", "")
 ORDER_MANAGER_TELEGRAM = env("ORDER_MANAGER_TELEGRAM", "")
 # Сколько живут подписанные Telegram данные входа, секунд.
