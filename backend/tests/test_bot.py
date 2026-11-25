@@ -181,3 +181,16 @@ def test_bot_managers_share_inbox_and_reply_privately(sent, settings, db, monkey
 
     hook(update("/orders"))
     assert f"№{request.pk}" in sent[-1][1]["text"]
+
+
+def test_relay_webhook_preserves_storefront_url(sent, settings, monkeypatch):
+    from bot.management.commands import telegram_setup
+
+    settings.TELEGRAM_WEBHOOK_ORIGIN = "https://tg-relay.astta.ru"
+    calls = {}
+    monkeypatch.setattr(telegram_setup, "call", lambda method, **params: calls.update({method: params}))
+    call_command("telegram_setup")
+    assert calls["setWebhook"]["url"] == "https://tg-relay.astta.ru/api/tg/webhook"
+    assert calls["setWebhook"]["secret_token"] == SECRET
+    assert calls["setWebhook"]["drop_pending_updates"] is False
+    assert calls["setChatMenuButton"]["menu_button"]["web_app"]["url"] == "https://astta.ru"

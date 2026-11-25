@@ -13,7 +13,7 @@ class Command(BaseCommand):
             webhook = call("getWebhookInfo")
         except BotError as exc:
             raise CommandError(str(exc)) from exc
-        expected = settings.SITE_URL.rstrip("/") + "/api/tg/webhook"
+        expected = (settings.TELEGRAM_WEBHOOK_ORIGIN or settings.SITE_URL.rstrip("/")) + "/api/tg/webhook"
         self.stdout.write(f"Bot API отвечает: @{me.get('username', '')}")
         webhook_status = "совпадает" if webhook.get("url") == expected else "не настроен или другой"
         self.stdout.write(f"Вебхук ASTTA: {webhook_status}")

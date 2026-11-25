@@ -6,6 +6,19 @@
 }
 
 {$ASTTA_RELAY_DOMAIN} {
+	@webhook {
+		method POST
+		path /api/tg/webhook
+	}
+	handle @webhook {
+		reverse_proxy https://astta.ru {
+			header_up Host astta.ru
+			transport http {
+				dial_timeout 4s
+				response_header_timeout 12s
+			}
+		}
+	}
 	@bot {
 		method POST
 		path_regexp bot ^/bot[0-9]+:[A-Za-z0-9_-]+/[A-Za-z]+$

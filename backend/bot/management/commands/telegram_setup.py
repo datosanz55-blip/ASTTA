@@ -1,4 +1,5 @@
 import secrets
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -27,8 +28,14 @@ class Command(BaseCommand):
         if not settings.TELEGRAM_WEBHOOK_SECRET:
             raise CommandError(f"Задайте TELEGRAM_WEBHOOK_SECRET в .env, например: {secrets.token_urlsafe(32)}")
         site = settings.SITE_URL.rstrip("/")
+        origin = settings.TELEGRAM_WEBHOOK_ORIGIN or site
+        parts = urlsplit(origin)
+        prohibited = (parts.username, parts.path, parts.query, parts.fragment)
+        if parts.scheme != "https" or not parts.hostname or any(prohibited):
+            raise CommandError("Нужен HTTPS-адрес вебхука без пути, например https://tg-relay.astta.ru")
+        webhook_url = f"{origin}/api/tg/webhook"
         try:
-            call("setWebhook", url=f"{site}/api/tg/webhook", secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
+            call("setWebhook", url=webhook_url, secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
                  allowed_updates=["message"], drop_pending_updates=False)
             call("setMyCommands", commands=COMMANDS)
             call("setMyDescription", description=DESCRIPTION)
@@ -36,5 +43,5 @@ class Command(BaseCommand):
             call("setChatMenuButton", menu_button={"type": "web_app", "text": "ASTTA", "web_app": {"url": site}})
         except BotError as exc:
             raise CommandError(str(exc)) from exc
-        self.stdout.write(self.style.SUCCESS(f"Бот настроен: вебхук {site}/api/tg/webhook, команды, описание, "
+        self.stdout.write(self.style.SUCCESS(f"Бот настроен: вебхук {webhook_url}, команды, описание, "
                                              f"кнопка «ASTTA» открывает {site}"))
