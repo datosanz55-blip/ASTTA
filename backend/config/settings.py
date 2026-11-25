@@ -159,6 +159,7 @@ TELEGRAM_AUTH_MAX_AGE = int(env("TELEGRAM_AUTH_MAX_AGE", str(60 * 60 * 24)))
 TELEGRAM_WEBHOOK_SECRET = env("TELEGRAM_WEBHOOK_SECRET", "")
 # Адрес Bot API. Если хостинг блокирует api.telegram.org — адрес посредника за рубежом (см. infra/telegram-proxy.js).
 TELEGRAM_API_URL = (env("TELEGRAM_API_URL") or "https://api.telegram.org").rstrip("/")
+TELEGRAM_API_RELAY_KEY = env("TELEGRAM_API_RELAY_KEY", "")
 # Адрес сайта: на него ведут кнопки бота и мини-приложение.
 SITE_URL = env("SITE_URL", "")
 

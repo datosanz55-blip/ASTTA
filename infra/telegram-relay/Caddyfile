@@ -1,0 +1,27 @@
+{
+	# Telegram Bot API places the bot token in the request path.
+	log {
+		exclude http.log.error http.handlers.reverse_proxy
+	}
+}
+
+{$ASTTA_RELAY_DOMAIN} {
+	@bot {
+		method POST
+		path_regexp bot ^/bot[0-9]+:[A-Za-z0-9_-]+/[A-Za-z]+$
+		header X-Astta-Relay-Key {$ASTTA_RELAY_KEY}
+	}
+	handle @bot {
+		reverse_proxy https://api.telegram.org {
+			header_up Host api.telegram.org
+			header_up -X-Astta-Relay-Key
+			transport http {
+				dial_timeout 4s
+				response_header_timeout 8s
+			}
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
