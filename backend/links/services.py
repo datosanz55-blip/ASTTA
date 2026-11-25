@@ -216,7 +216,7 @@ def estimate(price_cny: Decimal, qty: int = 1, marketplace: Marketplace | None =
     config, ctx = pricing or link_pricing()
     simple = config.link_rate is not None
     notes = ["Цена предварительная: точную пришлёт агент после проверки товара и продавца."]
-    if config.link_delivery_rub is not None:
+    if config.link_delivery_rub is not None and ctx.shipping_rate is None:
         weight_kg = weight_kg or Decimal("0")
         weight_source = "логистика за штуку из настроек цены"
         delivery = config.link_delivery_rub * qty

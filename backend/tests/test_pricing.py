@@ -71,3 +71,14 @@ def test_no_rate_is_an_error(runner):
     ExchangeRate.objects.all().delete()
     with pytest.raises(PricingError, match="Нет курса"):
         quote(runner)
+
+
+def test_standard_shipping_uses_five_dollars_per_kg(runner):
+    from datetime import date
+
+    from links.services import estimate
+    from pricing.models import ExchangeRate
+
+    ExchangeRate.objects.create(currency="USD", date=date(2026, 11, 25), rub_per_unit=Decimal("80"), source="cbr")
+    assert quote(runner).delivery_rub == Decimal("440")
+    assert estimate(Decimal("100"), qty=2, weight_kg=Decimal("1.5")).delivery_rub == Decimal("1200")
