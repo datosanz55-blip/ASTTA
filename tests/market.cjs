@@ -12,6 +12,11 @@ const {setup}=require('./storefront.cjs');
   assert.equal(await p.locator('[data-mk-size="40"]').evaluate(e=>e===document.activeElement),true,'order prompts size selection');
   await p.locator('[data-mk-size="42"]').click();
   await p.getByText('Проверяем цену размера 42',{exact:false}).waitFor();
+  await p.route('https://t.me/**',route=>route.fulfill({status:204}));
+  const [draft]=await Promise.all([p.waitForRequest('https://t.me/**'),
+    p.locator('[data-product-telegram]').click()]);
+  assert.match(new URL(draft.url()).searchParams.get('text'),/Код товара: item-1943\nРазмер: 42/);
+
   assert.equal(await p.getByText('Указать цену и заказать',{exact:true}).count(),0);
   await p.locator('[data-mk-size="40"]').click();await p.locator('[data-mk-size="42"]').click();
   await p.getByRole('button',{name:'Оформить заказ',exact:true}).waitFor();

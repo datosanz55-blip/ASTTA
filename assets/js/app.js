@@ -3193,7 +3193,7 @@ ${aiCatalogJSON()}
         $('[data-mk-size], [data-size]', $('#sheetBody'))?.focus();
         toast('Выберите размер'); return;
       }
-      if (p.colors?.length && !pdState.color) { toast('Выберите цвет'); return; }
+      if (!isMarket(p) && p.colors?.length && !pdState.color) { toast('Выберите цвет'); return; }
       const username = (live.site?.order_manager_telegram || live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
       if (!/^[A-Za-z0-9_]+$/.test(username)) { toast('Не удалось открыть Telegram'); return; }
       const message = ['Заявка ASTTA', p.t, 'Код товара: ' + p.id,
