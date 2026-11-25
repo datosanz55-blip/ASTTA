@@ -406,7 +406,7 @@
         <div class="card__price"><small class="card__from">от</small>${rub(marketFrom(p))}</div>
         <div class="card__unit">${src === 'poizon' ? `${icon('check')}Оригинал` : 'Цена зависит от варианта'}</div>
         <h3 class="card__title"><button class="card__hit" type="button" data-open="${esc(p.id)}">${esc(p.t)}</button></h3>
-        <div class="card__meta"><span>${daysText(days)}</span>${src === 'poizon' && sold ? `<span>${sold}+ продаж на Poizon</span>` : ''}</div>
+        <div class="card__meta"><span>${daysText(days)} после отправки</span>${src === 'poizon' && sold ? `<span>${sold}+ продаж на Poizon</span>` : ''}</div>
       </div>
     </article>`;
   }
@@ -463,7 +463,7 @@
         <div class="card__price">${price}${old}</div>
         <div class="card__unit">${sub}</div>
         <h3 class="card__title"><button class="card__hit" type="button" data-open="${p.id}">${esc(p.t)}</button></h3>
-        <div class="card__meta">${p.rating ? `<span>${icon('star', 'ic--fill')}${nf1.format(p.rating)}</span>` : ''}<span>${daysText(days)}</span></div>
+        <div class="card__meta">${p.rating ? `<span>${icon('star', 'ic--fill')}${nf1.format(p.rating)}</span>` : ''}<span>${daysText(days)} после отправки</span></div>
       </div>
     </article>`;
   }
@@ -897,6 +897,7 @@
     return `<div class="stack">
       <h2 class="sheet__title">Оформить</h2>
       <p class="note">Передадим корзину менеджеру. Он проверит наличие, согласует итоговую цену и подскажет, как оплатить.</p>
+      <p class="note">При наличии товар обычно доезжает до склада в Китае за 2–7 дней. Стандартная отправка со склада до Москвы занимает около 20 дней. Срок до вашего города уточнит менеджер.</p>
       <form class="stack" id="checkoutForm" novalidate>
         <label class="field"><span>Телефон, Telegram или почта</span><input id="ckContact" name="contact" autocomplete="tel" placeholder="+7 …, @username или почта" value="${esc(tgContact())}" required></label>
         ${consentHTML('ckConsent')}
@@ -1593,7 +1594,7 @@
         <button class="btn btn--ghost pd__model-info" type="button" data-mk-ai>${icon('spark')}Рассказать о модели</button>
         <details class="pd__details"><summary>О товаре и доставке</summary><div class="stack">
           ${m.article ? `<p>Артикул: <span class="mono">${esc(m.article)}</span></p>` : ''}
-          <p>Доставка: ${daysText(SHIP.auto.days)}. В расчёт включены товар, доставка и сервис ASTTA.</p>
+          <p>До склада в Китае обычно 2–7 дней при наличии. После отправки со склада: ${daysText(SHIP.auto.days)}. В расчёт включены товар, доставка и сервис ASTTA.</p>
           ${m.fit_advice ? `<p>${esc(m.fit_advice)}</p>` : ''}
         </div></details>
       </div>
