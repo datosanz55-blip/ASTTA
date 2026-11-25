@@ -19,13 +19,14 @@ const fixture=n=>({id:n,author:n===1?'<img src=x onerror=alert(1)>':'Покуп�
    return route.fulfill({status:201,json:{id:8,status:'pending',message:'Спасибо! Отзыв отправлен на проверку перед публикацией.'}});
   });
   await p.reload();await p.waitForSelector('html.is-live');await p.goto('http://astta.test/#homeReviews');
+  await p.waitForURL('**/#reviews');
   await p.locator('[data-reviews-retry]').click();await p.locator('.customer-review').first().waitFor();
   assert.equal(await p.locator('.customer-review').count(),6);
   assert.equal(await p.locator('.customer-review img,.customer-review script').count(),0,'review text and author are escaped');
   assert.match(await p.locator('.customer-review').first().innerText(),/Заказ задержался/,'negative reviews are displayed');
   for(const theme of ['dark','light','bimbo']){
    await p.evaluate(theme=>document.documentElement.dataset.ui=theme,theme);
-   for(const width of [320,390,1280]){
+   for(const width of [320,390,900,1024,1280]){
     await p.setViewportSize({width,height:900});
     assert(await p.locator('.customer-reviews__grid').evaluate(e=>e.scrollWidth<=e.clientWidth+1),'review grid fits viewport');
     assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no page overflow');
@@ -33,6 +34,10 @@ const fixture=n=>({id:n,author:n===1?'<img src=x onerror=alert(1)>':'Покуп�
   }
   await p.locator('#reviewsMore').click();await p.waitForFunction(()=>document.querySelectorAll('.customer-review').length===7);
   assert(await p.locator('#reviewsMore').isHidden());
+  await p.goto('http://astta.test/#catalog');
+  await p.locator('.topnav [data-nav=reviews]').click();
+  await p.locator('.customer-review:visible').first().waitFor();
+  assert.equal(await p.locator('.customer-review:visible').count(),7,'reviews stay available when returning to the tab');
   await p.locator('[data-review-write]').click();
   await p.locator('#customerReviewForm input[value="4"]').check();
   await p.locator('#customerReviewForm textarea').fill('Спасибо за доставку моего заказа!');

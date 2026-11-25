@@ -3016,7 +3016,7 @@ ${aiCatalogJSON()}
 
   /* ---------- Режим ---------- */
   /* ---------- Навигация ---------- */
-  const VIEWS = ['home', 'catalog', 'trends', 'feed', 'cart', 'profile'];
+  const VIEWS = ['home', 'catalog', 'trends', 'feed', 'reviews', 'cart', 'profile'];
   let currentView = 'home';
   function syncHomeNav() {
     const nav = $('#homeSectionNav');
@@ -3049,6 +3049,10 @@ ${aiCatalogJSON()}
   function route() {
     let hash;
     try { hash = decodeURIComponent(location.hash.slice(1)); } catch (e) { hash = ''; }
+    if (hash === 'homeReviews') {
+      history.replaceState(history.state, '', '#reviews');
+      hash = 'reviews';
+    }
     const view = VIEWS.includes(hash) ? hash : 'home';
     const changed = view !== currentView;
     currentView = view;

@@ -1616,6 +1616,7 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .pd__details > div { padding-top: 14px; }
 
 /* Service reviews and visible product actions. */
+.customer-reviews .pagehead{align-items:flex-start}
 .customer-reviews__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:20px 0}
 .customer-review{min-width:0;padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--surface)}
 .customer-review__head{display:flex;justify-content:space-between;gap:12px;align-items:center}
@@ -1632,7 +1633,7 @@ html.is-splash .topbar, html.is-splash .tabbar { -webkit-backdrop-filter: none; 
 .review-rating input:focus-visible+span{outline:2px solid var(--lime);outline-offset:3px}
 .pd__model-info{align-self:flex-start;margin-top:12px}
 @media(max-width:900px){.customer-reviews__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.customer-reviews__grid{grid-template-columns:1fr}.customer-reviews .block__head{align-items:flex-start;flex-direction:column;gap:12px}}
+@media(max-width:600px){.customer-reviews__grid{grid-template-columns:1fr}}
 
 .customer-review__head b{min-width:0;overflow-wrap:anywhere}
 

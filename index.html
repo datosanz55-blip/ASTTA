@@ -103,6 +103,7 @@
       <a href="#catalog" data-nav="catalog">Каталог</a>
       <a href="#trends" data-nav="trends">Тренды</a>
       <a href="#feed" data-nav="feed">Лента</a>
+      <a href="#reviews" data-nav="reviews">Отзывы</a>
       <a href="#profile" data-nav="profile">Профиль</a>
     </nav>
 
@@ -273,11 +274,8 @@
       <div class="feed feed--preview" id="feedPreview"></div>
     </section>
 
-    <section class="block customer-reviews" id="homeReviews" aria-labelledby="reviewsTitle">
-      <div class="block__head"><h2 id="reviewsTitle">Отзывы об ASTTA</h2><button class="btn btn--ghost btn--sm" type="button" data-review-write>Оставить отзыв</button></div>
-      <p class="note" id="reviewsSummary">Опыт покупателей: о заказах, доставке и работе сервиса.</p>
-      <div class="customer-reviews__grid" id="customerReviews" aria-live="polite"><p class="note">Загружаем отзывы…</p></div>
-      <button class="btn btn--ghost btn--sm" id="reviewsMore" type="button" data-reviews-more hidden>Ещё отзывы</button>
+    <section class="block" id="homeReviews" aria-labelledby="homeReviewsTitle">
+      <div class="block__head"><h2 id="homeReviewsTitle">Отзывы об ASTTA</h2><a href="#reviews" class="more">Все отзывы <svg class="ic"><use href="#i-arrow-ur"/></svg></a></div>
     </section>
 
     <section class="block faq" id="faq" aria-labelledby="faqTitle">
@@ -386,6 +384,14 @@
     <div id="profileBody"></div>
   </section>
 
+  <section class="view customer-reviews" data-view="reviews" hidden aria-labelledby="reviewsTitle">
+    <div class="pagehead"><h1 id="reviewsTitle">Отзывы об ASTTA</h1><button class="btn btn--ghost btn--sm" type="button" data-review-write>Оставить отзыв</button></div>
+    <p class="note" id="reviewsSummary">Опыт покупателей: о заказах, доставке и работе сервиса.</p>
+    <div class="customer-reviews__grid" id="customerReviews" aria-live="polite"><p class="note">Загружаем отзывы…</p></div>
+    <button class="btn btn--ghost btn--sm" id="reviewsMore" type="button" data-reviews-more hidden>Ещё отзывы</button>
+    <p class="note">Новые отзывы появляются здесь после модерации.</p>
+  </section>
+
 </main>
 <nav class="home-section-nav" id="homeSectionNav" aria-label="Разделы главной" hidden>
   <a href="#hero" aria-label="Главное"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span>Главное</span></a>
@@ -444,6 +450,7 @@
     <div class="drawer__links">
       <a href="#link" data-close-menu>Заказ по ссылке</a>
       <a href="#feed" data-close-menu>Лента поставщиков</a>
+      <a href="#reviews" data-nav="reviews" data-close-menu>Отзывы</a>
       <a href="#profile" data-close-menu>Профиль</a>
       <a href="https://t.me/astta_shop_bot" target="_blank" rel="noopener">Бот в Telegram: статусы заказов</a>
       <button type="button" data-open-chat data-close-menu>Написать агенту</button>
