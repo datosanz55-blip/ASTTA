@@ -606,7 +606,7 @@
   // Внутри одной характеристики — ИЛИ, между характеристиками — И.
   const catalogFilters = { min: '', max: '', sale: false, fresh: false,
     brand: new Set(), color: new Set(), size: new Set(), source: new Set(), supplier: new Set() };
-  const FACETS = ['brand', 'color', 'size', 'source', 'supplier'];
+  const FACETS = ['brand', 'color', 'size', 'source'];
   const filterKey = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru').replace(/ё/g, 'е');
   const COLOR_GROUPS = [
     ['Чёрный', '#202020', 'черный', 'черная', 'черные', 'black'],
@@ -769,17 +769,14 @@
 
   /* ---------- Лента ---------- */
   function renderFeed() {
-    $('#stories').innerHTML = Object.entries(SUPPLIERS).map(([id, s]) => `<button class="story" type="button" data-story="${esc(id)}" aria-pressed="${state.feedSup === id}">
-      <span class="ava" aria-hidden="true">${esc(s.short)}</span><span>${esc(s.name.replace('TT · ', ''))}</span></button>`).join('');
-    const filters = [['all', 'Все'], ['following', 'Подписки'], ['new', 'Новинки'], ['opt', 'Опт'], ['restock', 'Поступления']];
+    const filters = [['all', 'Все'], ['new', 'Новинки'], ['restock', 'Поступления']];
     $('#feedChips').innerHTML = filters.map(([id, name]) => `<button class="chip" type="button" data-feed="${id}" aria-pressed="${state.feed === id}">${name}</button>`).join('');
     const list = POSTS.filter((p) => {
-      if (state.feedSup && p.sup !== state.feedSup) return false;
       if (state.feed === 'following') return FOLLOWING.includes(p.sup);
       if (state.feed === 'all') return true;
       return p.kind === state.feed;
     });
-    $('#feedList').innerHTML = list.length ? list.map(postHTML).join('') : '<p class="empty">У этого поставщика пока нет таких постов.</p>';
+    $('#feedList').innerHTML = list.length ? list.map(postHTML).join('') : '<p class="empty">В этом разделе пока нет публикаций.</p>';
   }
 
   /* ---------- Корзина ---------- */
@@ -1583,6 +1580,7 @@
           <span class="sublabel">Выберите размер или вариант</span>
           <div class="mksizes${sizes.some((x, i) => (x.label || variantLabel(x.size, i)).length > 8) ? ' mksizes--variants' : ''}" role="group" aria-label="Размер и вариант">${sizes.map((x, i) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.label || variantLabel(x.size, i))}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
         </div>` : ''}
+        <button class="btn btn--lime" type="button" data-product-telegram>Заказать в Telegram</button>
         <div class="mksteps" id="mkQuote" aria-live="polite">
           ${quote ? '<p class="note">Цена проверена на площадке. Действует 5 минут.</p>' : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
           <div class="mkbtns">
@@ -1724,7 +1722,6 @@
         ? `<div class="pd__float" style="--t1:${FLOATING[p.id][0]};--t2:${FLOATING[p.id][1]}"><img src="assets/img/cut/${p.id}.webp" alt="${esc(p.t)}" width="900" height="900"></div>`
         : galleryHTML(p)}${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
-        <button class="supchip" type="button" data-goto-sup="${esc(p.sup)}"><span class="ava" aria-hidden="true">${esc(s.short)}</span>${esc(s.name)}</button>
         <h2>${esc(p.wheel ? p.wheel.model : p.t)}</h2>
         <div class="pd__rating">${p.rating ? `<span>${icon('star', 'ic--fill')}<b>${nf1.format(p.rating)}</b></span>` : ''}${p.reviews ? `<span>${p.reviews} ${plural(p.reviews, 'отзыв', 'отзыва', 'отзывов')}</span>` : ''}<span>Доставка ${s.fact[0]}–${s.fact[1]} дней</span></div>
         ${priceBlock}
@@ -1735,6 +1732,7 @@
         ${group}
         <div class="buyrow">
           ${qty}
+          ${live.on ? `<button class="btn btn--lime" type="button" data-product-telegram ${p.detail ? '' : 'disabled'}>Заказать в Telegram</button>` : ''}
           <button class="btn btn--lime" type="button" data-pd-add ${live.on && !p.detail ? 'disabled' : ''}>${live.on && !p.detail ? 'Загружаем варианты…' : sup ? 'Добавить партию' : 'В корзину'}</button>
         </div>
         ${nt ? `<p class="note" style="color:var(--lime)">Ещё ${nt[0] - pdState.qty} шт, и цена станет ${cny(nt[1])}</p>` : ''}
@@ -3185,6 +3183,28 @@ ${aiCatalogJSON()}
     if (t.matches('[data-mk-check]')) { checkMarketSize(); return; }
     if (t.matches('[data-mk-link]')) { const p = byId[pdState.id]; openLinkCalc(p.market.url, { title: p.t }); return; }
     if (t.matches('[data-lc-recheck]')) { checkLinkPrice(); return; }
+    if (d.productTelegram !== undefined && pdState) {
+      const p = byId[pdState.id];
+      if (p.wheel && !pdState.wheelChosen) {
+        $('[data-wheel-diameter]', $('#sheetBody'))?.focus();
+        toast('Выберите диаметр и параметры диска'); return;
+      }
+      if ((p.market?.sizes?.length || p.grid?.length) && !pdState.size) {
+        $('[data-mk-size], [data-size]', $('#sheetBody'))?.focus();
+        toast('Выберите размер'); return;
+      }
+      if (p.colors?.length && !pdState.color) { toast('Выберите цвет'); return; }
+      const username = (live.site?.order_manager_telegram || live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
+      if (!/^[A-Za-z0-9_]+$/.test(username)) { toast('Не удалось открыть Telegram'); return; }
+      const message = ['Заявка ASTTA', p.t, 'Код товара: ' + p.id,
+        pdState.size ? 'Размер: ' + pdState.size : '', pdState.color ? 'Цвет: ' + pdState.color : '',
+        'Количество: ' + pdState.qty, p.market?.url || '', 'Подтвердите, пожалуйста, наличие и итоговую цену.', 'Согласен на обработку контактных данных для ответа на заявку.']
+        .filter(Boolean).join('\n');
+      const url = 'https://t.me/' + username + '?text=' + encodeURIComponent(message);
+      if (live.tma && window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
+      else location.assign(url);
+      return;
+    }
     if (d.mkOrder !== undefined) { orderMarketProduct(); return; }
     if (d.galGo !== undefined) { galleryGo(Number(d.galGo)); return; }
     if (d.mkAi !== undefined) { const p = byId[pdState.id]; closeSheet(); aiAsk(`Расскажи коротко про ${p.t}: для кого, плюсы и минусы по обзорам, как садится по размеру`); return; }
@@ -4046,14 +4066,18 @@ ${aiCatalogJSON()}
     history.replaceState(null, '', location.pathname + '#profile');
     const fields = {};
     ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash'].forEach((k) => { if (q.has(k)) fields[k] = q.get(k); });
-    fields.id = Number(fields.id); fields.auth_date = Number(fields.auth_date); fields.consent = true;
+    fields.id = Number(fields.id); fields.auth_date = Number(fields.auth_date);
+    await completeTelegramLogin(fields);
+  }
+  async function completeTelegramLogin(fields) {
     try {
-      await api('/api/auth/telegram', { method: 'POST', body: fields });
+      await api('/api/auth/telegram', { method: 'POST', body: { ...fields, consent: true } });
       live.csrf = ''; // после входа Django выдаёт новый токен защиты
       await loadMe();
       toast(state.tg && state.tg.username ? `Вы вошли как @${state.tg.username}` : 'Вы вошли');
+      closeSheet();
+      go('profile');
     } catch (e) { toast(e.message); }
-    route();
   }
   function openTgLoginLive() {
     const bot = live.site && live.site.telegram_bot;
@@ -4075,7 +4099,11 @@ ${aiCatalogJSON()}
     sc.dataset.size = 'large';
     sc.dataset.radius = '12';
     sc.dataset.requestAccess = 'write';
-    sc.dataset.authUrl = `${location.origin}/?tglogin=1`;
+    window.asttaTelegramLogin = async (user) => {
+      if (!user?.hash || !$('#tgConsent')?.checked) return;
+      await completeTelegramLogin(user);
+    };
+    sc.dataset.onauth = 'asttaTelegramLogin(user)';
     box.append(sc);
   }
   async function logoutLive() {

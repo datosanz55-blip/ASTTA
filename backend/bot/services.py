@@ -10,9 +10,12 @@
 import re
 
 from django.conf import settings
+from django.core.cache import cache
+from django.utils import timezone
 
 from accounts.models import User
 from bot.telegram_api import call
+from links.models import LinkRequest
 
 HELP = ("Чтобы задать вопрос команде ASTTA, откройте форму по кнопке ниже, "
         "напишите вопрос и контакт для ответа, затем нажмите «Отправить агенту». "
@@ -64,6 +67,28 @@ def handle_update(update: dict):
                       "по кнопке ниже.", open_button())
     elif command == "/orders":
         send(chat_id, orders_text(message["from"]["id"]), open_button("Открыть заказы", "/#profile"))
+    elif message["text"].startswith("Заявка ASTTA\n"):
+        if not message["text"].rstrip().endswith("Согласен на обработку контактных данных для ответа на заявку."):
+            send(chat_id, "Откройте карточку товара и отправьте готовую заявку целиком.")
+            return
+        message_id = message.get("message_id")
+        if not message_id or not cache.add(f"astta:bot:order:{chat_id}:{message_id}", True, 86400):
+            return
+        if not cache.add(f"astta:bot:order-limit:{chat_id}", True, 10):
+            send(chat_id, "Подождите 10 секунд и отправьте заявку снова.")
+            return
+        username = (message.get("from") or {}).get("username", "")
+        contact = f"@{username}" if re.fullmatch(r"[A-Za-z0-9_]+", username) else f"tg://user?id={chat_id}"
+        try:
+            request = LinkRequest.objects.create(
+                text=message["text"].strip()[:2000], contact=contact,
+                comment="Заявка на заказ из Telegram", pd_consent_at=timezone.now(),
+            )
+        except Exception:
+            cache.delete(f"astta:bot:order:{chat_id}:{message_id}")
+            cache.delete(f"astta:bot:order-limit:{chat_id}")
+            raise
+        send(chat_id, f"Заявка №{request.pk} передана менеджеру. Он уточнит наличие и итоговую цену.")
     else:
         # Переписки с агентом в боте пока нет: честно отправляем туда, где она есть.
         send(chat_id, "Сообщения здесь агент пока не читает. " + HELP, open_button("Написать агенту", "/#support"))

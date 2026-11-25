@@ -126,3 +126,17 @@ def test_order_start_opens_manager_form_with_order_number(sent, db):
     assert "A-000123" in params["text"]
     button = params["reply_markup"]["inline_keyboard"][0][0]
     assert button["web_app"]["url"] == "https://astta.ru/?order=A-000123#support"
+
+
+def test_sent_order_draft_creates_one_manager_request(sent, db):
+    from links.models import LinkRequest
+
+    draft = update("Заявка ASTTA\nКроссовки\nКод товара: runner\nРазмер: 42\n"
+                   "Согласен на обработку контактных данных для ответа на заявку.")
+    draft["message"]["from"]["username"] = "buyer777"
+    assert hook(draft).status_code == 200
+    assert hook(draft).status_code == 200
+    request = LinkRequest.objects.get()
+    assert request.contact == "@buyer777"
+    assert "Размер: 42" in request.text
+    assert "передана менеджеру" in sent[-1][1]["text"]

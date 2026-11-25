@@ -6,7 +6,13 @@ from ninja.errors import HttpError
 
 from catalog.models import Product
 from pricing.models import ShippingMethod
-from pricing.services import PricingError, current_rate, quote
+from pricing.services import (
+    PricingError,
+    apply_standard_shipping_rate,
+    current_rate,
+    quote,
+    standard_shipping_rub_per_kg,
+)
 
 router = Router(tags=["Цены"])
 
@@ -83,13 +89,15 @@ def site(request):
         rate_value = current_rate(config=config)
     except PricingError:
         rate_value = None  # курса нет: сайт покажет каталог без цен в рублях
+    shipping_rate = standard_shipping_rub_per_kg()
+    methods = apply_standard_shipping_rate(list(ShippingMethod.objects.filter(is_active=True)), shipping_rate)
     return {
         "rate": rate_value,
         "retail_fee": config.retail_fee,
         "wholesale_fee": config.wholesale_fee,
         "link_rate": config.link_rate,
-        "link_delivery_rub": config.link_delivery_rub,
-        "shipping": [ShippingOut.from_orm(m).dict() for m in ShippingMethod.objects.filter(is_active=True)],
+        "link_delivery_rub": shipping_rate if shipping_rate is not None else config.link_delivery_rub,
+        "shipping": [ShippingOut.from_orm(m).dict() for m in methods],
         "email_login": email_enabled(),
         "order_manager_telegram": settings.ORDER_MANAGER_TELEGRAM,
         "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",

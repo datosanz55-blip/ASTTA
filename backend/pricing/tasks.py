@@ -9,4 +9,7 @@ def update_cny_rate():
     date, value = fetch_daily("CNY")
     ExchangeRate.objects.update_or_create(currency="CNY", date=date,
                                           defaults={"rub_per_unit": value, "source": "cbr"})
-    return f"CNY {date}: {value}"
+    usd_date, usd = fetch_daily("USD")
+    ExchangeRate.objects.update_or_create(currency="USD", date=usd_date,
+                                          defaults={"rub_per_unit": usd, "source": "cbr"})
+    return f"CNY {date}: {value}; USD {usd_date}: {usd}"

@@ -29,6 +29,19 @@ def current_rate(currency="CNY", config: PricingConfig | None = None) -> Decimal
     return (rate.rub_per_unit * (1 + markup)).quantize(Decimal("0.0001"))
 
 
+def standard_shipping_rub_per_kg() -> Decimal | None:
+    usd = ExchangeRate.objects.filter(currency="USD", source="cbr").order_by("-date").first()
+    return (usd.rub_per_unit * 5).quantize(Decimal("0.01")) if usd else None
+
+
+def apply_standard_shipping_rate(methods, rate):
+    if rate is not None:
+        for method in methods:
+            if method.is_default and not method.for_bulky_only:
+                method.rub_per_kg = rate
+    return methods
+
+
 @dataclass
 class PricingContext:
     """Курс, настройки и тарифы, загруженные один раз на запрос, чтобы не ходить в базу на каждый товар."""
@@ -42,6 +55,8 @@ class PricingContext:
     def __post_init__(self):
         if self.rate is None:
             self.rate = current_rate(config=self.config)
+        self.shipping_rate = standard_shipping_rub_per_kg()
+        apply_standard_shipping_rate(self.methods, self.shipping_rate)
         self._by_supplier = {r.supplier_id: r for r in self.rules if r.supplier_id}
         self._by_category = {r.category_id: r for r in self.rules if r.category_id}
 
