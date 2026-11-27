@@ -103,7 +103,7 @@ def test_setup_command_configures_bot(sent, monkeypatch):
     assert methods["setWebhook"]["url"] == "https://astta.ru/api/tg/webhook"
     assert methods["setWebhook"]["secret_token"] == SECRET
     assert methods["setChatMenuButton"]["menu_button"]["web_app"]["url"] == "https://astta.ru"
-    assert [c["command"] for c in methods["setMyCommands"]["commands"]] == ["start", "orders", "help"]
+    assert [c["command"] for c in methods["setMyCommands"]["commands"]] == ["start", "new", "orders", "help", "id"]
 
 
 def test_help_deep_link_opens_support_form(sent, db):
@@ -140,3 +140,57 @@ def test_sent_order_draft_creates_one_manager_request(sent, db):
     assert request.contact == "@buyer777"
     assert "Размер: 42" in request.text
     assert "передана менеджеру" in sent[-1][1]["text"]
+
+
+def test_bot_managers_share_inbox_and_reply_privately(sent, settings, db, monkeypatch):
+    from bot.tasks import notify_manager_task
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222)
+    queued = []
+    monkeypatch.setattr(notify_manager_task, "delay", lambda *args: queued.append(args))
+
+    assert hook(update("/start")).status_code == 200
+    assert "Пришлите ссылку" in sent[-1][1]["text"]
+    assert hook(update("Нужны кроссовки Nike, размер 42")).status_code == 200
+    request = LinkRequest.objects.get()
+    assert request.telegram_chat_id == 777
+    assert {args[0] for args in queued} == {111, 222}
+    assert hook(update("Нужны кроссовки Nike, размер 42")).status_code == 200
+    assert LinkRequest.objects.count() == 1 and len(queued) == 2
+
+    for args in queued:
+        notify_manager_task.run(*args)
+    manager_alert = sent[-1][1]["text"]
+
+    reply = update("Есть в наличии", user_id=222)
+    reply["message"]["reply_to_message"] = {"text": manager_alert, "from": {"id": 123, "is_bot": True}}
+    assert hook(reply).status_code == 200
+    assert sent[-2][1]["chat_id"] == 777
+    assert "Есть в наличии" in sent[-2][1]["text"]
+    sent.clear()
+    assert hook(reply).status_code == 200 and not sent
+
+    hook(update("/inbox", user_id=333))
+    assert "только менеджерам" in sent[-1][1]["text"]
+    sent.clear()
+    reply["message"]["chat"]["id"] = 333
+    reply["message"]["from"]["id"] = 333
+    hook(reply)
+    assert {params["chat_id"] for _, params in sent} == {333}
+
+    hook(update("/orders"))
+    assert f"№{request.pk}" in sent[-1][1]["text"]
+
+
+def test_relay_webhook_preserves_storefront_url(sent, settings, monkeypatch):
+    from bot.management.commands import telegram_setup
+
+    settings.TELEGRAM_WEBHOOK_ORIGIN = "https://tg-relay.astta.ru"
+    calls = {}
+    monkeypatch.setattr(telegram_setup, "call", lambda method, **params: calls.update({method: params}))
+    call_command("telegram_setup")
+    assert calls["setWebhook"]["url"] == "https://tg-relay.astta.ru/api/tg/webhook"
+    assert calls["setWebhook"]["secret_token"] == SECRET
+    assert calls["setWebhook"]["drop_pending_updates"] is False
+    assert calls["setChatMenuButton"]["menu_button"]["web_app"]["url"] == "https://astta.ru"

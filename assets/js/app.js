@@ -3198,7 +3198,7 @@ ${aiCatalogJSON()}
         toast('Выберите размер'); return;
       }
       if (!isMarket(p) && p.colors?.length && !pdState.color) { toast('Выберите цвет'); return; }
-      const username = (live.site?.order_manager_telegram || live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
+      const username = (live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
       if (!/^[A-Za-z0-9_]+$/.test(username)) { toast('Не удалось открыть Telegram'); return; }
       const message = ['Заявка ASTTA', p.t, 'Код товара: ' + p.id,
         pdState.size ? 'Размер: ' + pdState.size : '', pdState.color ? 'Цвет: ' + pdState.color : '',
@@ -3975,12 +3975,9 @@ ${aiCatalogJSON()}
   }
 
   function orderTelegramLink(number) {
-    const manager = live.site?.order_manager_telegram;
-    const username = (manager || live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
+    const username = (live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
     if (!/^[A-Za-z0-9_]+$/.test(username)) return '';
-    const query = manager ? 'text=' + encodeURIComponent('Здравствуйте! Хочу согласовать заказ ' + number)
-      : 'start=' + encodeURIComponent('order_' + number);
-    return 'https://t.me/' + username + '?' + query;
+    return 'https://t.me/' + username + '?start=' + encodeURIComponent('order_' + number);
   }
 
   function orderPlacedSheet(order) {

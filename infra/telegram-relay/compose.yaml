@@ -1,0 +1,18 @@
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      ASTTA_RELAY_DOMAIN: "${ASTTA_RELAY_DOMAIN:?Set the relay DNS hostname}"
+      ASTTA_RELAY_KEY: "${ASTTA_RELAY_KEY:?Set a random relay key}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
