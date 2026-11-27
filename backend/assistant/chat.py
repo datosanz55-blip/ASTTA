@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.db.models import Q
 
 from assistant import llm
@@ -328,6 +329,8 @@ def _run_tool(name: str, args: dict, buyer, ctx, *, audience="", outfit=False) -
         return get_product(str(args.get("slug", "")), ctx=ctx, audience=audience, outfit=outfit)
     if name == "search_knowledge":
         return search_knowledge(str(args.get("query", "")))
+    if name in ("estimate_link_price", "check_market_price") and settings.TELEGRAM_ONLY_ORDERS:
+        return {"note": "Цену конкретного варианта и наличие вручную подтвердит менеджер в боте ASTTA."}
     if name == "estimate_link_price":
         return estimate_link_price(args.get("price_cny"), args.get("qty", 1))
     if name == "check_market_price":
@@ -453,7 +456,12 @@ def chat(history: list[dict], buyer=None, photo: str | None = None) -> ChatAnswe
         ctx = PricingContext()
     except PricingError:
         ctx = None
-    messages = [{"role": "system", "content": SYSTEM.format(facts=facts_text())}, *turns]
+    system = SYSTEM.format(facts=facts_text())
+    if settings.TELEGRAM_ONLY_ORDERS:
+        system += ("\nТекущий порядок оформления: заявки принимаются только в боте ASTTA. "
+                   "Цены в каталоге ориентировочные, цену варианта и наличие проверяет менеджер вручную. "
+                   "Предложи оформить заявку из карточки товара или по ссылке на сайте с переходом в бота.")
+    messages = [{"role": "system", "content": system}, *turns]
     audience, outfit = requested_audience(history), requested_outfit(history)
     seen_products: set[str] = set()
     memos: list[str] = []

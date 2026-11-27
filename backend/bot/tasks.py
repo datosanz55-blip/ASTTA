@@ -13,5 +13,5 @@ def notify_order_event(event_id: int):
 
 
 @shared_task(autoretry_for=(BotError,), retry_backoff=True, max_retries=3)
-def notify_manager_task(manager_id: int, request_id: int, text: str, sticker: str | None = None):
+def notify_manager_task(manager_id: int, request_id: int, text: str, sticker: str | dict | None = None):
     notify_manager(manager_id, request_id, text, sticker)

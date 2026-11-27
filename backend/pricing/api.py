@@ -100,6 +100,7 @@ def site(request):
         "shipping": [ShippingOut.from_orm(m).dict() for m in methods],
         "email_login": email_enabled(),
         "order_manager_telegram": settings.ORDER_MANAGER_TELEGRAM,
+        "telegram_only_orders": settings.TELEGRAM_ONLY_ORDERS,
         "telegram_bot": settings.TELEGRAM_BOT_USERNAME if settings.TELEGRAM_BOT_TOKEN else "",
         "ai": yandex.enabled(),
         "chat": llm.enabled(),

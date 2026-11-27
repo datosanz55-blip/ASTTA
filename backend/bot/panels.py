@@ -73,7 +73,7 @@ def manager_view(chat_id, action):
         if request is None:
             send(chat_id, "По этой заявке ответ в Telegram недоступен.")
         else:
-            send(chat_id, f"Заявка ASTTA №{request.pk}\nНапишите ответ или отправьте стикер.",
+            send(chat_id, f"Заявка ASTTA №{request.pk}\nНапишите ответ или отправьте фото либо стикер.",
                  {"force_reply": True, "input_field_placeholder": f"Ответ по заявке №{request.pk}"})
         return
     if match := re.fullmatch(r"team:item:(\d{1,18})", action):

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from ninja import File, Form, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
@@ -246,6 +247,8 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
 @router.post("/order", response={201: OrderOut}, throttle=[per_ip("link_order", "20/h")],
              summary="Сразу заказать товар по ссылке или скриншоту: оплата по расчёту, агент сверит цену до выкупа")
 def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile | None = File(None)):
+    if settings.TELEGRAM_ONLY_ORDERS:
+        raise HttpError(409, "Оформите заявку через бота ASTTA в Telegram.")
     info = resolve_link(payload.text)
     if payload.text.strip() and not info.url:
         raise HttpError(422, "Не нашли ссылку: вставьте адрес товара или сообщение «поделиться» из приложения")

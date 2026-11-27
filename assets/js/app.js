@@ -382,6 +382,7 @@
      (форма «Цена по ссылке»). Цены считает сервер той же формулой, что заказ по ссылке. */
   const MARKET_NAME = { poizon: 'Poizon', taobao: 'Taobao' };
   const isStorefrontVisible = (p) => !(p?.market?.source === 'taobao' && (p.photoFailed || (p.live && !p.image)));
+  const telegramOnly = () => Boolean(live.site?.telegram_only_orders);
   const isMarket = (p) => !!(p && p.market);
   const hasWholesale = (p) => !isMarket(p) && !!p.tiers.length;
   const marketFrom = (p) => p.retailRub ?? (p.live ? null : linkTotal(p.cny));
@@ -911,7 +912,7 @@
         ${anyLight ? `<fieldset class="ship" data-cart-ship><legend class="sr">Способ доставки</legend>${shipOptionsHTML('cartShip', state.ship === 'cargo' ? 'auto' : state.ship, false)}</fieldset>` : ''}
         ${items.some((i) => byId[i.id].bulky) ? `<p class="note">Мебель едет сборным грузом в обрешётке: ${daysText(SHIP.cargo.days)}.</p>` : ''}
         ${summary}
-        <button class="btn btn--lime btn--wide" type="button" data-checkout>Оформить ${icon('arrow')}</button>
+        <button class="btn btn--lime btn--wide" type="button" data-checkout>${telegramOnly() ? 'Заказать в Telegram' : 'Оформить'} ${icon('arrow')}</button>
       </aside>
     </div>`;
   }
@@ -1593,7 +1594,7 @@
 
   function marketProductHTML(p) {
     const m = p.market, src = m.source, name = MARKET_NAME[src] || src;
-    const result = pdState.marketResult, quote = result?.quote;
+    const result = pdState.marketResult, quote = telegramOnly() ? null : result?.quote;
     const shownPrice = quote ? Number(quote.total_rub) : marketFrom(p);
     const sizes = (m.sizes || []).filter((x) => x && x.size);
     return `<div class="pd pd--market" data-market="1" data-id="${esc(p.id)}">
@@ -1602,21 +1603,21 @@
         <h2>${esc(p.t)}</h2>
         <div class="mkprice">
           <div class="mkprice__row">${quote || shownPrice === null ? '' : '<small>от</small>'}<b>${shownPrice === null ? 'Уточнить цену' : rub(shownPrice)}</b></div>
-          <p>${quote ? 'Вариант: ' + esc(variantLabel(quote.size)) + '' : 'Ориентир по цене товара. Итог подтвердит менеджер.'}</p>
+          <p>${quote ? 'Вариант: ' + esc(variantLabel(quote.size)) + '' : (shownPrice !== null && m.excludes_delivery ? 'Цена товара без доставки. Итог подтвердит менеджер.' : 'Наличие и итоговую цену уточнит менеджер.')}</p>
         </div>
         ${sizes.length ? `<div class="mkpick">
           <span class="sublabel">Выберите размер или вариант</span>
           <div class="mksizes${sizes.some((x, i) => (x.label || variantLabel(x.size, i)).length > 8) ? ' mksizes--variants' : ''}" role="group" aria-label="Размер и вариант">${sizes.map((x, i) => `<button class="mksize" type="button" data-mk-size="${esc(x.size)}" aria-pressed="${pdState.size === x.size}"><b>${esc(x.label || variantLabel(x.size, i))}</b>${x.ru && x.ru !== x.size ? `<span>RU ${esc(x.ru)}</span>` : ''}</button>`).join('')}</div>
         </div>` : ''}
         <button class="btn btn--lime" type="button" data-product-telegram>Заказать в Telegram</button>
-        <div class="mksteps" id="mkQuote" aria-live="polite">
+        ${telegramOnly() ? '' : `<div class="mksteps" id="mkQuote" aria-live="polite">
           ${quote ? `<p class="note">${quote.needs_confirmation ? 'Стоимость согласует менеджер.' : 'Цена проверена на площадке. Действует 5 минут.'}</p>` : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
           <div class="mkbtns">
             <button class="btn btn--lime" type="button" data-mk-order>${quote?.needs_confirmation ? 'Уточнить цену' : quote ? 'Оформить заказ' : 'Заказать'}</button>
             ${!quote && pdState.size ? `<button class="btn btn--ghost" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить цену'}</button>` : ''}
             <button class="linkbtn" type="button" data-open-chat>Уточнить у агента</button>
           </div>
-        </div>
+        </div>`}
         <button class="btn btn--ghost pd__model-info" type="button" data-mk-ai>${icon('spark')}Рассказать о модели</button>
         <details class="pd__details"><summary>О товаре и доставке</summary><div class="stack">
           ${m.article ? `<p>Артикул: <span class="mono">${esc(m.article)}</span></p>` : ''}
@@ -2124,7 +2125,7 @@ ${aiCatalogJSON()}
       html += marketPhotosHTML(m.images);
       if (m.marketResults) html += Object.values(m.marketResults).map((r) => marketStatusHTML(r, r.quote?.size || '') + (r.item?.sizes?.length ? `<div class="quick">${r.item.sizes.map((s) => typeof s === 'string' ? s : s.size).filter(Boolean).slice(0, 40).map((size, i) => `<button class="chip" type="button" data-ai-market-size="${idx}" data-size-value="${esc(size)}" data-market-url="${esc(r.url)}">${esc(variantLabel(size, i))}</button>`).join('')}</div>` : '')).join('');
       if (m.questions && m.questions.length) html += `<div class="quick">${m.questions.map((q) => `<button class="chip chip--q" type="button" data-ai-fill="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
-      if (m.order) html += `<button class="btn btn--lime btn--sm" type="button" data-ai-order="${idx}" style="align-self:flex-start">Оформить заказ · ${rub(m.order.total_rub)}</button>`;
+      if (m.order) html += `<button class="btn btn--lime btn--sm" type="button" data-ai-order="${idx}" style="align-self:flex-start">${telegramOnly() ? 'Заказать в Telegram' : 'Оформить заказ · ' + rub(m.order.total_rub)}</button>`;
       if (m.toAgent) html += '<button class="btn btn--ghost btn--sm" type="button" data-open-chat="" style="align-self:flex-start">Написать агенту</button>';
       return html;
     }).join('');
@@ -2627,6 +2628,7 @@ ${aiCatalogJSON()}
   // pre — уже известное из чата ИИ: цена, размер, количество, название, скриншот (data URL), если ссылки нет.
   function openLinkCalc(text, pre = {}) {
     const url = text ? extractUrl(text) : '';
+    if (telegramOnly()) { openTelegramOrderForm(url, pre); return; }
     const found = url && PLATFORMS.find(([re]) => re.test(url));
     const automatic = Boolean(pre.quote || (url && !pre.price && live.on && live.site?.market && !['1688', 'Pinduoduo'].includes(found?.[1])));
     linkCalc = { automatic, quote: pre.quote || null, text, url, platform: found ? found[1] : '', title: pre.title || '', photo: pre.photo || '', prefilled: Boolean(pre.price), priced: Boolean(pre.price) };
@@ -2824,6 +2826,7 @@ ${aiCatalogJSON()}
   // Товар по фото. Видим цену — сразу считаем «¥ × 13 ₽ + 1000 ₽», цены нет — уточняет менеджер.
   // На сервере цену читает Yandex Vision (/api/link/photo), в превью — Claude через sample с картинкой.
   function openPhotoOrder() {
+    if (telegramOnly()) { openTelegramOrderForm('', { attachPhoto: true }); return; }
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">Товар по фото</h2>
       <p class="note">Пришлите скриншот с Poizon, Taobao, 1688. Если цена видна, подставим её в заявку. Менеджер проверит товар и рассчитает стоимость.</p>
@@ -3213,6 +3216,7 @@ ${aiCatalogJSON()}
     }
     if (d.aiMarketSize !== undefined) {
       const size = t.dataset.sizeValue, url = t.dataset.marketUrl;
+      if (telegramOnly()) { openLinkCalc(url, { size }); return; }
       const entry = { reply: 'Проверяю цену размера ' + size, images: [] };
       ai.log.push(entry); aiRender();
       api('/api/link/market-jobs', { method: 'POST', body: { text: url, size, qty: 1 } })
@@ -3235,7 +3239,14 @@ ${aiCatalogJSON()}
     if (d.reviewWrite !== undefined) { openCustomerReviewForm(); return; }
     if (d.reviewsMore !== undefined) { loadCustomerReviews(); return; }
     if (d.reviewsRetry !== undefined) { loadCustomerReviews(true); return; }
-    if (d.mkSize !== undefined) { pdState.size = d.mkSize; checkMarketSize(); return; }
+    if (d.mkSize !== undefined) {
+      pdState.size = d.mkSize;
+      if (telegramOnly()) $$('[data-mk-size]', $('#sheetBody')).forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.mkSize === d.mkSize));
+      });
+      else checkMarketSize();
+      return;
+    }
     if (t.matches('[data-mk-check]')) { checkMarketSize(); return; }
     if (t.matches('[data-mk-link]')) { const p = byId[pdState.id]; openLinkCalc(p.market.url, { title: p.t }); return; }
     if (t.matches('[data-lc-recheck]')) { checkLinkPrice(); return; }
@@ -3256,36 +3267,10 @@ ${aiCatalogJSON()}
         toast('Выберите размер'); return;
       }
       if (!isMarket(p) && p.colors?.length && !pdState.color) { toast('Выберите цвет'); return; }
-      const username = (live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
-      if (!/^[A-Za-z0-9_]+$/.test(username)) { toast('Не удалось открыть Telegram'); return; }
-      if (pdState.telegramPending) return;
       const selection = pdState;
-      const variant = [selection.id, selection.size, selection.color, selection.qty].join('|');
-      const message = ['Заявка ASTTA', p.t, 'Код товара: ' + p.id,
-        selection.size ? 'Размер: ' + selection.size : '', selection.color ? 'Цвет: ' + selection.color : '',
-        'Количество: ' + selection.qty, p.market?.url || ''].filter(Boolean).join('\n');
-      selection.telegramPending = true;
-      t.disabled = true;
-      t.textContent = 'Готовим заявку…';
-      api('/api/tg/order-draft', { method: 'POST', body: { text: message } })
-        .then(({ start }) => {
-          if (pdState !== selection || variant !== [selection.id, selection.size, selection.color, selection.qty].join('|')) return;
-          const url = 'https://t.me/' + username + '?start=' + encodeURIComponent(start);
-          if (!window.Telegram?.WebApp?.initData) { location.assign(url); return; }
-          openSheet(`<div class="stack">
-            <h2 class="sheet__title">Заявка готова</h2>
-            <p>В чате ASTTA нажмите «Старт», если Telegram попросит, затем «Отправить заявку».</p>
-            <a class="btn btn--lime" href="${esc(url)}" data-telegram-continue>Открыть чат ASTTA</a>
-            <a class="linkbtn" href="${esc(url)}" target="_blank" rel="noopener">Открыть ссылку отдельно</a>
-          </div>`, { narrow: true });
-          try { window.Telegram.WebApp.openTelegramLink(url); } catch (_) { /* Ссылка уже показана. */ }
-        })
-        .catch((error) => { if (pdState === selection) toast(error.message); })
-        .finally(() => {
-          selection.telegramPending = false;
-          t.disabled = false;
-          t.textContent = 'Заказать в Telegram';
-        });
+      const variant = JSON.stringify([selection.id, selection.size, selection.color, selection.qty]);
+      openTelegramDraft(productDraftLines(p, selection), t, () => pdState === selection &&
+        variant === JSON.stringify([selection.id, selection.size, selection.color, selection.qty]));
       return;
     }
     if (d.mkOrder !== undefined) { orderMarketProduct(); return; }
@@ -3347,7 +3332,16 @@ ${aiCatalogJSON()}
     }
     if (d.remove !== undefined) { cart().splice(Number(d.remove), 1); store.save(); updateCartCount(); renderCart(); return; }
     if (t.matches('[data-pay-link]')) { payLinkOrder(t.dataset.payLink); return; }
-    if (t.matches('[data-checkout]')) { openSheet(checkoutHTML(), { narrow: true }); return; }
+    if (t.matches('[data-checkout]')) {
+      if (telegramOnly()) {
+        const items = cart();
+        const snapshot = JSON.stringify(items);
+        openTelegramDraft(items.flatMap((item) => productDraftLines(byId[item.id], item)), t,
+          () => t.isConnected && snapshot === JSON.stringify(cart()));
+      }
+      else openSheet(checkoutHTML(), { narrow: true });
+      return;
+    }
     if (d.wheelDiameter && pdState) {
       pdState.wheelDiameter = d.wheelDiameter; pdState.wheelChosen = false; pdState.size = null;
       rerenderProduct(); return;
@@ -3755,6 +3749,14 @@ ${aiCatalogJSON()}
       return;
     }
     const act = e.submitter && e.submitter.dataset.act;
+    if (f.id === 'telegramOrderForm') {
+      const data = new FormData(f);
+      const url = f.dataset.url;
+      const note = f.dataset.attachPhoto === '1' ? 'Заказ по фото. Фото пришлю следующим сообщением.' : '';
+      openTelegramDraft([note, data.get('description').trim(), url, 'Количество: ' + data.get('qty')].filter(Boolean),
+        e.submitter || f.querySelector('button'), () => f.isConnected);
+      return;
+    }
     if (f.id === 'linkCalcForm') { if (act === 'order') orderFromLinkCalc(); else sendLinkRequest(); return; }
     if (f.id === 'photoOrderForm') { if (act === 'order') orderFromPhoto(); else sendPhotoOrder(); return; }
     if (f.id === 'checkoutForm') { submitCheckout(); return; }
@@ -4050,6 +4052,54 @@ ${aiCatalogJSON()}
       ${events ? `<ol class="timeline">${events}</ol>` : ''}
       <button class="btn btn--ghost btn--sm" type="button" data-open-chat style="align-self:flex-start">${icon('chat')}Вопрос по заказу</button>
     </article>`;
+  }
+
+  function productDraftLines(product, selection) {
+    return [product.t, 'Код товара: ' + product.id,
+      selection.size && selection.size !== '?' ? 'Размер: ' + selection.size : '',
+      selection.color ? 'Цвет: ' + selection.color : '', 'Количество: ' + selection.qty,
+      product.market?.url || ''].filter(Boolean);
+  }
+
+  function openTelegramOrderForm(url, pre = {}) {
+    const details = [pre.title, pre.size ? 'Размер: ' + pre.size : ''].filter(Boolean).join('\n');
+    openSheet(`<form class="stack" id="telegramOrderForm" data-url="${esc(url)}" data-attach-photo="${pre.attachPhoto ? '1' : '0'}">
+      <h2 class="sheet__title">Заказать через Telegram</h2>
+      ${url ? `<p class="linkcalc__src">${esc(url)}</p>` : ''}
+      <p class="note">${pre.attachPhoto ? 'После отправки заявки прикрепите фото в чате с ботом.' : 'Менеджер проверит наличие и рассчитает итоговую цену.'}</p>
+      <label class="field"><span>Товар, размер и цвет</span><textarea name="description" maxlength="400" ${url || pre.attachPhoto ? '' : 'required'}>${esc(details)}</textarea></label>
+      <label class="field"><span>Количество</span><input name="qty" type="number" min="1" max="10000" required value="${esc(pre.qty || 1)}"></label>
+      <button type="submit" class="btn btn--lime">Заказать в Telegram</button>
+    </form>`, { narrow: true });
+  }
+
+  async function openTelegramDraft(lines, button, stillCurrent = () => true) {
+    if (button.disabled) return;
+    const username = (live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
+    if (!/^[A-Za-z0-9_]+$/.test(username)) { toast('Не удалось открыть Telegram'); return; }
+    const message = ['Заявка ASTTA', ...lines].join('\n');
+    if (message.length > 1900) { toast('Заявка слишком большая. Отправьте товары несколькими заявками.'); return; }
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Готовим заявку…';
+    try {
+      const { start } = await api('/api/tg/order-draft', { method: 'POST', body: { text: message } });
+      if (!stillCurrent()) return;
+      const url = 'https://t.me/' + username + '?start=' + encodeURIComponent(start);
+      if (!window.Telegram?.WebApp?.initData) { location.assign(url); return; }
+      openSheet(`<div class="stack">
+        <h2 class="sheet__title">Заявка готова</h2>
+        <p>В чате ASTTA нажмите «Старт», если Telegram попросит, затем «Отправить заявку».</p>
+        <a class="btn btn--lime" href="${esc(url)}" data-telegram-continue>Открыть чат ASTTA</a>
+        <a class="linkbtn" href="${esc(url)}" target="_blank" rel="noopener">Открыть ссылку отдельно</a>
+      </div>`, { narrow: true });
+      try { window.Telegram.WebApp.openTelegramLink(url); } catch (_) { /* Ссылка уже показана. */ }
+    } catch (error) {
+      if (stillCurrent()) toast(error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
   }
 
   function orderTelegramLink(number) {
