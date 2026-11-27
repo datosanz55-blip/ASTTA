@@ -267,3 +267,36 @@ def test_manager_reply_button_routes_to_selected_customer(sent, settings, db, mo
     assert f"№{selected.pk}" in sent[-2][1]["text"]
     own.refresh_from_db()
     assert own.comment == "" and own.agent_note == ""
+
+
+def test_sticker_is_delivered_in_both_directions(sent, settings, db, monkeypatch):
+    from bot.tasks import notify_manager_task
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222)
+    notifications = []
+    monkeypatch.setattr(notify_manager_task, "delay", lambda *args: notifications.append(args))
+    request = LinkRequest.objects.create(text="Заявка клиента", contact="@buyer", telegram_chat_id=777)
+    sticker = {"file_id": "telegram-sticker", "emoji": "👍", "is_animated": True}
+
+    buyer_update = update("")
+    buyer_update["message"].pop("text")
+    buyer_update["message"]["sticker"] = sticker
+    assert hook(buyer_update).status_code == 200
+    assert hook(buyer_update).status_code == 200
+    assert len(notifications) == 2
+    notify_manager_task.run(*notifications[0])
+    manager_id = notifications[0][0]
+    card, forwarded = sent[-2:]
+    assert f"№{request.pk}" in card[1]["text"]
+    assert forwarded == ("sendSticker", {"chat_id": manager_id, "sticker": "telegram-sticker"})
+
+    reply = update("", user_id=manager_id)
+    reply["message"].pop("text")
+    reply["message"]["sticker"] = sticker
+    reply["message"]["reply_to_message"] = {"text": card[1]["text"], "from": {"id": 123}}
+    assert hook(reply).status_code == 200
+    assert sent[-2] == ("sendSticker", {"chat_id": 777, "sticker": "telegram-sticker"})
+    assert notifications[-1][0] != manager_id
+    request.refresh_from_db()
+    assert "[Стикер Telegram]" in request.comment and "[Стикер Telegram]" in request.agent_note

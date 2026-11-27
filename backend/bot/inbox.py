@@ -1,4 +1,4 @@
-"""Two-way text messages between customers and an allowlisted Telegram team."""
+"""Two-way text and sticker messages between customers and an allowlisted Telegram team."""
 import logging
 import re
 
@@ -19,10 +19,14 @@ def manager_ids():
     return set(settings.TELEGRAM_MANAGER_IDS)
 
 
-def notify_manager(manager_id, request_id, text):
+def notify_manager(manager_id, request_id, text, sticker=None):
+    from bot.services import send_sticker
+
     if manager_id not in manager_ids() or not LinkRequest.objects.filter(pk=request_id, status__in=ACTIVE).exists():
         return
-    send_request(manager_id, request_id, text)
+    card = send_request(manager_id, request_id, text)
+    if sticker:
+        send_sticker(manager_id, sticker, reply_to=(card or {}).get("message_id"))
 
 
 def send_request(chat_id, request_id, text, can_reply=True):
@@ -34,19 +38,20 @@ def send_request(chat_id, request_id, text, can_reply=True):
         from bot.panels import buttons
 
         keyboard = buttons([(f"Ответить по заявке №{request_id}", f"team:reply:{request_id}")])
-    send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}", keyboard)
+    return send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}", keyboard)
 
 
 def send_manager_request(chat_id, request, text):
     send_request(chat_id, request.pk, text, request.telegram_chat_id is not None)
 
 
-def enqueue_notifications(request, text, exclude=None):
+def enqueue_notifications(request, text, exclude=None, *, sticker=None):
     from bot.tasks import notify_manager_task
 
     for manager_id in manager_ids() - {exclude}:
         try:
-            notify_manager_task.delay(manager_id, request.pk, text)
+            args = (manager_id, request.pk, text)
+            notify_manager_task.delay(*(args + (sticker,) if sticker else args))
         except Exception:
             log.exception("Не удалось поставить уведомление о заявке %s в очередь", request.pk)
 
@@ -70,10 +75,17 @@ def save_request(chat_id, sender, text):
                                       comment="Заявка из Telegram", pd_consent_at=timezone.now())
 
 
+def message_content(message):
+    sticker = message.get("sticker") or {}
+    if file_id := sticker.get("file_id"):
+        return f"[Стикер Telegram] {sticker.get('emoji', '')}".rstrip(), file_id
+    return message["text"].strip(), None
+
+
 def customer_message(chat_id, message, *, manager=False):
     from bot.services import send
 
-    text = message["text"].strip()
+    text, sticker = message_content(message)
     draft = text.startswith("Заявка ASTTA\n")
     if draft and not text.endswith(CONSENT):
         send(chat_id, "Отправьте заявку целиком или начните новую через /new.")
@@ -114,12 +126,12 @@ def customer_message(chat_id, message, *, manager=False):
         cache.delete(seen)
         cache.delete(rate_key)
         raise
-    enqueue_notifications(request, text)
+    enqueue_notifications(request, text, sticker=sticker)
     send(chat_id, confirmation)
 
 
 def manager_message(chat_id, message):
-    from bot.services import send
+    from bot.services import send, send_sticker
 
     reply = message.get("reply_to_message") or {}
     match = re.match(r"^Заявка ASTTA №(\d{1,18})\n", reply.get("text", ""))
@@ -133,9 +145,12 @@ def manager_message(chat_id, message):
     key = f"astta:bot:reply:{chat_id}:{message.get('message_id')}"
     if not cache.add(key, True, 86400):
         return True
-    text = message["text"].strip()
+    text, sticker = message_content(message)
     try:
-        send(request.telegram_chat_id, f"Менеджер ASTTA · заявка №{request.pk}\n{text[:3700]}")
+        if sticker:
+            send_sticker(request.telegram_chat_id, sticker)
+        else:
+            send(request.telegram_chat_id, f"Менеджер ASTTA · заявка №{request.pk}\n{text[:3700]}")
     except BotError:
         cache.delete(key)
         send(chat_id, "Ответ не доставлен. Проверьте, что клиент не заблокировал бота, и отправьте снова.")
@@ -145,7 +160,7 @@ def manager_message(chat_id, message):
         if saved_request:
             saved_request.agent_note = (saved_request.agent_note + f"\n\n[{chat_id}] {text}")[-6000:].strip()
             saved_request.save(update_fields=["agent_note"])
-    enqueue_notifications(request, f"Другой менеджер уже ответил клиенту:\n{text}", exclude=chat_id)
+    enqueue_notifications(request, f"Другой менеджер уже ответил клиенту:\n{text}", exclude=chat_id, sticker=sticker)
     send(chat_id, f"Ответ по заявке №{request.pk} доставлен.")
     return True
 
