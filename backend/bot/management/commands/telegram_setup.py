@@ -36,7 +36,7 @@ class Command(BaseCommand):
         webhook_url = f"{origin}/api/tg/webhook"
         try:
             call("setWebhook", url=webhook_url, secret_token=settings.TELEGRAM_WEBHOOK_SECRET,
-                 allowed_updates=["message"], drop_pending_updates=False)
+                 allowed_updates=["message", "callback_query"], drop_pending_updates=False)
             call("setMyCommands", commands=COMMANDS)
             call("setMyDescription", description=DESCRIPTION)
             call("setMyShortDescription", short_description=SHORT)

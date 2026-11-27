@@ -39,12 +39,14 @@ def test_webhook_rejects_requests_without_secret(sent, db):
     assert sent == []
 
 
-def test_start_shows_mini_app_button(sent, db):
+def test_start_shows_customer_keyboard_and_catalog_opens_mini_app(sent, db):
     assert hook(update("/start")).status_code == 200
     method, params = sent[0]
-    assert method == "sendMessage" and params["chat_id"] == 777 and "Анна" in params["text"]
-    button = params["reply_markup"]["inline_keyboard"][0][0]
-    assert button == {"text": "Открыть ASTTA", "web_app": {"url": "https://astta.ru"}}
+    assert method == "sendMessage" and params["chat_id"] == 777 and params["reply_markup"]["is_persistent"]
+    assert "Панель менеджера" not in params["reply_markup"]["keyboard"][0]
+    hook(update("Каталог"))
+    button = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]
+    assert button == {"text": "Открыть каталог", "web_app": {"url": "https://astta.ru/#catalog"}}
 
 
 def test_orders_command_lists_buyer_orders(sent, supplier, shoes, pricing_setup):
@@ -65,7 +67,7 @@ def test_bot_ignores_groups_and_answers_honestly(sent, db):
     hook(update("/start", chat_type="group"))
     assert sent == []
     hook(update("Где мой заказ?"))
-    assert "агент пока не читает" in sent[-1][1]["text"]
+    assert "Пришлите ссылку" in sent[-1][1]["text"]
 
 
 def test_status_change_notifies_buyer(sent, supplier, shoes, pricing_setup, django_capture_on_commit_callbacks,
@@ -102,17 +104,16 @@ def test_setup_command_configures_bot(sent, monkeypatch):
     methods = dict(calls)
     assert methods["setWebhook"]["url"] == "https://astta.ru/api/tg/webhook"
     assert methods["setWebhook"]["secret_token"] == SECRET
+    assert methods["setWebhook"]["allowed_updates"] == ["message", "callback_query"]
     assert methods["setChatMenuButton"]["menu_button"]["web_app"]["url"] == "https://astta.ru"
     assert [c["command"] for c in methods["setMyCommands"]["commands"]] == ["start", "new", "orders", "help", "id"]
 
 
-def test_help_deep_link_opens_support_form(sent, db):
-    for text in ("/help", "/start help", "Вопрос агенту"):
+def test_help_opens_chat_request(sent, db):
+    for text in ("/help", "/start help", "Написать менеджеру", "Уточнить цену"):
         hook(update(text))
-        button = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]
-        assert button["text"] == "Написать агенту"
-        assert button["web_app"]["url"] == "https://astta.ru/#support"
-        assert "Отправить агенту" in sent[-1][1]["text"]
+        assert "Пришлите ссылку" in sent[-1][1]["text"]
+        assert "keyboard" in sent[-1][1]["reply_markup"]
 
 
 def test_empty_message_does_not_crash(sent, db):
@@ -120,12 +121,11 @@ def test_empty_message_does_not_crash(sent, db):
     assert sent == []
 
 
-def test_order_start_opens_manager_form_with_order_number(sent, db):
+def test_order_start_prompts_for_message_with_order_number(sent, db):
     assert hook(update("/start order_A-000123")).status_code == 200
     _, params = sent[-1]
     assert "A-000123" in params["text"]
-    button = params["reply_markup"]["inline_keyboard"][0][0]
-    assert button["web_app"]["url"] == "https://astta.ru/?order=A-000123#support"
+    assert "Пришлите ссылку" in params["text"]
 
 
 def test_sent_order_draft_creates_one_manager_request(sent, db):
@@ -139,7 +139,7 @@ def test_sent_order_draft_creates_one_manager_request(sent, db):
     request = LinkRequest.objects.get()
     assert request.contact == "@buyer777"
     assert "Размер: 42" in request.text
-    assert "передана менеджеру" in sent[-1][1]["text"]
+    assert "принята" in sent[-1][1]["text"]
 
 
 def test_bot_managers_share_inbox_and_reply_privately(sent, settings, db, monkeypatch):
@@ -150,7 +150,7 @@ def test_bot_managers_share_inbox_and_reply_privately(sent, settings, db, monkey
     queued = []
     monkeypatch.setattr(notify_manager_task, "delay", lambda *args: queued.append(args))
 
-    assert hook(update("/start")).status_code == 200
+    assert hook(update("Уточнить цену")).status_code == 200
     assert "Пришлите ссылку" in sent[-1][1]["text"]
     assert hook(update("Нужны кроссовки Nike, размер 42")).status_code == 200
     request = LinkRequest.objects.get()
@@ -194,3 +194,52 @@ def test_relay_webhook_preserves_storefront_url(sent, settings, monkeypatch):
     assert calls["setWebhook"]["secret_token"] == SECRET
     assert calls["setWebhook"]["drop_pending_updates"] is False
     assert calls["setChatMenuButton"]["menu_button"]["web_app"]["url"] == "https://astta.ru"
+
+
+def callback(action, user_id=777, chat_type="private"):
+    return {"callback_query": {"id": "test-query", "data": action, "from": {"id": user_id},
+                               "message": {"chat": {"type": chat_type, "id": user_id}}}}
+
+
+def test_storefront_deep_link_preserves_variant_and_requires_confirmation(sent, settings, db, monkeypatch):
+    from bot.tasks import notify_manager_task
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222)
+    notifications = []
+    monkeypatch.setattr(notify_manager_task, "delay", lambda *args: notifications.append(args))
+    resp = Client().post("/api/tg/order-draft", {"text": "Заявка ASTTA\nКроссовки\nРазмер: 47.5\nКоличество: 2"},
+                         content_type="application/json")
+    assert resp.status_code == 200
+    start = resp.json()["start"]
+    hook(update(f"/start {start}"))
+    assert "47.5" in sent[-1][1]["text"]
+    assert not LinkRequest.objects.exists()
+    action = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
+    hook(callback(action))
+    hook(callback(action))
+    request = LinkRequest.objects.get()
+    assert request.telegram_chat_id == 777 and "Количество: 2" in request.text
+    assert {args[0] for args in notifications} == {111, 222}
+    hook(update("Мои заказы и заявки"))
+    assert f"№{request.pk}" in sent[-1][1]["text"]
+
+
+def test_manager_panel_requires_allowlist_on_every_action(sent, settings, db):
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222, 333, 444)
+    request = LinkRequest.objects.create(text="Приватная заявка", contact="@buyer", telegram_chat_id=777)
+    hook(update("/start", user_id=444))
+    assert ["Панель менеджера"] in sent[-1][1]["reply_markup"]["keyboard"]
+    hook(update("Панель менеджера", user_id=444))
+    action = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
+    hook(callback(action, user_id=444))
+    assert "Приватная заявка" in sent[-1][1]["text"]
+    detail = f"team:item:{request.pk}"
+    hook(callback(detail, user_id=444))
+    assert "@buyer" in sent[-1][1]["text"]
+    sent.clear()
+    hook(callback(detail))
+    hook(callback(action, user_id=444, chat_type="group"))
+    assert [method for method, _ in sent] == ["answerCallbackQuery"]
