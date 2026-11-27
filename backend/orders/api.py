@@ -2,6 +2,7 @@ import datetime as dt
 from decimal import Decimal
 from uuid import UUID
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from ninja import Router, Schema, Status
 from ninja.errors import HttpError
@@ -98,6 +99,8 @@ def order_out(request, order: Order) -> dict:
 @router.post("", response={201: OrderOut}, throttle=[per_ip("order", "20/h")],
              summary="Оформить заказ (оплата сразу, потом выкуп у поставщика)")
 def place_order(request, payload: OrderIn):
+    if settings.TELEGRAM_ONLY_ORDERS:
+        raise HttpError(409, "Оформите заявку через бота ASTTA в Telegram.")
     if payload.mode not in Order.Mode.values:
         raise HttpError(400, "mode: retail или wholesale")
     consent_at = require_consent(payload.consent)

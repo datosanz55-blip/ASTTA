@@ -325,3 +325,21 @@ def test_only_manager_can_delete_request_after_confirmation(sent, settings, db):
     hook(callback(confirm, user_id=111))
     hook(callback(confirm, user_id=111))
     assert list(LinkRequest.objects.values_list("pk", flat=True)) == [other.pk]
+
+
+def test_buyer_photo_is_attached_to_active_request(sent, settings, db, monkeypatch):
+    from bot.tasks import notify_manager_task
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111,)
+    notifications = []
+    monkeypatch.setattr(notify_manager_task, "delay", lambda *args: notifications.append(args))
+    request = LinkRequest.objects.create(text="Заказ по фото", contact="@buyer", telegram_chat_id=777)
+    photo = update("")
+    photo["message"]["photo"] = [{"file_id": "thumb"}, {"file_id": "full"}]
+    photo["message"]["caption"] = "Нужен размер 42"
+    assert hook(photo).status_code == 200
+    notify_manager_task.run(*notifications[0])
+    assert sent[-1] == ("sendPhoto", {"chat_id": 111, "photo": "full"})
+    request.refresh_from_db()
+    assert "Нужен размер 42" in request.comment

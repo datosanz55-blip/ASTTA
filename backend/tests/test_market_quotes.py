@@ -191,3 +191,24 @@ def test_workbook_price_is_shared_by_catalog_size_quote_and_order(market, suppli
     assert client.post("/api/link/order", fields).status_code == 201
     assert Order.objects.get().total_rub == 29640
     assert client.post("/api/link/order", {**fields, "quote_id": "", "price_cny": "20000"}).status_code == 422
+
+
+def test_telegram_only_checkout_and_workbook_catalog(settings, supplier, shoes, pricing_setup):
+    from catalog.models import Category
+    from tests.conftest import make_product
+
+    settings.TELEGRAM_ONLY_ORDERS = True
+    make_product(supplier, shoes, "covered", 899, 1, [], market={"source": "poizon", "url": URL})
+    category = Category.objects.create(slug="accessories", name_ru="Аксессуары")
+    make_product(supplier, category, "uncovered", 899, 1, [], market={"source": "poizon", "url": URL})
+    make_product(supplier, shoes, "manual", 20000, 1, [], market={"source": "poizon", "url": URL})
+    client = Client()
+    cards = {card["slug"]: card for card in client.get("/api/products").json()["items"]}
+    assert cards["covered"]["retail_rub"] == "14820"
+    assert cards["uncovered"]["retail_rub"] is None
+    assert cards["manual"]["retail_rub"] is None
+    direct = client.post("/api/orders", {"items": [{"product": "covered"}], "contact": "@buyer", "consent": True},
+                         content_type="application/json")
+    link = client.post("/api/link/order", {"text": URL, "price_cny": "899", "consent": "true", "contact": "@buyer"})
+    assert direct.status_code == link.status_code == 409
+    assert not Order.objects.exists()

@@ -19,11 +19,13 @@ def send(chat_id: int, text: str, keyboard: dict | None = None):
     return call("sendMessage", **params)
 
 
-def send_sticker(chat_id: int, file_id: str, *, reply_to: int | None = None):
-    params = {"chat_id": chat_id, "sticker": file_id}
+def send_media(chat_id: int, media: dict | str, *, reply_to: int | None = None):
+    # Older queued notifications pass the sticker file ID directly.
+    kind, file_id = ("sticker", media) if isinstance(media, str) else (media["kind"], media["file_id"])
+    params = {"chat_id": chat_id, kind: file_id}
     if reply_to:
         params["reply_parameters"] = {"message_id": reply_to, "allow_sending_without_reply": True}
-    return call("sendSticker", **params)
+    return call({"sticker": "sendSticker", "photo": "sendPhoto"}[kind], **params)
 
 
 def orders_text(telegram_id: int) -> str:
@@ -44,7 +46,8 @@ def handle_update(update: dict):
     sender = message.get("from") or {}
     text = message.get("text", "").strip()
     sticker = (message.get("sticker") or {}).get("file_id")
-    if chat.get("type") != "private" or chat.get("id") != sender.get("id") or not (text or sticker):
+    has_content = text or sticker or message.get("photo")
+    if chat.get("type") != "private" or chat.get("id") != sender.get("id") or not has_content:
         return
 
     chat_id = chat["id"]

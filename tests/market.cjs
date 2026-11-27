@@ -86,6 +86,21 @@ const {setup}=require('./storefront.cjs');
   await p.locator('#aiMsgs .msg--me').last().waitFor();
   assert.match(await p.locator('#aiMsgs .msg--me').last().innerText(),/Расскажи коротко про Товар 1943/);
   assert.deepEqual(t.errors,[]);await t.context.close();
+  const only=await setup(browser,{market:true,telegramOnly:true}), page=only.page;
+  await page.waitForSelector('html.is-live');
+  await page.locator('#q').fill('Товар 1943');
+  await page.locator('#catalogGrid [data-open="item-1943"]').first().click();
+  await page.locator('[data-mk-size="42"]').click();
+  assert.equal(await page.locator('[data-mk-order], [data-mk-check]').count(),0);
+  let sentDraft;
+  await page.route('**/api/tg/order-draft',route=>{
+    sentDraft=route.request().postDataJSON();
+    return route.fulfill({json:{start:'request_aabbccddeeff00112233445566778899'}});
+  });
+  await page.route('https://t.me/**',route=>route.fulfill({status:204}));
+  await Promise.all([page.waitForRequest('https://t.me/**'),page.locator('[data-product-telegram]').click()]);
+  assert.match(sentDraft.text,/Код товара: item-1943\nРазмер: 42/);
+  await only.context.close();
   console.log('Marketplace checks passed: async size quotes, stale result isolation, photos, link ordering, unavailable size and AI.');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

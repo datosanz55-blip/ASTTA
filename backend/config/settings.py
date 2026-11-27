@@ -147,6 +147,7 @@ except ValueError:
     AI_EXTRA_BODY = {}  # опечатка в настройке не должна ронять сервер: просто без доп. полей
 
 # Вход покупателей через Telegram: бот создаётся в @BotFather, домен сайта задаётся там же командой /setdomain.
+TELEGRAM_ONLY_ORDERS = env_bool("TELEGRAM_ONLY_ORDERS", False)
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_MANAGER_IDS = tuple(
     int(value.strip()) for value in env("TELEGRAM_MANAGER_IDS", "").split(",") if value.strip()

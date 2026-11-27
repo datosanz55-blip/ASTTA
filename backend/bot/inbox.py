@@ -1,4 +1,4 @@
-"""Two-way text and sticker messages between customers and an allowlisted Telegram team."""
+"""Two-way text, photo and sticker messages between customers and an allowlisted Telegram team."""
 import logging
 import re
 
@@ -19,14 +19,14 @@ def manager_ids():
     return set(settings.TELEGRAM_MANAGER_IDS)
 
 
-def notify_manager(manager_id, request_id, text, sticker=None):
-    from bot.services import send_sticker
+def notify_manager(manager_id, request_id, text, media=None):
+    from bot.services import send_media
 
     if manager_id not in manager_ids() or not LinkRequest.objects.filter(pk=request_id, status__in=ACTIVE).exists():
         return
     card = send_request(manager_id, request_id, text)
-    if sticker:
-        send_sticker(manager_id, sticker, reply_to=(card or {}).get("message_id"))
+    if media:
+        send_media(manager_id, media, reply_to=(card or {}).get("message_id"))
 
 
 def send_request(chat_id, request_id, text, can_reply=True, *, can_delete=False):
@@ -46,13 +46,13 @@ def send_manager_request(chat_id, request, text):
     send_request(chat_id, request.pk, text, request.telegram_chat_id is not None, can_delete=True)
 
 
-def enqueue_notifications(request, text, exclude=None, *, sticker=None):
+def enqueue_notifications(request, text, exclude=None, *, media=None):
     from bot.tasks import notify_manager_task
 
     for manager_id in manager_ids() - {exclude}:
         try:
             args = (manager_id, request.pk, text)
-            notify_manager_task.delay(*(args + (sticker,) if sticker else args))
+            notify_manager_task.delay(*(args + (media,) if media else args))
         except Exception:
             log.exception("Не удалось поставить уведомление о заявке %s в очередь", request.pk)
 
@@ -63,7 +63,7 @@ def start_request(chat_id, order_number="", keyboard=None, *, price=False):
     cache.set(f"astta:bot:new:{chat_id}", order_number or True, 900)
     prefix = f"Заказ {order_number}. " if order_number else ""
     prompt = ("Пришлите ссылку на товар и нужный размер одним сообщением. " if price else
-              "Пришлите ссылку, размер или опишите вопрос одним сообщением. ")
+              "Пришлите ссылку, фото или опишите вопрос одним сообщением. ")
     send(chat_id, prefix + prompt +
          "Отправляя его, вы соглашаетесь на обработку контакта для ответа. "
          f"Политика: {settings.SITE_URL.rstrip('/')}/privacy.html", keyboard)
@@ -80,13 +80,18 @@ def message_content(message):
     sticker = message.get("sticker") or {}
     if file_id := sticker.get("file_id"):
         return f"[Стикер Telegram] {sticker.get('emoji', '')}".rstrip(), file_id
-    return message["text"].strip(), None
+    photos = message.get("photo") or []
+    if photos and (file_id := photos[-1].get("file_id")):
+        caption = (message.get("caption") or "").strip()
+        return ("[Фото Telegram]" + (f" {caption}" if caption else ""),
+                {"kind": "photo", "file_id": file_id})
+    return (message.get("text") or "").strip(), None
 
 
 def customer_message(chat_id, message, *, manager=False):
     from bot.services import send
 
-    text, sticker = message_content(message)
+    text, media = message_content(message)
     draft = text.startswith("Заявка ASTTA\n")
     if draft and not text.endswith(CONSENT):
         send(chat_id, "Отправьте заявку целиком или начните новую через /new.")
@@ -127,12 +132,12 @@ def customer_message(chat_id, message, *, manager=False):
         cache.delete(seen)
         cache.delete(rate_key)
         raise
-    enqueue_notifications(request, text, sticker=sticker)
+    enqueue_notifications(request, text, media=media)
     send(chat_id, confirmation)
 
 
 def manager_message(chat_id, message):
-    from bot.services import send, send_sticker
+    from bot.services import send, send_media
 
     reply = message.get("reply_to_message") or {}
     match = re.match(r"^Заявка ASTTA №(\d{1,18})\n", reply.get("text", ""))
@@ -146,10 +151,10 @@ def manager_message(chat_id, message):
     key = f"astta:bot:reply:{chat_id}:{message.get('message_id')}"
     if not cache.add(key, True, 86400):
         return True
-    text, sticker = message_content(message)
+    text, media = message_content(message)
     try:
-        if sticker:
-            send_sticker(request.telegram_chat_id, sticker)
+        if media:
+            send_media(request.telegram_chat_id, media)
         else:
             send(request.telegram_chat_id, f"Менеджер ASTTA · заявка №{request.pk}\n{text[:3700]}")
     except BotError:
@@ -161,7 +166,7 @@ def manager_message(chat_id, message):
         if saved_request:
             saved_request.agent_note = (saved_request.agent_note + f"\n\n[{chat_id}] {text}")[-6000:].strip()
             saved_request.save(update_fields=["agent_note"])
-    enqueue_notifications(request, f"Другой менеджер уже ответил клиенту:\n{text}", exclude=chat_id, sticker=sticker)
+    enqueue_notifications(request, f"Другой менеджер уже ответил клиенту:\n{text}", exclude=chat_id, media=media)
     send(chat_id, f"Ответ по заявке №{request.pk} доставлен.")
     return True
 

@@ -87,15 +87,17 @@ def _memo(memo: dict | None) -> dict:
 def link_total(product: Product, price_cny, memo: dict | None = None) -> Decimal | None:
     """Товар с площадки заказывают как по ссылке: и цену считаем той же формулой (links.services.estimate)."""
     from links.services import estimate
+    from pricing.marketplace import workbook_scale
     from pricing.services import PricingError
 
-    if not price_cny:
+    source = product.market.get("source", "")
+    if not price_cny or (settings.TELEGRAM_ONLY_ORDERS and not workbook_scale(source, product.category)):
         return None
     try:
         memo = _memo(memo)
-        place = memo["places"].get(product.market.get("source"))
-        return estimate(Decimal(str(price_cny)), 1, place, product.category, pricing=memo["pricing"],
-                        source=product.market.get("source", "")).total_rub
+        place = memo["places"].get(source)
+        result = estimate(Decimal(str(price_cny)), 1, place, product.category, pricing=memo["pricing"], source=source)
+        return None if settings.TELEGRAM_ONLY_ORDERS and result.needs_confirmation else result.total_rub
     except (PricingError, InvalidOperation):
         return None
 
