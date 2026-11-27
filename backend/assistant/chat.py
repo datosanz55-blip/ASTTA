@@ -32,7 +32,8 @@ SYSTEM = """Ты ASTTA AI, помощник маркетплейса ASTTA: то
 Правила:
 - Цены, наличие, размеры и сроки бери ТОЛЬКО из инструментов и фактов ниже. Никогда не придумывай товары и цены.
 - Подбор под задачу и бюджет: вызови search_catalog (можно несколько раз с разными словами), выбери подходящее,
-  уложись в бюджет и назови итог. Цены уже под ключ: товар, доставка и сбор.
+  уложись в бюджет и назови итог. Цены предварительные. Если цена товара без доставки, так и скажи.
+  Итог подтвердит менеджер.
 - В образе для мужчины/женщины используй только подходящий пол или явно указанный унисекс.
   gender="" означает, что пол неизвестен: не определяй его по фото, цвету, фасону или размеру.
   Не подставляй детские вещи взрослому. Если подходящих вещей мало — скажи об этом, не добавляй случайные товары.
@@ -89,7 +90,7 @@ TOOLS = [
             "qty": {"type": "integer"}}, "required": ["text"]}}},
     {"type": "function", "function": {
         "name": "search_catalog",
-        "description": "Найти товары в каталоге ASTTA по словам. Возвращает до 8 товаров с ценой под ключ в рублях.",
+        "description": "Найти до 8 товаров в каталоге ASTTA с предварительной ценой в рублях.",
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string", "description": "что ищем: «кроссовки», «худи оверсайз», «наушники»"},
             "max_price_rub": {"type": "number", "description": "верхняя граница цены за штуку, если есть бюджет"},
@@ -105,7 +106,7 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {
         "name": "estimate_link_price",
-        "description": "Цена под ключ для товара с площадки (Poizon, Taobao, 1688) по цене в юанях.",
+        "description": "Предварительная цена для товара с площадки (Poizon, Taobao, 1688) по цене в юанях.",
         "parameters": {"type": "object", "properties": {
             "price_cny": {"type": "number"}, "qty": {"type": "integer"}}, "required": ["price_cny"]}}},
     {"type": "function", "function": {
@@ -114,7 +115,7 @@ TOOLS = [
                        "площадка, "
                        "номер товара, название из сообщения (часто по-китайски — переведи его покупателю), есть ли "
                        "этот товар в нашем каталоге. Для Poizon, Taobao и Tmall ещё цену в юанях, размеры и фото "
-                       "с площадки и цену под ключ (если просмотр площадок подключён). Может думать до минуты.",
+                       "с площадки и предварительную цену (если просмотр площадок подключён). Может думать до минуты.",
         "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
     {"type": "function", "function": {
         "name": "search_reviews",
@@ -179,7 +180,11 @@ def _market_note(product) -> dict:
     """Товар с Poizon/Taobao: цена «от» — точную покупатель смотрит для своего размера по ссылке."""
     if not product.is_market:
         return {}
-    return {"price_is_from": True, "marketplace": product.market.get("source"),
+    from pricing.marketplace import workbook_scale
+
+    source = product.market.get("source")
+    return {"price_is_from": True, "marketplace": source,
+            "excludes_delivery": bool(workbook_scale(source, product.category)),
             "note": "цена «от»: точная зависит от размера — предложи выбрать размер и запустить "
                     "проверку цены размера на ASTTA; не отправляй его узнавать цену в китайском приложении"}
 
@@ -257,9 +262,9 @@ def inspect_link(text: str, ctx=None) -> dict:
 
 
 def marketplace_card(info) -> dict:
-    """Цена, размеры и фото с Poizon/Taobao через Apify и сразу цена под ключ по минимальной цене."""
+    """Цена, размеры и фото с Poizon/Taobao через Apify и предварительная цена по минимальной цене."""
     from links import apify
-    from links.services import estimate
+    from links.services import category_for_link, estimate
 
     if not (info.item_id and apify.supported(info.code)):
         return {"note": "Эту площадку автоматически не смотрим" if info.code not in ("taobao", "tmall", "poizon")
@@ -275,12 +280,14 @@ def marketplace_card(info) -> dict:
     out = {"item": public_item(item)}
     if item.get("price_cny"):
         try:
-            est = estimate(Decimal(str(item["price_cny"])), 1, info.marketplace)
+            category, place = category_for_link(info), info.marketplace
+            est = estimate(Decimal(str(item["price_cny"])), 1, place, category, source=info.code)
             out["estimate"] = {"total_rub": int(est.total_rub), "for_price_cny": item["price_cny"],
-                               "rate_rub_per_cny": float(est.rate), "notes": est.notes}
+                               "rate_rub_per_cny": float(est.rate), "notes": est.notes,
+                               "excludes_delivery": est.excludes_delivery}
             # Цены по размерам скрапер обычно не даёт — только от и до. Считаем и верхнюю границу.
             if item.get("price_cny_max") and item["price_cny_max"] > item["price_cny"]:
-                top = estimate(Decimal(str(item["price_cny_max"])), 1, info.marketplace)
+                top = estimate(Decimal(str(item["price_cny_max"])), 1, place, category, source=info.code)
                 out["estimate"].update(max_total_rub=int(top.total_rub), max_for_price_cny=item["price_cny_max"])
         except PricingError:
             pass
@@ -376,7 +383,7 @@ def _order_button(line: str, conversation: str, has_photo: bool, said: str = "")
     (есть в его сообщениях) или со скриншота: цену «от» с площадки модель подставить не может.
     """
     from links import apify
-    from links.services import estimate, parse_link
+    from links.services import category_for_link, estimate, parse_link
 
     parts = [p.strip() for p in line.split("|")]
     if len(parts) < 3:
@@ -403,7 +410,10 @@ def _order_button(line: str, conversation: str, has_photo: bool, said: str = "")
     if item:
         title = item.get("title") or ""
     try:
-        total = int(estimate(Decimal(str(price)), qty, info.marketplace).total_rub)
+        result = estimate(Decimal(str(price)), qty, info.marketplace, category_for_link(info), source=info.code)
+        if result.needs_confirmation:
+            return None
+        total = int(result.total_rub)
     except (PricingError, InvalidOperation):
         return None
     return {"url": url, "title": title[:200], "size": size, "qty": qty, "price_cny": round(price, 2),
@@ -519,7 +529,7 @@ def _link_memo(result: dict) -> str:
         parts.append(f"цена на площадке {market['price_cny']:g}{top} ¥{known}")
     if est.get("total_rub"):
         top = f"–{est['max_total_rub']}" if est.get("max_total_rub") else ""
-        parts.append(f"под ключ {est['total_rub']}{top} ₽")
+        parts.append(f"{est['total_rub']}{top} ₽" + (" без доставки" if est.get("excludes_delivery") else " ориентир"))
     if market.get("size_prices"):
         pairs = list(market["size_prices"].items())[:30]
         parts.append("цены по размерам " + ", ".join(f"{k}: {v:g} ¥" for k, v in pairs))

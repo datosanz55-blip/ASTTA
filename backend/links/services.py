@@ -15,6 +15,7 @@ from django.db.models import Avg
 
 from catalog.models import Category, Product
 from links.models import Marketplace
+from pricing.marketplace import workbook_price, workbook_scale
 from pricing.models import PricingConfig
 from pricing.services import PricingContext, round10
 
@@ -167,6 +168,11 @@ def find_in_catalog(info: LinkInfo) -> Product | None:
     return None
 
 
+def category_for_link(info: LinkInfo) -> Category | None:
+    product = find_in_catalog(info) if info.code in ("poizon", "taobao") else None
+    return product.category if product else None
+
+
 @dataclass
 class Estimate:
     price_cny: Decimal
@@ -180,6 +186,8 @@ class Estimate:
     delivery_rub: Decimal
     fee_rub: Decimal
     notes: list[str] = field(default_factory=list)
+    excludes_delivery: bool = False
+    needs_confirmation: bool = False
 
     @property
     def total_rub(self) -> Decimal:
@@ -205,15 +213,31 @@ def link_pricing() -> tuple:
 
 def estimate(price_cny: Decimal, qty: int = 1, marketplace: Marketplace | None = None,
              category: Category | None = None, weight_kg: Decimal | None = None, bulky: bool = False,
-             pricing: tuple | None = None) -> Estimate:
-    """Предварительная цена под ключ по цене с площадки.
+             pricing: tuple | None = None, *, source: str = "") -> Estimate:
+    """Предварительная цена по цене с площадки.
+
+    Для обуви POIZON и одежды Taobao применяем шкалу из калькулятора ASTTA × ТТ без доставки.
 
     Если в настройках цены задан курс для заказа по ссылке, считаем просто: цена × этот курс + логистика за штуку
     (сбор уже в курсе). Иначе как товары каталога: курс ЦБ с надбавкой, доставка по весу, сервисный сбор.
-    Надбавка площадки и доставка по Китаю добавляются в обоих случаях.
+    Для остальных категорий надбавка площадки и доставка по Китаю добавляются к расчёту.
     """
     # pricing — (config, ctx) из link_pricing(): для списка товаров настройки читаем один раз, а не на каждый товар.
     config, ctx = pricing or link_pricing()
+    if scale := workbook_scale(source or (marketplace.code if marketplace else ""), category):
+        base = price_cny * ctx.rate
+        price, needs_confirmation = workbook_price(base, scale)
+        notes = ["Цена товара без доставки. Менеджер подтвердит итоговую стоимость."]
+        if needs_confirmation:
+            notes.append("Стоимость выше порога автоматического расчёта. Требуется согласование с менеджером.")
+        zero = Decimal(0)
+        return Estimate(
+            price_cny=price_cny, qty=qty, rate=ctx.rate, weight_kg=weight_kg or zero,
+            weight_source="доставка рассчитывается отдельно",
+            goods_rub=base * qty, china_delivery_rub=zero, marketplace_fee_rub=zero,
+            delivery_rub=zero, fee_rub=(price - base) * qty, notes=notes,
+            excludes_delivery=True, needs_confirmation=needs_confirmation,
+        )
     simple = config.link_rate is not None
     notes = ["Цена предварительная: точную пришлёт агент после проверки товара и продавца."]
     if config.link_delivery_rub is not None and ctx.shipping_rate is None:

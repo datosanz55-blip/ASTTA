@@ -61,11 +61,10 @@ def test_estimate_uses_category_weight_marketplace_and_commission(supplier, shoe
     config.save()
     make_product(supplier, shoes, "a", 100, "1.2", [])
     make_product(supplier, shoes, "b", 100, "1.6", [])
-    poizon = Marketplace.objects.get(code="poizon")
-    poizon.extra_fee, poizon.china_delivery_cny = Decimal("0.04"), Decimal("15")
-    poizon.save()
+    place = Marketplace.objects.create(code="other", name="Другая площадка", extra_fee=Decimal("0.04"),
+                                       china_delivery_cny=Decimal("15"))
     CommissionRule.objects.create(category=shoes, retail_fee=Decimal("0.08"))
-    e = estimate(Decimal("500"), 1, poizon, shoes)
+    e = estimate(Decimal("500"), 1, place, shoes)
     assert e.weight_kg == Decimal("1.40") and "средний вес" in e.weight_source
     assert e.goods_rub == Decimal("500") * Decimal("11.4")
     assert e.china_delivery_rub == Decimal("15") * Decimal("11.4")

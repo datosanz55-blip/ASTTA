@@ -94,13 +94,14 @@ def link_total(product: Product, price_cny, memo: dict | None = None) -> Decimal
     try:
         memo = _memo(memo)
         place = memo["places"].get(product.market.get("source"))
-        return estimate(Decimal(str(price_cny)), 1, place, pricing=memo["pricing"]).total_rub
+        return estimate(Decimal(str(price_cny)), 1, place, product.category, pricing=memo["pricing"],
+                        source=product.market.get("source", "")).total_rub
     except (PricingError, InvalidOperation):
         return None
 
 
 def retail_rub(product: Product, ctx, memo: dict | None = None) -> Decimal | None:
-    """Цена под ключ за штуку для карточки и для ИИ: у товара с площадки — «от» по формуле ссылки."""
+    """Предварительная цена за штуку для карточки и ИИ. У товаров с площадок — цена «от»."""
     from pricing.services import PricingError, quote
 
     if product.is_market:
@@ -114,8 +115,11 @@ def retail_rub(product: Product, ctx, memo: dict | None = None) -> Decimal | Non
 def market_out(product: Product, memo: dict | None = None) -> dict | None:
     if not product.is_market:
         return None
+    from pricing.marketplace import workbook_scale
+
     m = product.market
-    return {"source": m.get("source"), "url": m.get("url", ""), "poizon_url": m.get("poizon_url", ""),
+    return {"excludes_delivery": bool(workbook_scale(m.get("source"), product.category)),
+            "source": m.get("source"), "url": m.get("url", ""), "poizon_url": m.get("poizon_url", ""),
             "price_cny_max": m.get("price_cny_max"),
             "retail_max_rub": link_total(product, m.get("price_cny_max"), memo),
             "poizon_rub_min": m.get("poizon_rub_min"),

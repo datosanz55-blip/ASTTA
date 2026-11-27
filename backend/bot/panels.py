@@ -32,6 +32,7 @@ def buttons(*rows):
 def manager_panel(chat_id):
     from bot.services import send
 
+    cache.delete(f"astta:bot:new:{chat_id}")
     send(chat_id, "Панель менеджера ASTTA", buttons(
         [("Новые обращения", "team:new:0"), ("Все обращения", "team:all:0")],
         [("Заказы покупателей", "team:orders:0")],
@@ -42,6 +43,15 @@ def manager_view(chat_id, action):
     from bot.services import send
 
     if chat_id not in inbox.manager_ids():
+        return
+    cache.delete(f"astta:bot:new:{chat_id}")
+    if match := re.fullmatch(r"team:reply:(\d{1,18})", action):
+        request = LinkRequest.objects.filter(pk=int(match[1]), telegram_chat_id__isnull=False).first()
+        if request is None:
+            send(chat_id, "По этой заявке ответ в Telegram недоступен.")
+        else:
+            send(chat_id, f"Заявка ASTTA №{request.pk}\nВведите ответ клиенту.",
+                 {"force_reply": True, "input_field_placeholder": f"Ответ по заявке №{request.pk}"})
         return
     if match := re.fullmatch(r"team:item:(\d{1,18})", action):
         item = LinkRequest.objects.filter(pk=int(match[1])).first()

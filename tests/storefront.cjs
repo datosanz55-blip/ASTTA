@@ -82,8 +82,10 @@ if (require.main === module) (async()=>{
   {
    const t=await setup(browser,{saved:true,failPage:25}),p=t.page;
    await p.waitForSelector('#catalogRetry:visible');
+   await p.evaluate(()=>{window.catalogFirstCard=document.querySelector('#catalogGrid .card');});
    await p.locator('#catalogRetry').click();
    await p.waitForFunction(()=>!document.querySelector('#catalogStatus').textContent);
+   assert(await p.evaluate(()=>window.catalogFirstCard===document.querySelector('#catalogGrid .card')),'keep the visible card DOM during background loads');
    assert(t.requests.includes(33),'catalog beyond 1200 must load');
    assert(t.maxActive()<=3,'background catalog concurrency is bounded');
    assert.equal(await p.locator('#catalogGrid .card').count(),60);

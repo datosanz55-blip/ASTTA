@@ -29,7 +29,12 @@ def send_request(chat_id, request_id, text, can_reply=True):
     from bot.services import send
 
     hint = "\n\nОтветьте на это сообщение через «Ответить»." if can_reply else ""
-    send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}")
+    keyboard = None
+    if can_reply:
+        from bot.panels import buttons
+
+        keyboard = buttons([(f"Ответить по заявке №{request_id}", f"team:reply:{request_id}")])
+    send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}", keyboard)
 
 
 def send_manager_request(chat_id, request, text):
@@ -65,7 +70,7 @@ def save_request(chat_id, sender, text):
                                       comment="Заявка из Telegram", pd_consent_at=timezone.now())
 
 
-def customer_message(chat_id, message):
+def customer_message(chat_id, message, *, manager=False):
     from bot.services import send
 
     text = message["text"].strip()
@@ -75,6 +80,10 @@ def customer_message(chat_id, message):
         return
     key = f"astta:bot:new:{chat_id}"
     pending = cache.get(key)
+    if manager and not (draft or pending):
+        send(chat_id, "Откройте нужную заявку и нажмите «Ответить по заявке». "
+             "Чтобы создать своё обращение, выберите «Написать менеджеру».")
+        return
     request = LinkRequest.objects.filter(telegram_chat_id=chat_id, status__in=ACTIVE).first()
     if not (draft or pending or request):
         from bot.panels import keyboard

@@ -168,7 +168,8 @@ def test_photo_reading_api(ai, supplier, shoes, pricing_setup):
     assert (Decimal(data["price_cny"]), data["category"]) == (Decimal("899"), "shoes")
     assert data["understood"] and not data["handoff"] and data["request_id"] is None
     assert data["similar"][0]["slug"] == "sneaker"
-    assert data["estimate"]["total_rub"] == "12690"  # 899 × 13 + 1000 = 12 687 → до 10 ₽
+    assert data["estimate"]["total_rub"] == "14820"
+    assert data["estimate"]["excludes_delivery"] and Decimal(data["estimate"]["delivery_rub"]) == 0
     ocr_request = calls[0][1]
     assert ocr_request["languageCodes"] == ["zh", "ru", "en"] and ocr_request["mimeType"] == "JPEG"
     assert AiLog.objects.filter(kind="photo").count() == 1
