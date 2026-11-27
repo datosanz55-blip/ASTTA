@@ -197,16 +197,18 @@ def test_telegram_only_checkout_and_workbook_catalog(settings, supplier, shoes, 
     from catalog.models import Category
     from tests.conftest import make_product
 
-    settings.TELEGRAM_ONLY_ORDERS = True
     make_product(supplier, shoes, "covered", 899, 1, [], market={"source": "poizon", "url": URL})
     category = Category.objects.create(slug="accessories", name_ru="Аксессуары")
     make_product(supplier, category, "uncovered", 899, 1, [], market={"source": "poizon", "url": URL})
     make_product(supplier, shoes, "manual", 20000, 1, [], market={"source": "poizon", "url": URL})
     client = Client()
+    settings.TELEGRAM_ONLY_ORDERS = False
+    previous = {card["slug"]: card["retail_rub"] for card in client.get("/api/products").json()["items"]}
+    settings.TELEGRAM_ONLY_ORDERS = True
     cards = {card["slug"]: card for card in client.get("/api/products").json()["items"]}
-    assert cards["covered"]["retail_rub"] == "14820"
-    assert cards["uncovered"]["retail_rub"] is None
-    assert cards["manual"]["retail_rub"] is None
+    assert cards["covered"]["retail_rub"] == previous["covered"] == "14820"
+    for slug in ("uncovered", "manual"):
+        assert Decimal(cards[slug]["retail_rub"]) == Decimal(previous[slug]) + 1500
     direct = client.post("/api/orders", {"items": [{"product": "covered"}], "contact": "@buyer", "consent": True},
                          content_type="application/json")
     link = client.post("/api/link/order", {"text": URL, "price_cny": "899", "consent": "true", "contact": "@buyer"})
