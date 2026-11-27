@@ -1,5 +1,6 @@
 """Chat keyboards, manager views and confirmation of storefront requests."""
 import re
+import secrets
 
 from django.conf import settings
 from django.core.cache import cache
@@ -45,6 +46,28 @@ def manager_view(chat_id, action):
     if chat_id not in inbox.manager_ids():
         return
     cache.delete(f"astta:bot:new:{chat_id}")
+    if match := re.fullmatch(r"team:delete:(\d{1,18})", action):
+        request_id = int(match[1])
+        if not LinkRequest.objects.filter(pk=request_id).exists():
+            send(chat_id, "Заявка уже удалена.")
+            return
+        token = secrets.token_hex(8)
+        cache.set(f"astta:bot:delete:{chat_id}:{token}", request_id, 300)
+        send(chat_id, f"Удалить заявку №{request_id} из бота и CRM? Восстановить её из панели нельзя.",
+             buttons([("Удалить", f"team:confirm-delete:{token}"), ("Отмена", f"team:cancel-delete:{token}")]))
+        return
+    if match := re.fullmatch(r"team:(confirm|cancel)-delete:([0-9a-f]{16})", action):
+        key = f"astta:bot:delete:{chat_id}:{match[2]}"
+        request_id = cache.get(key)
+        if not request_id or not cache.delete(key):
+            send(chat_id, "Подтверждение недоступно. Откройте карточку заявки ещё раз.")
+        elif match[1] == "cancel":
+            send(chat_id, f"Удаление заявки №{request_id} отменено.")
+        else:
+            deleted, _ = LinkRequest.objects.filter(pk=request_id).delete()
+            result = "удалена" if deleted else "уже удалена"
+            send(chat_id, f"Заявка №{request_id} {result}.", buttons([("К обращениям", "team:all:0")]))
+        return
     if match := re.fullmatch(r"team:reply:(\d{1,18})", action):
         request = LinkRequest.objects.filter(pk=int(match[1]), telegram_chat_id__isnull=False).first()
         if request is None:

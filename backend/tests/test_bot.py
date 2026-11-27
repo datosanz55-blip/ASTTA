@@ -300,3 +300,28 @@ def test_sticker_is_delivered_in_both_directions(sent, settings, db, monkeypatch
     assert notifications[-1][0] != manager_id
     request.refresh_from_db()
     assert "[Стикер Telegram]" in request.comment and "[Стикер Telegram]" in request.agent_note
+
+
+def test_only_manager_can_delete_request_after_confirmation(sent, settings, db):
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222)
+    ticket = LinkRequest.objects.create(text="Удаляемая заявка", contact="@buyer", telegram_chat_id=777)
+    other = LinkRequest.objects.create(text="Другая заявка", contact="@other", telegram_chat_id=778)
+    hook(callback(f"team:item:{ticket.pk}", user_id=111))
+    delete = sent[-1][1]["reply_markup"]["inline_keyboard"][-1][0]["callback_data"]
+    hook(callback(delete, user_id=111))
+    confirm, cancel = [button["callback_data"] for button in sent[-1][1]["reply_markup"]["inline_keyboard"][0]]
+    hook(callback(cancel, user_id=111))
+    hook(callback(confirm, user_id=111))
+    assert LinkRequest.objects.filter(pk=ticket.pk).exists()
+
+    hook(callback(delete, user_id=111))
+    confirm = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
+    hook(callback(confirm, user_id=777))
+    hook(callback(confirm, user_id=222))
+    assert LinkRequest.objects.filter(pk=ticket.pk).exists()
+
+    hook(callback(confirm, user_id=111))
+    hook(callback(confirm, user_id=111))
+    assert list(LinkRequest.objects.values_list("pk", flat=True)) == [other.pk]

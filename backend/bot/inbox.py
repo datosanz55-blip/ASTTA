@@ -29,20 +29,21 @@ def notify_manager(manager_id, request_id, text, sticker=None):
         send_sticker(manager_id, sticker, reply_to=(card or {}).get("message_id"))
 
 
-def send_request(chat_id, request_id, text, can_reply=True):
+def send_request(chat_id, request_id, text, can_reply=True, *, can_delete=False):
+    from bot.panels import buttons
     from bot.services import send
 
-    hint = "\n\nОтветьте на это сообщение через «Ответить»." if can_reply else ""
-    keyboard = None
+    rows = []
     if can_reply:
-        from bot.panels import buttons
-
-        keyboard = buttons([(f"Ответить по заявке №{request_id}", f"team:reply:{request_id}")])
-    return send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}", keyboard)
+        rows.append([(f"Ответить по заявке №{request_id}", f"team:reply:{request_id}")])
+    if can_delete:
+        rows.append([("Удалить заявку", f"team:delete:{request_id}")])
+    hint = "\n\nМожно также ответить на это сообщение через «Ответить»." if can_reply else ""
+    return send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}", buttons(*rows) if rows else None)
 
 
 def send_manager_request(chat_id, request, text):
-    send_request(chat_id, request.pk, text, request.telegram_chat_id is not None)
+    send_request(chat_id, request.pk, text, request.telegram_chat_id is not None, can_delete=True)
 
 
 def enqueue_notifications(request, text, exclude=None, *, sticker=None):
