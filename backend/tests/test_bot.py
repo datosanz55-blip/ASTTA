@@ -267,3 +267,61 @@ def test_manager_reply_button_routes_to_selected_customer(sent, settings, db, mo
     assert f"№{selected.pk}" in sent[-2][1]["text"]
     own.refresh_from_db()
     assert own.comment == "" and own.agent_note == ""
+
+
+def test_sticker_is_delivered_in_both_directions(sent, settings, db, monkeypatch):
+    from bot.tasks import notify_manager_task
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222)
+    notifications = []
+    monkeypatch.setattr(notify_manager_task, "delay", lambda *args: notifications.append(args))
+    request = LinkRequest.objects.create(text="Заявка клиента", contact="@buyer", telegram_chat_id=777)
+    sticker = {"file_id": "telegram-sticker", "emoji": "👍", "is_animated": True}
+
+    buyer_update = update("")
+    buyer_update["message"].pop("text")
+    buyer_update["message"]["sticker"] = sticker
+    assert hook(buyer_update).status_code == 200
+    assert hook(buyer_update).status_code == 200
+    assert len(notifications) == 2
+    notify_manager_task.run(*notifications[0])
+    manager_id = notifications[0][0]
+    card, forwarded = sent[-2:]
+    assert f"№{request.pk}" in card[1]["text"]
+    assert forwarded == ("sendSticker", {"chat_id": manager_id, "sticker": "telegram-sticker"})
+
+    reply = update("", user_id=manager_id)
+    reply["message"].pop("text")
+    reply["message"]["sticker"] = sticker
+    reply["message"]["reply_to_message"] = {"text": card[1]["text"], "from": {"id": 123}}
+    assert hook(reply).status_code == 200
+    assert sent[-2] == ("sendSticker", {"chat_id": 777, "sticker": "telegram-sticker"})
+    assert notifications[-1][0] != manager_id
+    request.refresh_from_db()
+    assert "[Стикер Telegram]" in request.comment and "[Стикер Telegram]" in request.agent_note
+
+
+def test_only_manager_can_delete_request_after_confirmation(sent, settings, db):
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111, 222)
+    ticket = LinkRequest.objects.create(text="Удаляемая заявка", contact="@buyer", telegram_chat_id=777)
+    other = LinkRequest.objects.create(text="Другая заявка", contact="@other", telegram_chat_id=778)
+    hook(callback(f"team:item:{ticket.pk}", user_id=111))
+    delete = sent[-1][1]["reply_markup"]["inline_keyboard"][-1][0]["callback_data"]
+    hook(callback(delete, user_id=111))
+    confirm, cancel = [button["callback_data"] for button in sent[-1][1]["reply_markup"]["inline_keyboard"][0]]
+    hook(callback(cancel, user_id=111))
+    hook(callback(confirm, user_id=111))
+    assert LinkRequest.objects.filter(pk=ticket.pk).exists()
+
+    hook(callback(delete, user_id=111))
+    confirm = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
+    hook(callback(confirm, user_id=777))
+    hook(callback(confirm, user_id=222))
+    assert LinkRequest.objects.filter(pk=ticket.pk).exists()
+
+    hook(callback(confirm, user_id=111))
+    hook(callback(confirm, user_id=111))
+    assert list(LinkRequest.objects.values_list("pk", flat=True)) == [other.pk]
