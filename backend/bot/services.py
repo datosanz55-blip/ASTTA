@@ -1,26 +1,10 @@
-"""Что умеет бот ASTTA.
-
-- /start — приветствие и кнопка «Открыть ASTTA»: сайт открывается мини-приложением прямо в Telegram.
-- /orders — заказы покупателя со статусами (покупатель узнаётся по Telegram ID, как при входе на сайт).
-- /help — как задать вопрос агенту.
-- Сам пишет покупателю, когда у заказа меняется статус. Telegram разрешает писать только тем, кто уже нажал
-  «Старт» в боте или разрешил это при входе на сайт через Telegram.
-"""
-
 import re
 
 from django.conf import settings
-from django.core.cache import cache
-from django.utils import timezone
 
 from accounts.models import User
-from bot import inbox
+from bot import inbox, panels
 from bot.telegram_api import call
-from links.models import LinkRequest
-
-HELP = ("Чтобы задать вопрос команде ASTTA, откройте форму по кнопке ниже, "
-        "напишите вопрос и контакт для ответа, затем нажмите «Отправить агенту». "
-        "Обращение попадёт в очередь команды. Здесь бот показывает заказы (/orders) и уведомления о статусах.")
 
 
 def open_button(text="Открыть ASTTA", path=""):
@@ -45,84 +29,52 @@ def orders_text(telegram_id: int) -> str:
 
 
 def handle_update(update: dict):
+    if query := update.get("callback_query"):
+        panels.handle_callback(query)
+        return
     message = update.get("message") or {}
     chat = message.get("chat") or {}
-    # Отвечаем только в личных сообщениях: в группах кнопка мини-приложения не работает.
-    if chat.get("type") != "private" or "text" not in message:
-        return
-    parts = message["text"].strip().split()
-    if not parts:
-        return
-    command = parts[0].split("@")[0].lower()
-    chat_id = chat["id"]
-    first_name = (message.get("from") or {}).get("first_name") or ""
-    team = inbox.manager_ids()
-    if command == "/id":
-        send(chat_id, f"Ваш Telegram ID: {chat_id}")
-        return
-    if team:
-        if chat_id in team and inbox.manager_message(chat_id, command, message):
-            return
-        if command == "/inbox":
-            send(chat_id, "Команда доступна только менеджерам.")
-            return
-        if command in ("/new", "/help") or (command == "/start" and parts[1:] == ["help"]):
-            inbox.start_request(chat_id)
-            return
-        if command == "/start" and len(parts) == 2 and re.fullmatch(r"order_A-[0-9]{6,20}", parts[1]):
-            inbox.start_request(chat_id, parts[1].removeprefix("order_"))
-            return
-        if command == "/start":
-            inbox.start_request(chat_id, keyboard=open_button("Открыть каталог", "/#catalog"))
-            return
-        if command == "/orders":
-            text = inbox.requests_text(chat_id)
-            send(chat_id, (text + "\n\n" if text else "") + orders_text(chat_id),
-                 open_button("Открыть заказы", "/#profile"))
-            return
-        if not command.startswith("/"):
-            inbox.customer_message(chat_id, message)
-            return
-        send(chat_id, "Начать заявку — /new. Мои заявки и заказы — /orders.")
+    sender = message.get("from") or {}
+    text = message.get("text", "").strip()
+    if chat.get("type") != "private" or chat.get("id") != sender.get("id") or not text:
         return
 
-    if command == "/help" or (command == "/start" and parts[1:] == ["help"]):
-        send(chat_id, HELP, open_button("Написать агенту", "/#support"))
-    elif command == "/start" and len(parts) == 2 and re.fullmatch(r"order_A-[0-9]{6,20}", parts[1]):
-        number = parts[1].removeprefix("order_")
-        send(chat_id, f"Чтобы согласовать заказ {number}, откройте форму для менеджера.",
-             open_button("Написать менеджеру", f"/?order={number}#support"))
+    chat_id = chat["id"]
+    parts = text.split()
+    command = parts[0].split("@")[0].lower() if text.startswith("/") else text
+    is_manager = chat_id in inbox.manager_ids()
+    if is_manager and message.get("reply_to_message") and inbox.manager_message(chat_id, message):
+        return
+    if command == "/start" and len(parts) == 2:
+        if match := re.fullmatch(r"request_([0-9a-f]{32})", parts[1]):
+            panels.show_draft(chat_id, match[1])
+            return
+        if re.fullmatch(r"order_A-[0-9]{6,20}", parts[1]):
+            inbox.start_request(chat_id, parts[1].removeprefix("order_"), panels.keyboard(chat_id))
+            return
+    if command in ("/new", "/help", panels.HELP, panels.PRICE) or (
+        command == "/start" and parts[1:] == ["help"]
+    ):
+        inbox.start_request(chat_id, keyboard=panels.keyboard(chat_id), price=command == panels.PRICE)
     elif command == "/start":
-        send(chat_id, f"Здравствуйте{', ' + first_name if first_name else ''}! Это ASTTA — товары из Китая "
-                      "с ценой в рублях сразу с доставкой. Каталог, заказ по ссылке или фото и отслеживание — "
-                      "по кнопке ниже.", open_button())
-    elif command == "/orders":
-        send(chat_id, orders_text(message["from"]["id"]), open_button("Открыть заказы", "/#profile"))
-    elif message["text"].startswith("Заявка ASTTA\n"):
-        if not message["text"].rstrip().endswith("Согласен на обработку контактных данных для ответа на заявку."):
-            send(chat_id, "Откройте карточку товара и отправьте готовую заявку целиком.")
-            return
-        message_id = message.get("message_id")
-        if not message_id or not cache.add(f"astta:bot:order:{chat_id}:{message_id}", True, 86400):
-            return
-        if not cache.add(f"astta:bot:order-limit:{chat_id}", True, 10):
-            send(chat_id, "Подождите 10 секунд и отправьте заявку снова.")
-            return
-        username = (message.get("from") or {}).get("username", "")
-        contact = f"@{username}" if re.fullmatch(r"[A-Za-z0-9_]+", username) else f"tg://user?id={chat_id}"
-        try:
-            request = LinkRequest.objects.create(
-                text=message["text"].strip()[:2000], contact=contact, telegram_chat_id=chat_id,
-                comment="Заявка на заказ из Telegram", pd_consent_at=timezone.now(),
-            )
-        except Exception:
-            cache.delete(f"astta:bot:order:{chat_id}:{message_id}")
-            cache.delete(f"astta:bot:order-limit:{chat_id}")
-            raise
-        send(chat_id, f"Заявка №{request.pk} передана менеджеру. Он уточнит наличие и итоговую цену.")
+        send(chat_id, "ASTTA · выберите действие в меню ниже.", panels.keyboard(chat_id))
+    elif command in ("/orders", panels.ORDERS):
+        requests = inbox.requests_text(chat_id)
+        send(chat_id, "\n\n".join(filter(None, [requests, orders_text(chat_id)])),
+             open_button("Открыть заказы", "/#profile"))
+    elif command == panels.CATALOG:
+        send(chat_id, "Каталог ASTTA", open_button("Открыть каталог", "/#catalog"))
+    elif command in ("/id", panels.IDENTITY):
+        send(chat_id, f"Ваш Telegram ID: {chat_id}", panels.keyboard(chat_id))
+    elif command in ("/inbox", panels.TEAM):
+        if is_manager:
+            panels.manager_panel(chat_id)
+        else:
+            send(chat_id, "Панель доступна только менеджерам.", panels.keyboard(chat_id))
+    elif text.startswith("/"):
+        send(chat_id, "Выберите действие в меню ниже.", panels.keyboard(chat_id))
     else:
-        # Переписки с агентом в боте пока нет: честно отправляем туда, где она есть.
-        send(chat_id, "Сообщения здесь агент пока не читает. " + HELP, open_button("Написать агенту", "/#support"))
+        inbox.customer_message(chat_id, message)
 
 
 def notify_status(event) -> bool:

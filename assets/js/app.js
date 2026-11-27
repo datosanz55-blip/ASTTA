@@ -3187,6 +3187,12 @@ ${aiCatalogJSON()}
     if (t.matches('[data-mk-check]')) { checkMarketSize(); return; }
     if (t.matches('[data-mk-link]')) { const p = byId[pdState.id]; openLinkCalc(p.market.url, { title: p.t }); return; }
     if (t.matches('[data-lc-recheck]')) { checkLinkPrice(); return; }
+    if (d.telegramContinue !== undefined && window.Telegram?.WebApp?.openTelegramLink) {
+      e.preventDefault();
+      try { window.Telegram.WebApp.openTelegramLink(t.href); }
+      catch (_) { location.assign(t.href); }
+      return;
+    }
     if (d.productTelegram !== undefined && pdState) {
       const p = byId[pdState.id];
       if (p.wheel && !pdState.wheelChosen) {
@@ -3200,13 +3206,34 @@ ${aiCatalogJSON()}
       if (!isMarket(p) && p.colors?.length && !pdState.color) { toast('Выберите цвет'); return; }
       const username = (live.site?.telegram_bot || 'astta_shop_bot').trim().replace(/^@/, '');
       if (!/^[A-Za-z0-9_]+$/.test(username)) { toast('Не удалось открыть Telegram'); return; }
+      if (pdState.telegramPending) return;
+      const selection = pdState;
+      const variant = [selection.id, selection.size, selection.color, selection.qty].join('|');
       const message = ['Заявка ASTTA', p.t, 'Код товара: ' + p.id,
-        pdState.size ? 'Размер: ' + pdState.size : '', pdState.color ? 'Цвет: ' + pdState.color : '',
-        'Количество: ' + pdState.qty, p.market?.url || '', 'Подтвердите, пожалуйста, наличие и итоговую цену.', 'Согласен на обработку контактных данных для ответа на заявку.']
-        .filter(Boolean).join('\n');
-      const url = 'https://t.me/' + username + '?text=' + encodeURIComponent(message);
-      if (live.tma && window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
-      else location.assign(url);
+        selection.size ? 'Размер: ' + selection.size : '', selection.color ? 'Цвет: ' + selection.color : '',
+        'Количество: ' + selection.qty, p.market?.url || ''].filter(Boolean).join('\n');
+      selection.telegramPending = true;
+      t.disabled = true;
+      t.textContent = 'Готовим заявку…';
+      api('/api/tg/order-draft', { method: 'POST', body: { text: message } })
+        .then(({ start }) => {
+          if (pdState !== selection || variant !== [selection.id, selection.size, selection.color, selection.qty].join('|')) return;
+          const url = 'https://t.me/' + username + '?start=' + encodeURIComponent(start);
+          if (!window.Telegram?.WebApp?.initData) { location.assign(url); return; }
+          openSheet(`<div class="stack">
+            <h2 class="sheet__title">Заявка готова</h2>
+            <p>В чате ASTTA нажмите «Старт», если Telegram попросит, затем «Отправить заявку».</p>
+            <a class="btn btn--lime" href="${esc(url)}" data-telegram-continue>Открыть чат ASTTA</a>
+            <a class="linkbtn" href="${esc(url)}" target="_blank" rel="noopener">Открыть ссылку отдельно</a>
+          </div>`, { narrow: true });
+          try { window.Telegram.WebApp.openTelegramLink(url); } catch (_) { /* Ссылка уже показана. */ }
+        })
+        .catch((error) => { if (pdState === selection) toast(error.message); })
+        .finally(() => {
+          selection.telegramPending = false;
+          t.disabled = false;
+          t.textContent = 'Заказать в Telegram';
+        });
       return;
     }
     if (d.mkOrder !== undefined) { orderMarketProduct(); return; }

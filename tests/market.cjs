@@ -13,9 +13,29 @@ const {setup}=require('./storefront.cjs');
   await p.locator('[data-mk-size="42"]').click();
   await p.getByText('Проверяем цену размера 42',{exact:false}).waitFor();
   await p.route('https://t.me/**',route=>route.fulfill({status:204}));
+  let orderDraft;
+  await p.route('**/api/tg/order-draft',route=>{
+   orderDraft=route.request().postDataJSON();
+   return route.fulfill({json:{start:'request_aabbccddeeff00112233445566778899'}});
+  });
   const [draft]=await Promise.all([p.waitForRequest('https://t.me/**'),
     p.locator('[data-product-telegram]').click()]);
-  assert.match(new URL(draft.url()).searchParams.get('text'),/Код товара: item-1943\nРазмер: 42/);
+  assert.equal(new URL(draft.url()).searchParams.get('start'),'request_aabbccddeeff00112233445566778899');
+  assert.match(orderDraft.text,/Код товара: item-1943\nРазмер: 42/);
+
+  await p.evaluate(()=> {
+   window.telegramLinks=[];
+   window.Telegram={WebApp:{initData:'mock-mini-app',openTelegramLink:url=>window.telegramLinks.push(url)}};
+  });
+  await p.locator('[data-product-telegram]').click();
+  await p.getByRole('link',{name:'Открыть чат ASTTA',exact:true}).waitFor();
+  const telegramUrl=await p.getByRole('link',{name:'Открыть чат ASTTA',exact:true}).getAttribute('href');
+  assert.deepEqual(await p.evaluate(()=>window.telegramLinks),[telegramUrl]);
+  await p.getByRole('link',{name:'Открыть чат ASTTA',exact:true}).click();
+  assert.deepEqual(await p.evaluate(()=>window.telegramLinks),[telegramUrl,telegramUrl]);
+  await p.evaluate(()=>delete window.Telegram);
+  await p.keyboard.press('Escape');
+  await p.locator('#catalogGrid [data-open="item-1943"]').first().click();
 
   assert.equal(await p.getByText('Указать цену и заказать',{exact:true}).count(),0);
   await p.locator('[data-mk-size="40"]').click();await p.locator('[data-mk-size="42"]').click();

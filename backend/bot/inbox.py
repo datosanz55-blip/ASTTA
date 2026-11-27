@@ -20,11 +20,20 @@ def manager_ids():
 
 
 def notify_manager(manager_id, request_id, text):
-    from bot.services import send
-
     if manager_id not in manager_ids() or not LinkRequest.objects.filter(pk=request_id, status__in=ACTIVE).exists():
         return
-    send(manager_id, f"Заявка ASTTA №{request_id}\n{text[:3000]}\n\nОтветьте на это сообщение через «Ответить».")
+    send_request(manager_id, request_id, text)
+
+
+def send_request(chat_id, request_id, text, can_reply=True):
+    from bot.services import send
+
+    hint = "\n\nОтветьте на это сообщение через «Ответить»." if can_reply else ""
+    send(chat_id, f"Заявка ASTTA №{request_id}\n{text[:3300]}{hint}")
+
+
+def send_manager_request(chat_id, request, text):
+    send_request(chat_id, request.pk, text, request.telegram_chat_id is not None)
 
 
 def enqueue_notifications(request, text, exclude=None):
@@ -37,14 +46,23 @@ def enqueue_notifications(request, text, exclude=None):
             log.exception("Не удалось поставить уведомление о заявке %s в очередь", request.pk)
 
 
-def start_request(chat_id, order_number="", keyboard=None):
+def start_request(chat_id, order_number="", keyboard=None, *, price=False):
     from bot.services import send
 
     cache.set(f"astta:bot:new:{chat_id}", order_number or True, 900)
     prefix = f"Заказ {order_number}. " if order_number else ""
-    send(chat_id, prefix + "Пришлите ссылку, размер или опишите вопрос одним сообщением. "
+    prompt = ("Пришлите ссылку на товар и нужный размер одним сообщением. " if price else
+              "Пришлите ссылку, размер или опишите вопрос одним сообщением. ")
+    send(chat_id, prefix + prompt +
          "Отправляя его, вы соглашаетесь на обработку контакта для ответа. "
          f"Политика: {settings.SITE_URL.rstrip('/')}/privacy.html", keyboard)
+
+
+def save_request(chat_id, sender, text):
+    username = sender.get("username") or ""
+    contact = f"@{username}" if re.fullmatch(r"[A-Za-z0-9_]+", username) else f"tg://user?id={chat_id}"
+    return LinkRequest.objects.create(text=text[:2000], contact=contact, telegram_chat_id=chat_id,
+                                      comment="Заявка из Telegram", pd_consent_at=timezone.now())
 
 
 def customer_message(chat_id, message):
@@ -59,7 +77,9 @@ def customer_message(chat_id, message):
     pending = cache.get(key)
     request = LinkRequest.objects.filter(telegram_chat_id=chat_id, status__in=ACTIVE).first()
     if not (draft or pending or request):
-        start_request(chat_id)
+        from bot.panels import keyboard
+
+        start_request(chat_id, keyboard=keyboard(chat_id))
         return
     message_id = message.get("message_id")
     seen = f"astta:bot:incoming:{chat_id}:{message_id}"
@@ -71,12 +91,9 @@ def customer_message(chat_id, message):
         return
     try:
         if draft or pending:
-            username = (message.get("from") or {}).get("username") or ""
-            contact = f"@{username}" if re.fullmatch(r"[A-Za-z0-9_]+", username) else f"tg://user?id={chat_id}"
             if isinstance(pending, str) and not draft:
                 text = f"Заказ {pending}\n{text}"
-            request = LinkRequest.objects.create(text=text[:2000], contact=contact, telegram_chat_id=chat_id,
-                                                 comment="Заявка из Telegram", pd_consent_at=timezone.now())
+            request = save_request(chat_id, message.get("from") or {}, text)
             cache.delete(key)
             confirmation = f"Заявка №{request.pk} принята. Менеджер ответит в этом чате."
         else:
@@ -92,16 +109,9 @@ def customer_message(chat_id, message):
     send(chat_id, confirmation)
 
 
-def manager_message(chat_id, command, message):
+def manager_message(chat_id, message):
     from bot.services import send
 
-    if command == "/inbox":
-        requests = LinkRequest.objects.filter(telegram_chat_id__isnull=False, status__in=ACTIVE)[:5]
-        if not requests:
-            send(chat_id, "Открытых Telegram-заявок пока нет.")
-        for request in requests:
-            notify_manager(chat_id, request.pk, (request.text + "\n\n" + request.comment).strip())
-        return True
     reply = message.get("reply_to_message") or {}
     match = re.match(r"^Заявка ASTTA №(\d{1,18})\n", reply.get("text", ""))
     bot_id = settings.TELEGRAM_BOT_TOKEN.split(":", 1)[0]
