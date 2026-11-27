@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from links import apify
 from links.models import MarketLookup
-from links.services import estimate, parse_link, resolve_link
+from links.services import category_for_link, estimate, parse_link, resolve_link
 from pricing.services import PricingError
 
 QUOTE_TTL = 5 * 60
@@ -75,9 +75,12 @@ def run_lookup(job):
                     job.status = "unavailable"
                     job.note = "Площадка не подтвердила цену размера. Повторите проверку или уточните у агента."
                 else:
-                    result = estimate(Decimal(str(price)), job.qty, info.marketplace)
+                    result = estimate(Decimal(str(price)), job.qty, info.marketplace, category_for_link(info),
+                                      source=info.code)
                     job.data["quote"] = {"id": str(job.pk), "price_cny": str(result.price_cny),
                                          "total_rub": str(result.total_rub), "size": job.size, "qty": job.qty,
+                                         "excludes_delivery": result.excludes_delivery,
+                                         "needs_confirmation": result.needs_confirmation,
                                          "checked_at": timezone.now().isoformat(),
                                          "expires_at": (timezone.now() + timedelta(seconds=QUOTE_TTL)).isoformat()}
     except (apify.ApifyError, PricingError) as exc:
@@ -103,7 +106,7 @@ def job_out(job):
     return {"id": str(job.pk), "status": job.status, "url": job.url, "note": job.note, **job.data}
 
 
-def verified_quote(quote_id, info, size, qty, price):
+def verified_quote(quote_id, info, size, qty, price, category=None):
     try:
         job = MarketLookup.objects.get(pk=quote_id, status="ready")
     except (MarketLookup.DoesNotExist, ValueError, TypeError, ValidationError):
@@ -117,9 +120,11 @@ def verified_quote(quote_id, info, size, qty, price):
     if price is not None and price != confirmed:
         raise ValueError("Цена изменилась. Проверьте выбранный размер ещё раз")
     try:
-        current_total = estimate(confirmed, qty, info.marketplace).total_rub
+        current = estimate(confirmed, qty, info.marketplace, category or category_for_link(info), source=info.code)
     except PricingError:
         raise ValueError("Расчёт временно недоступен. Попробуйте ещё раз") from None
-    if current_total != Decimal(quote["total_rub"]):
+    if current.needs_confirmation:
+        raise ValueError("Согласуйте стоимость товара с менеджером.")
+    if current.total_rub != Decimal(quote["total_rub"]):
         raise ValueError("Курс или стоимость доставки изменились. Проверьте цену ещё раз")
     return confirmed

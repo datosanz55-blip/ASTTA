@@ -243,3 +243,27 @@ def test_manager_panel_requires_allowlist_on_every_action(sent, settings, db):
     hook(callback(detail))
     hook(callback(action, user_id=444, chat_type="group"))
     assert [method for method, _ in sent] == ["answerCallbackQuery"]
+
+
+def test_manager_reply_button_routes_to_selected_customer(sent, settings, db, monkeypatch):
+    from bot.tasks import notify_manager_task
+    from links.models import LinkRequest
+
+    settings.TELEGRAM_MANAGER_IDS = (111,)
+    monkeypatch.setattr(notify_manager_task, "delay", lambda *args: None)
+    own = LinkRequest.objects.create(text="Моя старая заявка", contact="@manager", telegram_chat_id=111)
+    selected = LinkRequest.objects.create(text="Заявка клиента", contact="@buyer", telegram_chat_id=777)
+    hook(callback(f"team:item:{selected.pk}", user_id=111))
+    button = sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]
+    hook(update("Обычный текст без привязки", user_id=111))
+    assert "Откройте нужную заявку" in sent[-1][1]["text"]
+    hook(callback(button["callback_data"], user_id=111))
+    prompt = sent[-1][1]
+    assert prompt["reply_markup"]["force_reply"]
+    reply = update("Есть в наличии", user_id=111)
+    reply["message"]["reply_to_message"] = {"text": prompt["text"], "from": {"id": 123}}
+    hook(reply)
+    assert sent[-2][1]["chat_id"] == 777
+    assert f"№{selected.pk}" in sent[-2][1]["text"]
+    own.refresh_from_db()
+    assert own.comment == "" and own.agent_note == ""

@@ -74,7 +74,7 @@ def handle_update(update: dict):
     elif text.startswith("/"):
         send(chat_id, "Выберите действие в меню ниже.", panels.keyboard(chat_id))
     else:
-        inbox.customer_message(chat_id, message)
+        inbox.customer_message(chat_id, message, manager=is_manager)
 
 
 def notify_status(event) -> bool:

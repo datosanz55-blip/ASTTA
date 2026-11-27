@@ -129,7 +129,7 @@ LINK_TITLE = "Товар по ссылке"
 
 def create_link_order(price_cny: Decimal | None, qty: int, contact: str, *, url: str = "", photo=None,
                       title: str = "", size: str = "", color: str = "", marketplace=None, name: str = "",
-                      comment: str = "", buyer=None) -> Order:
+                      comment: str = "", buyer=None, category=None, source: str = "") -> Order:
     """Заказ товара по ссылке или скриншоту: покупатель платит сразу по расчёту «¥ × курс + логистика».
 
     Цену называет покупатель (или мы прочитали её со скриншота), поэтому перед выкупом агент сверяет её на площадке:
@@ -144,9 +144,11 @@ def create_link_order(price_cny: Decimal | None, qty: int, contact: str, *, url:
     if not 1 <= qty <= MAX_QTY:
         raise OrderError(f"Количество от 1 до {MAX_QTY}")
     try:
-        e = estimate(price_cny, qty, marketplace)
+        e = estimate(price_cny, qty, marketplace, category, source=source)
     except PricingError as exc:
         raise OrderError(str(exc)) from exc
+    if e.needs_confirmation:
+        raise OrderError("Согласуйте стоимость товара с менеджером.")
     with transaction.atomic():
         order = Order.objects.create(contact=contact.strip()[:254], name=name.strip()[:80], comment=comment.strip(),
                                      buyer=buyer, rate=e.rate, total_rub=Decimal(e.total_rub).quantize(Decimal("0.01")))

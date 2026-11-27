@@ -164,3 +164,30 @@ def test_ai_size_tool_returns_background_job(market, pricing_setup, monkeypatch,
     result = Client().get(f'/api/link/market-jobs/{job_id}').json()
     assert Decimal(result['quote']['price_cny']) == Decimal('899')
     assert result['item']['images'] and response.json()['order'] is None
+
+
+def test_workbook_price_is_shared_by_catalog_size_quote_and_order(market, supplier, shoes, pricing_setup):
+    from pricing.marketplace import POIZON_SHOES, TAOBAO_CLOTHING, workbook_price
+    from tests.conftest import make_product
+
+    assert workbook_price(Decimal("1000"), (POIZON_SHOES, Decimal(400))) == (1400, False)
+    assert workbook_price(Decimal("10000"), (POIZON_SHOES, Decimal(400))) == (12570, False)
+    assert workbook_price(Decimal("6200"), (POIZON_SHOES, Decimal(400))) == (7580, False)
+    assert workbook_price(Decimal("1000"), (TAOBAO_CLOTHING, Decimal(350))) == (1550, False)
+    assert workbook_price(Decimal("20001"), (TAOBAO_CLOTHING, Decimal(350))) == (25010, True)
+
+    make_product(supplier, shoes, "known-market", 899, 1, [], source_url=URL,
+                 market={"source": "poizon", "url": URL})
+    client = Client()
+    card = client.get("/api/products").json()["items"][0]
+    assert card["market"]["excludes_delivery"]
+    assert Decimal(card["retail_rub"]) == 14820
+    data = client.post("/api/link/market-jobs", {"text": URL, "size": "42", "qty": 2},
+                       content_type="application/json").json()
+    assert data["quote"]["excludes_delivery"]
+    assert Decimal(data["quote"]["total_rub"]) == 29640
+    fields = {"text": URL, "size": "42", "qty": 2, "price_cny": "899", "quote_id": data["id"],
+              "contact": "@buyer", "consent": "true"}
+    assert client.post("/api/link/order", fields).status_code == 201
+    assert Order.objects.get().total_rub == 29640
+    assert client.post("/api/link/order", {**fields, "quote_id": "", "price_cny": "20000"}).status_code == 422

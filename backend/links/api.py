@@ -14,7 +14,7 @@ from catalog.images import ImageError, prepare_image, private_name
 from catalog.models import Category
 from config.throttles import per_ip
 from links.models import LinkRequest, Marketplace
-from links.services import estimate, find_in_catalog, resolve_link, share_title
+from links.services import category_for_link, estimate, find_in_catalog, parse_link, resolve_link, share_title
 from orders.api import OrderOut, order_out
 from orders.models import Order
 from orders.services import OrderError, create_link_order
@@ -62,6 +62,7 @@ class LookupOut(Schema):
 
 
 class EstimateIn(Schema):
+    text: str = Field(default="", max_length=2000)
     price_cny: Decimal
     qty: int = 1
     marketplace: str = ""
@@ -82,6 +83,8 @@ class EstimateOut(Schema):
     fee_rub: Decimal
     total_rub: Decimal
     notes: list[str]
+    excludes_delivery: bool
+    needs_confirmation: bool
 
 
 class RequestIn(Schema):
@@ -139,6 +142,7 @@ def _estimate_out(e) -> dict:
         "marketplace_fee_rub": e.marketplace_fee_rub.quantize(money),
         "delivery_rub": e.delivery_rub.quantize(money), "fee_rub": e.fee_rub.quantize(money),
         "total_rub": e.total_rub, "notes": e.notes,
+        "excludes_delivery": e.excludes_delivery, "needs_confirmation": e.needs_confirmation,
     }
 
 
@@ -191,9 +195,12 @@ def market_view(request, payload: LookupIn):
              summary="Предварительная цена под ключ по цене на площадке")
 def estimate_view(request, payload: EstimateIn):
     _check(payload.price_cny, payload.qty, payload.weight_kg)
-    marketplace = Marketplace.objects.filter(code=payload.marketplace).first() if payload.marketplace else None
+    info = parse_link(payload.text)
+    source = info.code or payload.marketplace
+    marketplace = Marketplace.objects.filter(code=source).first() if source else None
+    category = category_for_link(info) or _category(payload.category)
     try:
-        result = estimate(payload.price_cny, payload.qty, marketplace, _category(payload.category), payload.weight_kg)
+        result = estimate(payload.price_cny, payload.qty, marketplace, category, payload.weight_kg, source=source)
     except PricingError as exc:
         raise HttpError(503, str(exc)) from exc
     return _estimate_out(result)
@@ -210,7 +217,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
     _check(payload.price_cny, payload.qty)
     info = resolve_link(payload.text)
     product = find_in_catalog(info)
-    category = _category(payload.category)
+    category = product.category if product else _category(payload.category)
     content = None
     if photo is not None:
         try:
@@ -220,7 +227,7 @@ def create_request(request, payload: Form[RequestIn], photo: UploadedFile | None
     result = None
     if payload.price_cny:
         try:
-            result = estimate(payload.price_cny, payload.qty, info.marketplace, category)
+            result = estimate(payload.price_cny, payload.qty, info.marketplace, category, source=info.code)
         except PricingError:
             result = None  # нет курса: заявку всё равно принимаем, посчитает агент
     item = LinkRequest.objects.create(
@@ -250,20 +257,22 @@ def create_order_view(request, payload: Form[LinkOrderIn], photo: UploadedFile |
             raise HttpError(400, str(exc)) from exc
     consent_at = require_consent(payload.consent)
     buyer = current_buyer(request)
+    category = category_for_link(info)
     if payload.quote_id:
         if payload.color.strip():
             raise HttpError(422, "Уточните цвет и проверьте цену конкретного варианта ещё раз")
         from links.market_quotes import verified_quote
 
         try:
-            payload.price_cny = verified_quote(payload.quote_id, info, payload.size, payload.qty, payload.price_cny)
+            payload.price_cny = verified_quote(
+                payload.quote_id, info, payload.size, payload.qty, payload.price_cny, category)
         except ValueError as exc:
             raise HttpError(422, str(exc)) from exc
     try:
         order = create_link_order(
             payload.price_cny, payload.qty, buyer_contact(buyer, payload.contact), url=info.url, photo=content,
             title=payload.title, size=payload.size, color=payload.color, marketplace=info.marketplace,
-            name=payload.name, comment=payload.comment, buyer=buyer,
+            name=payload.name, comment=payload.comment, buyer=buyer, category=category, source=info.code,
         )
     except OrderError as exc:
         raise HttpError(422, str(exc)) from exc

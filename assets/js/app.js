@@ -384,7 +384,8 @@
   const isStorefrontVisible = (p) => !(p?.market?.source === 'taobao' && (p.photoFailed || (p.live && !p.image)));
   const isMarket = (p) => !!(p && p.market);
   const hasWholesale = (p) => !isMarket(p) && !!p.tiers.length;
-  const marketFrom = (p) => (p.retailRub != null ? p.retailRub : linkTotal(p.cny));
+  const marketFrom = (p) => p.retailRub ?? (p.live ? null : linkTotal(p.cny));
+  const marketPriceText = (p) => marketFrom(p) === null ? 'Уточнить цену' : `от ${rub(marketFrom(p))}`;
   const marketTo = (p) => {
     const m = p.market || {};
     if (m.retail_max_rub != null) return Number(m.retail_max_rub);
@@ -403,7 +404,7 @@
         <button class="card__add" type="button" data-open="${esc(p.id)}" aria-label="Подробнее: ${esc(p.t)}">${icon('arrow')}</button>
       </div>
       <div class="card__body">
-        <div class="card__price"><small class="card__from">от</small>${rub(marketFrom(p))}</div>
+        <div class="card__price">${marketFrom(p) === null ? 'Уточнить цену' : `<small class="card__from">от</small>${rub(marketFrom(p))}`}</div>
         <div class="card__unit">${src === 'poizon' ? `${icon('check')}Оригинал` : 'Цена зависит от варианта'}</div>
         <h3 class="card__title"><button class="card__hit" type="button" data-open="${esc(p.id)}">${esc(p.t)}</button></h3>
         <div class="card__meta"><span>${daysText(days)} после отправки</span>${src === 'poizon' && sold ? `<span>${sold}+ продаж на Poizon</span>` : ''}</div>
@@ -520,7 +521,8 @@
     const s = SUPPLIERS[post.sup] || { name: post.supName || 'Поставщик', about: '', short: '··' };
     const p = byId[post.pid];
     const liked = state.liked.has(post.id);
-    const price = !p ? '' : (isSupplier() && hasWholesale(p) ? `${cny(p.tiers[0][1])} · от ${p.tiers[0][0]} шт` : `${rub(isMarket(p) ? marketFrom(p) : retail(p).total)} под ключ`);
+    const price = !p ? '' : isMarket(p) ? marketPriceText(p)
+      : isSupplier() && hasWholesale(p) ? `${cny(p.tiers[0][1])} · от ${p.tiers[0][0]} шт` : rub(retail(p).total);
     const photo = post.photo || (p ? pimg(p) : '');
     const product = p ? `<div class="post__product">
         <img src="${pimg(p)}" alt="" loading="lazy" width="46" height="46">
@@ -595,7 +597,7 @@
       if (filter === 'new' && !p.isNew) return false;
       if (filter === 'group' && !p.group) return false;
       if (filter === 'poizon' && !isPoizon(p)) return false;
-      if (filter === 'budget' && (isMarket(p) ? marketFrom(p) : (isSupplier() ? wholesale(p, p.tiers[0][0]).landed : retail(p).total)) > 1000) return false;
+      if (filter === 'budget' && (isMarket(p) ? (marketFrom(p) ?? Infinity) : (isSupplier() ? wholesale(p, p.tiers[0][0]).landed : retail(p).total)) > 1000) return false;
       if (CATS.some((c) => c.id === filter) && p.cat !== filter) return false;
       if (!ql) return true;
       const catName = (CATS.find((c) => c.id === p.cat) || {}).name || '';
@@ -629,7 +631,7 @@
     const group = COLOR_GROUPS.find((g) => g.slice(2).includes(key));
     return group ? { key: filterKey(group[0]), label: group[0], swatch: group[1] } : { key, label: String(value).trim(), swatch: '' };
   }
-  const catalogPrice = (p) => isSupplier() ? p.tiers[0][1] : isMarket(p) ? marketFrom(p) : retail(p).total;
+  const catalogPrice = (p) => isSupplier() ? p.tiers[0][1] : isMarket(p) ? (marketFrom(p) ?? Infinity) : retail(p).total;
   const priceBounds = () => ({ min: catalogFilters.min === '' ? null : Number(catalogFilters.min), max: catalogFilters.max === '' ? null : Number(catalogFilters.max) });
   function priceError() {
     const { min, max } = priceBounds();
@@ -686,7 +688,7 @@
     const focus = active?.dataset.facet ? { facet: active.dataset.facet, value: active.value } : null;
     const currency = isSupplier() ? '¥' : '₽';
     $('#priceFilterTitle').textContent = `Цена, ${currency}`;
-    $('#priceFilterHint').textContent = isSupplier() ? 'Цена за штуку для минимальной оптовой партии.' : 'Цена карточки с доставкой. У товаров с площадок — цена «от»; цена размера может отличаться.';
+    $('#priceFilterHint').textContent = isSupplier() ? 'Цена за штуку для минимальной оптовой партии.' : 'У товаров с площадок показана цена «от». Цена выбранного размера может отличаться.';
     for (const [id, key] of [['priceMin', 'min'], ['priceMax', 'max']]) if (document.activeElement !== $('#' + id)) $('#' + id).value = catalogFilters[key];
     const error = priceError();
     $('#priceFilterError').textContent = error; $('#priceFilterError').hidden = !error;
@@ -739,7 +741,7 @@
   function catalogStatus() {
     const el = $('#catalogStatus');
     if (!el) return;
-    el.textContent = catalogLoad.running ? `Загружаем каталог: ${PRODUCTS.length} из ${catalogLoad.total}. Результаты поиска дополняются.`
+    el.textContent = catalogLoad.running ? `Загружаем каталог: ${PRODUCTS.length} из ${catalogLoad.total}.`
       : catalogLoad.failed.length ? 'Часть каталога не загрузилась. Повторите загрузку, чтобы искать по всем товарам.' : '';
     $('#catalogRetry').hidden = catalogLoad.running || !catalogLoad.failed.length;
   }
@@ -759,12 +761,37 @@
     renderCatalogFilters(base, list);
     const key = [state.mode, state.cat, state.q, state.sort, catalogFilterState()].join('|');
     if (catalogView.key !== key) { catalogView.key = key; catalogView.limit = 60; }
-    $('#catalogGrid').innerHTML = list.slice(0, catalogView.limit).map(cardHTML).join('');
+    renderCatalogCards(list.slice(0, catalogView.limit));
     $('#catalogEmpty').hidden = list.length > 0 || catalogLoad.running || catalogLoad.failed.length > 0;
     const more = $('#catalogMore');
     more.hidden = list.length <= catalogView.limit;
     more.textContent = `Показать ещё · осталось ${Math.max(0, list.length - catalogView.limit)}`;
     catalogStatus();
+  }
+
+  function renderCatalogCards(products) {
+    const grid = $('#catalogGrid');
+    const previous = new Map([...grid.children].map((card) => [card.dataset.catalogKey, card]));
+    let cursor = grid.firstElementChild;
+    for (const product of products) {
+      const key = productModelKey(product);
+      const html = cardHTML(product);
+      let card = previous.get(key);
+      previous.delete(key);
+      if (card?.catalogHTML !== html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        const replacement = template.content.firstElementChild;
+        replacement.dataset.catalogKey = key;
+        replacement.catalogHTML = html;
+        if (card && card === cursor) cursor = card.nextElementSibling;
+        card?.remove();
+        card = replacement;
+      }
+      if (card !== cursor) grid.insertBefore(card, cursor);
+      cursor = card.nextElementSibling;
+    }
+    previous.forEach((card) => card.remove());
   }
 
   /* ---------- Лента ---------- */
@@ -1567,14 +1594,15 @@
   function marketProductHTML(p) {
     const m = p.market, src = m.source, name = MARKET_NAME[src] || src;
     const result = pdState.marketResult, quote = result?.quote;
+    const shownPrice = quote ? Number(quote.total_rub) : marketFrom(p);
     const sizes = (m.sizes || []).filter((x) => x && x.size);
     return `<div class="pd pd--market" data-market="1" data-id="${esc(p.id)}">
       <div class="pd__media pd__media--market">${galleryHTML(p)}<span class="mkbadge mkbadge--${esc(src)}">${esc(name)}</span>${favBtnHTML(p, 'pd__fav')}</div>
       <div class="pd__info">
         <h2>${esc(p.t)}</h2>
         <div class="mkprice">
-          <div class="mkprice__row">${quote ? '' : '<small>от</small>'}<b>${rub(quote ? Number(quote.total_rub) : marketFrom(p))}</b></div>
-          <p>${quote ? 'Вариант: ' + esc(variantLabel(quote.size)) + ' · с доставкой в Россию' : 'С доставкой в Россию. Точная цена — после выбора размера.'}</p>
+          <div class="mkprice__row">${quote || shownPrice === null ? '' : '<small>от</small>'}<b>${shownPrice === null ? 'Уточнить цену' : rub(shownPrice)}</b></div>
+          <p>${quote ? 'Вариант: ' + esc(variantLabel(quote.size)) + '' : 'Ориентир по цене товара. Итог подтвердит менеджер.'}</p>
         </div>
         ${sizes.length ? `<div class="mkpick">
           <span class="sublabel">Выберите размер или вариант</span>
@@ -1582,9 +1610,9 @@
         </div>` : ''}
         <button class="btn btn--lime" type="button" data-product-telegram>Заказать в Telegram</button>
         <div class="mksteps" id="mkQuote" aria-live="polite">
-          ${quote ? '<p class="note">Цена проверена на площадке. Действует 5 минут.</p>' : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
+          ${quote ? `<p class="note">${quote.needs_confirmation ? 'Стоимость согласует менеджер.' : 'Цена проверена на площадке. Действует 5 минут.'}</p>` : pdState.size ? marketStatusHTML(result, pdState.size) : '<p class="note">Проверим цену выбранного размера.</p>'}
           <div class="mkbtns">
-            <button class="btn btn--lime" type="button" data-mk-order>${quote ? 'Оформить заказ' : 'Заказать'}</button>
+            <button class="btn btn--lime" type="button" data-mk-order>${quote?.needs_confirmation ? 'Уточнить цену' : quote ? 'Оформить заказ' : 'Заказать'}</button>
             ${!quote && pdState.size ? `<button class="btn btn--ghost" type="button" data-mk-check ${['pending', 'working'].includes(result?.status) ? 'disabled' : ''}>${['pending', 'working'].includes(result?.status) ? 'Проверяем цену…' : 'Проверить цену'}</button>` : ''}
             <button class="linkbtn" type="button" data-open-chat>Уточнить у агента</button>
           </div>
@@ -1592,7 +1620,7 @@
         <button class="btn btn--ghost pd__model-info" type="button" data-mk-ai>${icon('spark')}Рассказать о модели</button>
         <details class="pd__details"><summary>О товаре и доставке</summary><div class="stack">
           ${m.article ? `<p>Артикул: <span class="mono">${esc(m.article)}</span></p>` : ''}
-          <p>До склада в Китае обычно 2–7 дней при наличии. После отправки со склада: ${daysText(SHIP.auto.days)}. В расчёт включены товар, доставка и сервис ASTTA.</p>
+          <p>До склада в Китае обычно 2–7 дней при наличии. После отправки со склада: ${daysText(SHIP.auto.days)}.</p>
           ${m.fit_advice ? `<p>${esc(m.fit_advice)}</p>` : ''}
         </div></details>
       </div>
@@ -1984,7 +2012,7 @@
 Твоя задача: по запросу покупателя собрать готовое решение — корзину, в которой всё подходит друг к другу и укладывается в бюджет.
 
 Правила:
-1. Сначала подбирай из каталога ниже. Используй только id из каталога, ничего не выдумывай о его товарах. Цены каталога уже в рублях с доставкой до пункта выдачи.
+1. Сначала подбирай из каталога ниже. Используй только id из каталога, ничего не выдумывай о его товарах. Цены каталога предварительные. Доставку по товарам с площадок уточняет менеджер.
 2. Если в каталоге нужного нет или не хватает части решения — предложи товары под индивидуальный заказ из Китая: конкретные модели, которые реально продаются на китайских площадках, с примерной ценой на китайском рынке в юанях (est_cny) и весом с упаковкой в кг (est_kg). Ты не видишь интернет, поэтому цены оценочные — так и считай их, агент подтвердит точную цену.
 3. Сайт сам переведёт est_cny в рубли так: цена_руб ≈ est_cny × ${rateText.replace(',', '.')} × 1,05 + est_kg × ${SHIP.auto.perKg}. Учитывай это, чтобы уложиться в бюджет.
 4. Для техники и сборок (компьютеры, комплектующие, электроника) проверь совместимость: сокет и чипсет, тип и частота памяти, мощность и разъёмы блока питания, габариты видеокарты и кулера в корпусе, интерфейсы. Коротко перечисли проверки в compat. Для одежды — сочетаемость и размеры.
@@ -2022,7 +2050,7 @@ ${aiCatalogJSON()}
     const cat = (m.cat || []).filter((c) => byId[c.id] && isStorefrontVisible(byId[c.id]));
     const custom = m.custom || [];
     if (!cat.length && !custom.length) return '';
-    const catTotal = cat.reduce((sum, c) => sum + (isMarket(byId[c.id]) ? marketFrom(byId[c.id]) : retail(byId[c.id]).total), 0);
+    const catTotal = cat.reduce((sum, c) => sum + (isMarket(byId[c.id]) ? (marketFrom(byId[c.id]) ?? 0) : retail(byId[c.id]).total), 0);
     const customTotal = custom.reduce((sum, c) => sum + (c.est_cny ? aiCustomRub(c) : 0), 0);
     const cards = cat.map((c) => {
       const p = byId[c.id];
@@ -2031,7 +2059,7 @@ ${aiCatalogJSON()}
         <div class="aicard__body">
           ${c.role ? `<span class="aicard__role">${esc(c.role)}</span>` : ''}
           <b>${esc(p.t)}</b>
-          <span class="aicard__price">${isMarket(p) ? 'от ' : ''}${rub(isMarket(p) ? marketFrom(p) : retail(p).total)}</span>
+          <span class="aicard__price">${isMarket(p) ? marketPriceText(p) : rub(retail(p).total)}</span>
           <div class="aicard__why">${c.why.map((r) => `<span>${esc(r)}</span>`).join('')}</div>
         </div>
       </article>`;
@@ -2700,9 +2728,33 @@ ${aiCatalogJSON()}
         $('#lcActions').innerHTML = '<button class="btn btn--ghost btn--wide" type="submit" data-act="ask">Уточнить у агента</button>';
         return;
       }
-      box.innerHTML = `<div class="sum"><div class="sum__row"><span>Размер ${esc(quote.size)} · ${qty} шт.</span><b>${rub(Number(quote.total_rub))}</b></div></div>`;
-      $('#lcActions').innerHTML = `<button class="btn btn--lime btn--wide" type="submit" data-act="order">Передать менеджеру</button>`;
+      box.innerHTML = `<div class="sum"><div class="sum__row"><span>Размер ${esc(quote.size)} · ${qty} шт.</span><b>${rub(Number(quote.total_rub))}</b></div>${quote.excludes_delivery ? '<p class="note">Доставка рассчитывается отдельно.</p>' : ''}</div>`;
+      $('#lcActions').innerHTML = quote.needs_confirmation ? linkActionsHTML(0) : '<button class="btn btn--lime btn--wide" type="submit" data-act="order">Передать менеджеру</button>';
       return;
+    }
+    if (live.on && linkCalc && price > 0) {
+      const calc = linkCalc;
+      clearTimeout(calc.estimateTimer);
+      const version = (calc.estimateVersion || 0) + 1;
+      calc.estimateVersion = version;
+      box.textContent = 'Считаем предварительную цену…';
+      $('#lcActions').innerHTML = linkActionsHTML(0);
+      calc.estimateTimer = setTimeout(async () => {
+        try {
+          const estimate = await api('/api/link/estimate', { method: 'POST', body: { text: calc.url, price_cny: price, qty } });
+          if (linkCalc !== calc || calc.estimateVersion !== version || !box.isConnected) return;
+          box.innerHTML = `<div class="sum"><div class="sum__row sum__row--total"><span>${estimate.excludes_delivery ? 'Товар без доставки' : 'Предварительно'}</span><b>${rub(Number(estimate.total_rub))}</b></div>
+            <p class="note">${esc(estimate.notes?.at(-1) || 'Менеджер подтвердит итоговую стоимость.')}</p></div>`;
+          if (!estimate.needs_confirmation) $('#lcActions').innerHTML = linkActionsHTML(price, qty);
+        } catch (error) {
+          if (linkCalc === calc && calc.estimateVersion === version && box.isConnected) box.textContent = error.message;
+        }
+      }, 300);
+      return;
+    }
+    if (linkCalc) {
+      clearTimeout(linkCalc.estimateTimer);
+      linkCalc.estimateVersion = (linkCalc.estimateVersion || 0) + 1;
     }
     $('#lcActions').innerHTML = linkActionsHTML(price, qty);
     if (LINK_RATE === null) { box.innerHTML = '<p class="note">Цену рассчитает менеджер.</p>'; return; }
@@ -2774,7 +2826,7 @@ ${aiCatalogJSON()}
   function openPhotoOrder() {
     openSheet(`<div class="linkcalc">
       <h2 class="sheet__title">Товар по фото</h2>
-      <p class="note">Пришлите скриншот с Poizon, Taobao, 1688. Если цена видна, покажем предварительный расчёт. Менеджер проверит товар и согласует заказ.</p>
+      <p class="note">Пришлите скриншот с Poizon, Taobao, 1688. Если цена видна, подставим её в заявку. Менеджер проверит товар и рассчитает стоимость.</p>
       <form class="stack" id="photoOrderForm" novalidate>
         <label class="field"><span>Фото или скриншот</span><input id="poPhoto" type="file" accept="image/*"></label>
         <img class="linkcalc__photo" id="poPreview" alt="" hidden>
@@ -2815,8 +2867,8 @@ ${aiCatalogJSON()}
   let photoTitle = '';
   function photoSumOut() {
     const price = Number($('#poPrice').value);
-    $('#poSum').innerHTML = price > 0 ? linkSumHTML(price) : '';
-    $('#poActions').innerHTML = linkActionsHTML(price);
+    $('#poSum').innerHTML = price > 0 ? (live.on ? '<p class="note">Итоговую стоимость рассчитает менеджер.</p>' : linkSumHTML(price)) : '';
+    $('#poActions').innerHTML = linkActionsHTML(live.on ? 0 : price);
   }
 
   // Заказ по ссылке или фото: оплата сразу по расчёту. На сервере это /api/link/order —
@@ -3897,16 +3949,15 @@ ${aiCatalogJSON()}
           data.items.forEach((c) => { if (!known.has(c.slug) && SUPPLIERS[c.supplier_code]) {
             const p = byId[c.slug] || liveProduct(c); PRODUCTS.push(p); byId[p.id] = p; known.add(p.id);
           } });
-          filterCarts();
-          updateCartCount();
-          renderHome();
-          if (currentView === 'catalog') renderCatalog();
-          if (currentView === 'cart') renderCart();
         } catch (e) { catalogLoad.failed.push(page); }
         catalogStatus();
       }
     }));
     catalogLoad.running = false;
+    filterCarts();
+    updateCartCount();
+    renderHome();
+    if (currentView === 'cart') renderCart();
     if (!catalogLoad.failed.length && state.savedCarts) {
       state.savedCarts = null; store.save();
     }
